@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Database Setup</title>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .step {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        .step.active {
+            border-color: #007bff;
+            background-color: #f8f9ff;
+        }
+        .step.completed {
+            border-color: #28a745;
+            background-color: #f8fff8;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Firebase Database Setup</h1>
+        <p>Initialize your inventory management system with sample data</p>
+
+        <div class="warning">
+            <h3>⚠️ Important: Security Rules</h3>
+            <p>If you get permission errors, temporarily update your Firestore security rules:</p>
+            <p><strong>Go to Firebase Console → Firestore → Rules and replace with:</strong></p>
+            <pre>rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+            <p style="color: red;"><strong>Remember to restore secure rules after setup!</strong></p>
+        </div>
+
+        <div id="step1" class="step active">
+            <h3>Step 1: Create Admin User</h3>
+            <p>Email: admin@krishisethu.com</p>
+            <p>Password: admin123</p>
+            <button onclick="createAdminUser()">Create Admin User</button>
+            <div id="step1-result"></div>
+        </div>
+
+        <div id="step2" class="step">
+            <h3>Step 2: Seed Database</h3>
+            <p>Add sample products, categories, brands, suppliers, and customers</p>
+            <button onclick="seedDatabase()" disabled>Seed Database</button>
+            <div id="step2-result"></div>
+        </div>
+
+        <div id="step3" class="step">
+            <h3>Step 3: Create Settings</h3>
+            <p>Configure system settings</p>
+            <button onclick="createSettings()" disabled>Create Settings</button>
+            <div id="step3-result"></div>
+        </div>
+
+        <div id="completion" style="display: none;" class="step completed">
+            <h3>✅ Setup Complete!</h3>
+            <p>Your database has been successfully initialized.</p>
+            <p><strong>Login Credentials:</strong></p>
+            <p>Email: admin@krishisethu.com</p>
+            <p>Password: admin123</p>
+            <p><a href="/" style="color: #007bff;">Go to Application</a></p>
+        </div>
+    </div>
+
+    <script>
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCP7F9rGrvmquvDieiLZ1qahOo2dMXJ-WY",
+            authDomain: "krishisetu-88b88.firebaseapp.com",
+            projectId: "krishisetu-88b88",
+            storageBucket: "krishisetu-88b88.firebasestorage.app",
+            messagingSenderId: "1097162834618",
+            appId: "1:1097162834618:web:0fbda0a418ef114109b883"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentStep = 1;
+
+        async function createAdminUser() {
+            const button = document.querySelector('#step1 button');
+            const result = document.getElementById('step1-result');
+            
+            button.disabled = true;
+            button.textContent = 'Creating...';
+            result.innerHTML = '';
+
+            try {
+                let user;
+                try {
+                    const userCredential = await auth.createUserWithEmailAndPassword('admin@krishisethu.com', 'admin123');
+                    user = userCredential.user;
+                    result.innerHTML = '<p class="success">✅ Admin user created successfully!</p>';
+                } catch (error) {
+                    if (error.code === 'auth/email-already-in-use') {
+                        const userCredential = await auth.signInWithEmailAndPassword('admin@krishisethu.com', 'admin123');
+                        user = userCredential.user;
+                        result.innerHTML = '<p class="success">✅ Admin user already exists, signed in!</p>';
+                    } else {
+                        throw error;
+                    }
+                }
+
+                // Create admin profile
+                await db.collection('users').doc(user.uid).set({
+                    uid: user.uid,
+                    email: user.email,
+                    name: 'System Administrator',
+                    role: 'admin',
+                    createdAt: new Date(),
+                    isActive: true
+                });
+
+                // Move to step 2
+                document.getElementById('step1').classList.remove('active');
+                document.getElementById('step1').classList.add('completed');
+                document.getElementById('step2').classList.add('active');
+                document.querySelector('#step2 button').disabled = false;
+                currentStep = 2;
+
+            } catch (error) {
+                result.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                button.disabled = false;
+                button.textContent = 'Create Admin User';
+            }
+        }
+
+        async function seedDatabase() {
+            const button = document.querySelector('#step2 button');
+            const result = document.getElementById('step2-result');
+            
+            button.disabled = true;
+            button.textContent = 'Seeding...';
+            result.innerHTML = '';
+
+            try {
+                // Seed Categories
+                const categories = [
+                    { name: 'Chemical Fertilizer', description: 'Chemical-based fertilizers', isActive: true },
+                    { name: 'Organic Fertilizer', description: 'Organic and natural fertilizers', isActive: true },
+                    { name: 'Bio Fertilizer', description: 'Biological fertilizers', isActive: true }
+                ];
+
+                for (const category of categories) {
+                    await db.collection('categories').add({
+                        ...category,
+                        createdAt: new Date()
+                    });
+                }
+
+                // Seed Brands
+                const brands = [
+                    { name: 'Tata Chemicals', description: 'Leading chemical company', isActive: true },
+                    { name: 'IFFCO', description: 'Indian Farmers Fertiliser Cooperative', isActive: true }
+                ];
+
+                for (const brand of brands) {
+                    await db.collection('brands').add({
+                        ...brand,
+                        createdAt: new Date()
+                    });
+                }
+
+                // Seed Products
+                const products = [
+                    {
+                        name: 'NPK 20-20-20',
+                        category: 'Chemical Fertilizer',
+                        brand: 'Tata Chemicals',
+                        description: 'Balanced NPK fertilizer',
+                        hsn: '31051000',
+                        unit: 'BAG',
+                        quantity: 45,
+                        reorderPoint: 10,
+                        purchasePrice: 850,
+                        salePrice: 950,
+                        mrp: 1000,
+                        gstRate: 5,
+                        isActive: true
+                    },
+                    {
+                        name: 'Urea',
+                        category: 'Chemical Fertilizer',
+                        brand: 'IFFCO',
+                        description: 'High quality urea fertilizer',
+                        hsn: '31021000',
+                        unit: 'BAG',
+                        quantity: 8,
+                        reorderPoint: 15,
+                        purchasePrice: 280,
+                        salePrice: 320,
+                        mrp: 350,
+                        gstRate: 5,
+                        isActive: true
+                    }
+                ];
+
+                for (const product of products) {
+                    await db.collection('products').add({
+                        ...product,
+                        createdAt: new Date()
+                    });
+                }
+
+                result.innerHTML = '<p class="success">✅ Database seeded successfully!</p>';
+
+                // Move to step 3
+                document.getElementById('step2').classList.remove('active');
+                document.getElementById('step2').classList.add('completed');
+                document.getElementById('step3').classList.add('active');
+                document.querySelector('#step3 button').disabled = false;
+                currentStep = 3;
+
+            } catch (error) {
+                result.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                button.disabled = false;
+                button.textContent = 'Seed Database';
+            }
+        }
+
+        async function createSettings() {
+            const button = document.querySelector('#step3 button');
+            const result = document.getElementById('step3-result');
+            
+            button.disabled = true;
+            button.textContent = 'Creating...';
+            result.innerHTML = '';
+
+            try {
+                await db.collection('settings').doc('system-settings').set({
+                    companyInfo: {
+                        name: 'Krishisethu Fertilizers',
+                        address: {
+                            street: '123 Agricultural Complex',
+                            city: 'Mumbai',
+                            state: 'Maharashtra',
+                            pincode: '400001',
+                            country: 'India'
+                        },
+                        phone: '+91-9876543210',
+                        email: 'info@krishisethu.com',
+                        gstNumber: '27AAAAA0000A1Z5'
+                    },
+                    taxSettings: {
+                        defaultTaxRate: 5,
+                        gstEnabled: true
+                    },
+                    createdAt: new Date()
+                });
+
+                result.innerHTML = '<p class="success">✅ Settings created successfully!</p>';
+
+                // Show completion
+                document.getElementById('step3').classList.remove('active');
+                document.getElementById('step3').classList.add('completed');
+                document.getElementById('completion').style.display = 'block';
+
+            } catch (error) {
+                result.innerHTML = `<p class="error">❌ Error: ${error.message}</p>`;
+                button.disabled = false;
+                button.textContent = 'Create Settings';
+            }
+        }
+    </script>
+</body>
+</html>

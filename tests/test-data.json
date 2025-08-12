@@ -1,0 +1,197 @@
+{
+  "environments": {
+    "local": {
+      "baseUrl": "http://localhost:3001",
+      "apiUrl": "http://localhost:3001/api"
+    },
+    "staging": {
+      "baseUrl": "https://staging.krishisethu.com",
+      "apiUrl": "https://staging.krishisethu.com/api"
+    },
+    "production": {
+      "baseUrl": "https://krishisethu.com",
+      "apiUrl": "https://krishisethu.com/api"
+    }
+  },
+  "users": {
+    "admin": {
+      "email": "admin@krishisethu.com",
+      "password": "admin123",
+      "role": "admin"
+    },
+    "manager": {
+      "email": "manager@krishisethu.com",
+      "password": "manager123",
+      "role": "manager"
+    },
+    "staff": {
+      "email": "staff@krishisethu.com",
+      "password": "staff123",
+      "role": "staff"
+    }
+  },
+  "testProducts": [
+    {
+      "name": "NPK Fertilizer 20-20-20",
+      "code": "NPK-202020-001",
+      "category": "NPK Fertilizers",
+      "brand": "KrishiChem",
+      "quantity": "100",
+      "unit": "kg",
+      "price": "2500",
+      "costPrice": "2000",
+      "gst": "18",
+      "hsn": "31051000",
+      "description": "Balanced NPK fertilizer for all crops",
+      "expiryDate": "2025-12-31",
+      "batchNumber": "BATCH001"
+    },
+    {
+      "name": "Urea Fertilizer",
+      "code": "UREA-001",
+      "category": "Nitrogen Fertilizers",
+      "brand": "FarmGrow",
+      "quantity": "200",
+      "unit": "kg",
+      "price": "1800",
+      "costPrice": "1500",
+      "gst": "5",
+      "hsn": "31021000",
+      "description": "High quality urea for nitrogen supply",
+      "expiryDate": "2025-06-30",
+      "batchNumber": "BATCH002"
+    },
+    {
+      "name": "Organic Compost",
+      "code": "ORG-COMP-001",
+      "category": "Organic Fertilizers",
+      "brand": "EcoFarm",
+      "quantity": "50",
+      "unit": "kg",
+      "price": "800",
+      "costPrice": "600",
+      "gst": "5",
+      "hsn": "31010000",
+      "description": "Premium organic compost for soil health",
+      "expiryDate": "2024-12-31",
+      "batchNumber": "BATCH003"
+    }
+  ],
+  "testCustomers": [
+    {
+      "name": "Ramesh Kumar",
+      "phone": "+91-9876543210",
+      "email": "ramesh@example.com",
+      "address": {
+        "street": "Village Rampur",
+        "city": "Rampur",
+        "state": "Uttar Pradesh",
+        "pincode": "244901",
+        "country": "India"
+      },
+      "farmDetails": {
+        "farmSize": "5 acres",
+        "cropTypes": ["wheat", "rice", "sugarcane"],
+        "soilType": "loamy"
+      },
+      "creditLimit": 50000,
+      "customerType": "farmer"
+    },
+    {
+      "name": "Green Valley Agro",
+      "phone": "+91-9876543211",
+      "email": "info@greenvalley.com",
+      "address": {
+        "street": "Market Road",
+        "city": "Meerut",
+        "state": "Uttar Pradesh",
+        "pincode": "250001",
+        "country": "India"
+      },
+      "creditLimit": 200000,
+      "customerType": "dealer"
+    }
+  ],
+  "testSuppliers": [
+    {
+      "name": "AgriCorp Supplies",
+      "contactPerson": "Suresh Sharma",
+      "phone": "+91-9876543212",
+      "email": "suresh@agricorp.com",
+      "address": {
+        "street": "Industrial Area",
+        "city": "Delhi",
+        "state": "Delhi",
+        "pincode": "110001",
+        "country": "India"
+      },
+      "gstNumber": "07AABCU9603R1ZX",
+      "paymentTerms": "30 days"
+    }
+  ],
+  "testSales": [
+    {
+      "customerName": "Ramesh Kumar",
+      "items": [
+        {
+          "productCode": "NPK-202020-001",
+          "quantity": 2,
+          "price": 2500
+        }
+      ],
+      "paymentMethod": "cash",
+      "discount": 0
+    }
+  ],
+  "selectors": {
+    "login": {
+      "emailField": "input[type='email'], input[name='email'], #email",
+      "passwordField": "input[type='password'], input[name='password'], #password",
+      "loginButton": "button[type='submit'], button:has-text('Login'), button:has-text('Sign In')",
+      "getStartedButton": "text=Get Started Free"
+    },
+    "navigation": {
+      "dashboard": "text=Dashboard, a[href*='dashboard']",
+      "inventory": "text=Inventory, a[href*='inventory']",
+      "pos": "text=POS, a[href*='pos']",
+      "customers": "text=Customers, a[href*='customers']",
+      "suppliers": "text=Suppliers, a[href*='suppliers']",
+      "reports": "text=Reports, a[href*='reports']",
+      "settings": "text=Settings, a[href*='settings']"
+    },
+    "inventory": {
+      "addProductButton": "text=Add Product, button:has-text('Add Product')",
+      "searchBox": "input[placeholder*='search'], input[name='search'], #search",
+      "productName": "input[name='name'], #productName, input[placeholder*='name']",
+      "productCode": "input[name='code'], #productCode, input[placeholder*='code']",
+      "quantity": "input[name='quantity'], #quantity, input[placeholder*='quantity']",
+      "price": "input[name='price'], #price, input[placeholder*='price']",
+      "saveButton": "button[type='submit'], button:has-text('Save'), button:has-text('Add Product')",
+      "editButton": "button:has-text('Edit'), .edit-btn, [data-action='edit']",
+      "deleteButton": "button:has-text('Delete'), .delete-btn, [data-action='delete']"
+    },
+    "pos": {
+      "productSearch": "input[placeholder*='search'], .product-search",
+      "cart": ".cart, .order-summary",
+      "total": "text=Total, .total-amount",
+      "checkoutButton": "button:has-text('Checkout'), button:has-text('Complete Sale')"
+    },
+    "common": {
+      "successMessage": ".toast, .alert, .notification",
+      "errorMessage": ".error, .alert-error",
+      "confirmButton": "button:has-text('Confirm'), button:has-text('Yes'), button:has-text('Delete')",
+      "cancelButton": "button:has-text('Cancel'), button:has-text('No')",
+      "loadingSpinner": ".loading, .spinner, .loader"
+    }
+  },
+  "timeouts": {
+    "short": 5000,
+    "medium": 10000,
+    "long": 30000,
+    "apiResponse": 15000
+  },
+  "performance": {
+    "maxLoadTime": 5000,
+    "maxApiResponseTime": 3000
+  }
+}
