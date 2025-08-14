@@ -269,7 +269,7 @@ const MobileNavigation = ({ currentPage, onNavigate, alerts = [] }) => {
 
       {/* Bottom Navigation */}
       <div 
-        className={`fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 transition-transform duration-300 md:hidden ${
+        className={`fixed bottom-0 left-0 right-0 z-10 bg-background border-t border-border transition-transform duration-300 md:hidden ${
           showBottomNav ? 'translate-y-0' : 'translate-y-full'
         }`}
       >
@@ -311,11 +311,11 @@ const MobileNavigation = ({ currentPage, onNavigate, alerts = [] }) => {
 
       {/* Mobile Menu Overlay */}
       {showMobileMenu && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 md:hidden">
-          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-xl max-h-[80vh] overflow-y-auto">
+        <div className="fixed inset-0 z-30 bg-black bg-opacity-50 md:hidden">
+          <div className="fixed bottom-0 left-0 right-0 bg-background rounded-t-xl max-h-[80vh] overflow-y-auto">
             {/* Menu Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Menu</h3>
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="text-lg font-semibold text-foreground">Menu</h3>
               <Button
                 variant="ghost"
                 size="sm"

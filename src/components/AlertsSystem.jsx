@@ -41,6 +41,8 @@ import {
   Activity
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { productsService, salesService } from '../lib/supabaseDb';
+import { realtimeService } from '../lib/realtime';
 
 const AlertsSystem = ({ onNavigate }) => {
   const { currentUser, userProfile, hasPermission } = useAuth();
@@ -56,6 +58,8 @@ const AlertsSystem = ({ onNavigate }) => {
   const [showRuleDialog, setShowRuleDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('alerts');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Enhanced alert settings with customizable thresholds
   const [alertSettings, setAlertSettings] = useState({
@@ -170,65 +174,131 @@ const AlertsSystem = ({ onNavigate }) => {
     alertTrends: []
   });
 
-  // Mock products data with stock and expiry information
-  useEffect(() => {
-    const mockProducts = [
+  // Load real products data from Firebase
+  const loadProductsAndGenerateAlerts = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      console.log('Loading products from Firebase for alerts...');
+
+      const firebaseProducts = await productsService.getAll();
+      console.log('Loaded products for alerts:', firebaseProducts);
+
+      if (firebaseProducts && firebaseProducts.length > 0) {
+        setProducts(firebaseProducts);
+        generateAlertsFromProducts(firebaseProducts);
+      } else {
+        // If no products exist, create some sample data with alert conditions
+        await createSampleProductsWithAlerts();
+      }
+    } catch (error) {
+      console.error('Error loading products for alerts:', error);
+      setError('Failed to load product data for alerts. Please try again.');
+      setProducts([]);
+      setAlerts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Create sample products with alert conditions for demo
+  const createSampleProductsWithAlerts = async () => {
+    const sampleProducts = [
       {
-        id: 'prod1',
         name: 'NPK 10:26:26',
-        type: 'Chemical Fertilizer',
+        category: 'Chemical Fertilizer',
         currentStock: 3, // Low stock
-        minStockLevel: 10,
+        reorderPoint: 10,
         expiryDate: '2024-02-15', // Expiring soon
         batchNumber: 'BATCH001',
-        supplier: 'Tata Chemicals'
+        supplier: 'Tata Chemicals',
+        purchasePrice: 45,
+        sellingPrice: 55
       },
       {
-        id: 'prod2',
         name: 'Urea 46%',
-        type: 'Chemical Fertilizer',
+        category: 'Chemical Fertilizer',
         currentStock: 75,
-        minStockLevel: 20,
+        reorderPoint: 20,
         expiryDate: '2024-06-30',
         batchNumber: 'BATCH002',
-        supplier: 'IFFCO'
+        supplier: 'IFFCO',
+        purchasePrice: 25,
+        sellingPrice: 30
       },
       {
-        id: 'prod3',
         name: 'Organic Compost',
-        type: 'Organic Fertilizer',
+        category: 'Organic Fertilizer',
         currentStock: 2, // Critical stock
-        minStockLevel: 15,
+        reorderPoint: 15,
         expiryDate: '2024-01-25', // Expired
         batchNumber: 'BATCH003',
-        supplier: 'Green Gold'
+        supplier: 'Green Gold',
+        purchasePrice: 15,
+        sellingPrice: 20
       },
       {
-        id: 'prod4',
         name: 'Bio Fertilizer Mix',
-        type: 'Bio Fertilizer',
+        category: 'Bio Fertilizer',
         currentStock: 8, // Low stock
-        minStockLevel: 12,
+        reorderPoint: 12,
         expiryDate: '2024-02-10', // Expiring very soon
         batchNumber: 'BATCH004',
-        supplier: 'Bio Solutions'
+        supplier: 'Bio Solutions',
+        purchasePrice: 35,
+        sellingPrice: 45
       }
     ];
 
-    setProducts(mockProducts);
-    generateAlerts(mockProducts);
+    try {
+      for (const product of sampleProducts) {
+        await productsService.create(product);
+      }
+      // Reload products after creating samples
+      const newProducts = await productsService.getAll();
+      setProducts(newProducts);
+      generateAlertsFromProducts(newProducts);
+    } catch (error) {
+      console.error('Error creating sample products for alerts:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Set up real-time subscription for products to generate alerts
+    const unsubscribe = realtimeService.subscribeToProducts((data, error) => {
+      if (error) {
+        console.error('Real-time products error for alerts:', error);
+        setError('Failed to sync product data for alerts. Please refresh.');
+        // Fallback to manual loading
+        loadProductsAndGenerateAlerts();
+      } else if (data) {
+        console.log('Real-time products update for alerts:', data);
+        setProducts(data);
+        generateAlertsFromProducts(data);
+        setIsLoading(false);
+      }
+    });
+
+    // Initial load if real-time fails
+    loadProductsAndGenerateAlerts();
+
+    // Cleanup subscription on unmount
+    return () => {
+      unsubscribe();
+    };
   }, [alertSettings]);
 
-  const generateAlerts = (productList) => {
+  const generateAlertsFromProducts = (productList) => {
     const newAlerts = [];
     const today = new Date();
 
     productList.forEach(product => {
-      const expiryDate = new Date(product.expiryDate);
-      const daysToExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+      // Use reorderPoint if available, otherwise use alertSettings thresholds
+      const criticalThreshold = product.reorderPoint ? Math.floor(product.reorderPoint * 0.5) : alertSettings.criticalStockThreshold;
+      const lowThreshold = product.reorderPoint || alertSettings.lowStockThreshold;
 
       // Critical stock alert
-      if (product.currentStock <= alertSettings.criticalStockThreshold) {
+      if (product.currentStock <= criticalThreshold) {
         newAlerts.push({
           id: `critical-${product.id}`,
           type: 'critical',
@@ -239,11 +309,12 @@ const AlertsSystem = ({ onNavigate }) => {
           productName: product.name,
           priority: 'high',
           timestamp: new Date(),
-          actionRequired: true
+          actionRequired: true,
+          status: 'active'
         });
       }
       // Low stock alert
-      else if (product.currentStock <= alertSettings.lowStockThreshold) {
+      else if (product.currentStock <= lowThreshold) {
         newAlerts.push({
           id: `low-stock-${product.id}`,
           type: 'warning',
@@ -254,41 +325,56 @@ const AlertsSystem = ({ onNavigate }) => {
           productName: product.name,
           priority: 'medium',
           timestamp: new Date(),
-          actionRequired: true
+          actionRequired: true,
+          status: 'active'
         });
       }
 
-      // Expiry alerts
-      if (daysToExpiry < 0) {
-        newAlerts.push({
-          id: `expired-${product.id}`,
-          type: 'critical',
-          category: 'expiry',
-          title: 'Product Expired',
-          message: `${product.name} expired ${Math.abs(daysToExpiry)} days ago`,
-          productId: product.id,
-          productName: product.name,
-          priority: 'high',
-          timestamp: new Date(),
-          actionRequired: true
-        });
-      } else if (daysToExpiry <= alertSettings.expiryWarningDays) {
-        newAlerts.push({
-          id: `expiring-${product.id}`,
-          type: 'warning',
-          category: 'expiry',
-          title: 'Product Expiring Soon',
-          message: `${product.name} expires in ${daysToExpiry} days`,
-          productId: product.id,
-          productName: product.name,
-          priority: daysToExpiry <= 7 ? 'high' : 'medium',
-          timestamp: new Date(),
-          actionRequired: daysToExpiry <= 7
-        });
+      // Expiry alerts (only if product has expiry date)
+      if (product.expiryDate) {
+        const expiryDate = new Date(product.expiryDate);
+        const daysToExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+
+        if (daysToExpiry < 0) {
+          newAlerts.push({
+            id: `expired-${product.id}`,
+            type: 'critical',
+            category: 'expiry',
+            title: 'Product Expired',
+            message: `${product.name} expired ${Math.abs(daysToExpiry)} days ago`,
+            productId: product.id,
+            productName: product.name,
+            priority: 'high',
+            timestamp: new Date(),
+            actionRequired: true,
+            status: 'active'
+          });
+        } else if (daysToExpiry <= alertSettings.expiryWarningDays) {
+          newAlerts.push({
+            id: `expiring-${product.id}`,
+            type: 'warning',
+            category: 'expiry',
+            title: 'Product Expiring Soon',
+            message: `${product.name} expires in ${daysToExpiry} days`,
+            productId: product.id,
+            productName: product.name,
+            priority: daysToExpiry <= alertSettings.criticalExpiryDays ? 'high' : 'medium',
+            timestamp: new Date(),
+            actionRequired: daysToExpiry <= alertSettings.criticalExpiryDays,
+            status: 'active'
+          });
+        }
       }
     });
 
     setAlerts(newAlerts);
+  };
+
+  // Refresh alerts manually
+  const refreshAlerts = async () => {
+    setRefreshing(true);
+    await loadProductsAndGenerateAlerts();
+    setRefreshing(false);
   };
 
   const getAlertBadge = (alert) => {
@@ -454,15 +540,61 @@ const AlertsSystem = ({ onNavigate }) => {
   };
 
   const sendPushNotification = async (message, alert, rule) => {
-    // In real app, use service worker for push notifications
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(`${alert.title}`, {
-        body: message,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
-        tag: alert.id,
-        requireInteraction: alert.priority === 'high'
-      });
+    try {
+      // Import notification service dynamically
+      const { notificationService } = await import('../lib/notificationService');
+
+      // Check if push notifications are enabled for this type
+      const alertType = alert.type === 'stock' ? 'lowStock' :
+                       alert.type === 'expiry' ? 'expiry' : 'general';
+
+      if (!notificationService.isTypeEnabled(alertType)) {
+        console.log(`[Alerts] Push notifications disabled for type: ${alertType}`);
+        return;
+      }
+
+      // Determine notification type and data
+      let notificationType = 'general';
+      let notificationData = {
+        productId: alert.productId,
+        productName: alert.product || 'Unknown Product',
+        alertId: alert.id,
+        priority: alert.priority
+      };
+
+      if (alert.type === 'stock') {
+        if (alert.currentStock === 0) {
+          notificationType = 'outOfStock';
+        } else {
+          notificationType = 'lowStock';
+          notificationData.quantity = alert.currentStock;
+        }
+      } else if (alert.type === 'expiry') {
+        if (alert.status === 'expired') {
+          notificationType = 'expired';
+        } else {
+          notificationType = 'expiringSoon';
+          notificationData.daysUntilExpiry = alert.daysUntilExpiry || 'soon';
+        }
+      }
+
+      // Show notification using the notification service
+      notificationService.showInventoryAlert(notificationType, notificationData);
+
+      console.log(`[Alerts] Push notification sent for ${notificationType}:`, notificationData);
+    } catch (error) {
+      console.error('[Alerts] Error sending push notification:', error);
+
+      // Fallback to basic browser notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(`${alert.title}`, {
+          body: message,
+          icon: '/logo192.png',
+          badge: '/logo192.png',
+          tag: alert.id,
+          requireInteraction: alert.priority === 'high'
+        });
+      }
     }
   };
 
@@ -645,17 +777,30 @@ const AlertsSystem = ({ onNavigate }) => {
   const actionRequiredAlerts = filteredAlerts.filter(alert => alert.actionRequired);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-background text-foreground min-h-screen p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Alert Management</h2>
+          <div className="flex items-center space-x-2 mb-2">
+            <Button variant="outline" size="sm" onClick={() => onNavigate('dashboard')}>
+              <Activity className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">Alert Management</h2>
           <p className="text-muted-foreground">Monitor inventory alerts and system notifications</p>
         </div>
         <div className="flex space-x-2">
+          <Button variant="outline" onClick={refreshAlerts} disabled={isLoading || refreshing}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${(isLoading || refreshing) ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </Button>
           <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
             <DialogTrigger asChild>
-              <Button variant="outline">⚙️ Settings</Button>
+              <Button variant="outline">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -775,11 +920,28 @@ const AlertsSystem = ({ onNavigate }) => {
           <CardDescription>Current system alerts requiring attention</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Error Display */}
+          {error && (
+            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700">{error}</span>
+              <Button variant="outline" size="sm" onClick={refreshAlerts} className="ml-auto">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          )}
+
           <div className="space-y-4">
-            {alerts.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
+                <p className="text-muted-foreground">Loading alerts...</p>
+              </div>
+            ) : alerts.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <span className="text-4xl">✅</span>
-                <p className="mt-2">No active alerts</p>
+                <Bell className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-lg font-medium">No active alerts</p>
                 <p className="text-sm">All systems are running smoothly</p>
               </div>
             ) : (
@@ -797,7 +959,7 @@ const AlertsSystem = ({ onNavigate }) => {
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
-                          <h4 className="font-medium">{alert.title}</h4>
+                          <h4 className="font-medium text-foreground">{alert.title}</h4>
                           {getAlertBadge(alert)}
                           {alert.actionRequired && (
                             <Badge variant="outline" className="text-xs">ACTION REQUIRED</Badge>

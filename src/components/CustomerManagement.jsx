@@ -1,17 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { customersService } from '../lib/supabaseDb';
+import { realtimeService } from '../lib/realtime';
+import { useDebouncedSearch, usePerformanceMonitor } from '../hooks/usePerformance';
+import {
+  Users,
+  UserPlus,
+  Edit,
+  Trash2,
+  ArrowLeft,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Loader2
+} from 'lucide-react';
 
 const CustomerManagement = ({ onNavigate }) => {
   const [customers, setCustomers] = useState([]);
-  const [filteredCustomers, setFilteredCustomers] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const { searchTerm, debouncedSearchTerm, setSearchTerm } = useDebouncedSearch('', 300);
+  const { measureAsync } = usePerformanceMonitor('CustomerManagement');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -23,11 +40,38 @@ const CustomerManagement = ({ onNavigate }) => {
     notes: ''
   });
 
-  // Load mock customers data
-  useEffect(() => {
-    const mockCustomers = [
+  // Load customers from Firebase with performance monitoring
+  const loadCustomers = useCallback(async () => {
+    return measureAsync('loadCustomers', async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log('Loading customers from Firebase...');
+
+      const firebaseCustomers = await customersService.getAll();
+      console.log('Loaded customers:', firebaseCustomers);
+
+      if (firebaseCustomers && firebaseCustomers.length > 0) {
+        setCustomers(firebaseCustomers);
+      } else {
+        // If no customers exist, create some sample data
+        await createSampleCustomers();
+      }
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      setError('Failed to load customers. Please try again.');
+      // Fallback to empty array
+      setCustomers([]);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [measureAsync]);
+
+  // Create sample customers for demo
+  const createSampleCustomers = async () => {
+    const sampleCustomers = [
       {
-        id: 'cust1',
         name: 'Rajesh Kumar',
         phone: '+91-9876543210',
         email: 'rajesh@email.com',
@@ -47,7 +91,6 @@ const CustomerManagement = ({ onNavigate }) => {
         ]
       },
       {
-        id: 'cust2',
         name: 'Priya Sharma',
         phone: '+91-9876543211',
         email: 'priya@email.com',
@@ -66,7 +109,6 @@ const CustomerManagement = ({ onNavigate }) => {
         ]
       },
       {
-        id: 'cust3',
         name: 'Amit Patel',
         phone: '+91-9876543212',
         email: 'amit@email.com',
@@ -86,20 +128,54 @@ const CustomerManagement = ({ onNavigate }) => {
       }
     ];
 
-    setCustomers(mockCustomers);
-    setFilteredCustomers(mockCustomers);
+    try {
+      for (const customer of sampleCustomers) {
+        await customersService.create(customer);
+      }
+      // Reload customers after creating samples
+      const newCustomers = await customersService.getAll();
+      setCustomers(newCustomers);
+    } catch (error) {
+      console.error('Error creating sample customers:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Set up real-time subscription for customers
+    const unsubscribe = realtimeService.subscribeToCustomers((data, error) => {
+      if (error) {
+        console.error('Real-time customers error:', error);
+        setError('Failed to sync customer data. Please refresh.');
+        // Fallback to manual loading
+        loadCustomers();
+      } else if (data) {
+        console.log('Real-time customers update:', data);
+        setCustomers(data);
+        setLoading(false);
+      }
+    });
+
+    // Initial load if real-time fails
+    loadCustomers();
+
+    // Cleanup subscription on unmount
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
-  // Filter customers based on search
-  useEffect(() => {
-    const filtered = customers.filter(customer =>
-      customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.phone.includes(searchTerm) ||
-      customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.city.toLowerCase().includes(searchTerm.toLowerCase())
+  // Memoized filtered customers for performance
+  const filteredCustomers = useMemo(() => {
+    if (!debouncedSearchTerm) return customers;
+
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(searchLower) ||
+      customer.phone.includes(debouncedSearchTerm) ||
+      customer.email.toLowerCase().includes(searchLower) ||
+      customer.city.toLowerCase().includes(searchLower)
     );
-    setFilteredCustomers(filtered);
-  }, [searchTerm, customers]);
+  }, [debouncedSearchTerm, customers]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -108,15 +184,17 @@ const CustomerManagement = ({ onNavigate }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
+      setSaving(true);
+      setError(null);
+
       if (!formData.name.trim() || !formData.phone.trim()) {
         alert('Please fill in required fields (Name and Phone)');
         return;
       }
 
       const newCustomer = {
-        id: Date.now().toString(),
         ...formData,
         creditLimit: parseFloat(formData.creditLimit) || 0,
         currentCredit: 0,
@@ -127,8 +205,13 @@ const CustomerManagement = ({ onNavigate }) => {
         purchaseHistory: []
       };
 
-      setCustomers(prev => [newCustomer, ...prev]);
-      
+      // Save to Firebase
+      const createdCustomer = await customersService.create(newCustomer);
+      console.log('Customer created:', createdCustomer);
+
+      // Refresh the customer list
+      await loadCustomers();
+
       // Reset form
       setFormData({
         name: '',
@@ -145,7 +228,34 @@ const CustomerManagement = ({ onNavigate }) => {
       alert('Customer added successfully!');
     } catch (error) {
       console.error('Error adding customer:', error);
+      setError('Failed to add customer. Please try again.');
       alert('Error adding customer');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteCustomer = async (customerId) => {
+    if (!window.confirm('Are you sure you want to delete this customer?')) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await customersService.delete(customerId);
+      console.log('Customer deleted:', customerId);
+
+      // Refresh the customer list
+      await loadCustomers();
+      alert('Customer deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting customer:', error);
+      setError('Failed to delete customer. Please try again.');
+      alert('Error deleting customer');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -176,26 +286,48 @@ const CustomerManagement = ({ onNavigate }) => {
   const totalCreditOutstanding = customers.reduce((sum, c) => sum + c.currentCredit, 0);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Customer Management</h2>
+          <div className="flex items-center space-x-2">
+            <Button variant="outline" size="sm" onClick={() => onNavigate('dashboard')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground mt-2">Customer Management</h2>
           <p className="text-muted-foreground">Manage customer relationships and credit accounts</p>
         </div>
         <div className="flex space-x-2">
+          <Button variant="outline" onClick={loadCustomers} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
           <Button variant="outline" onClick={() => onNavigate('pos')}>
-            🧾 POS System
+            <Users className="h-4 w-4 mr-2" />
+            POS System
           </Button>
           <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
             <DialogTrigger asChild>
-              <Button>➕ Add Customer</Button>
+              <Button>
+                <UserPlus className="h-4 w-4 mr-2" />
+                Add Customer
+              </Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Add New Customer</DialogTitle>
                 <DialogDescription>Create a new customer account</DialogDescription>
               </DialogHeader>
+
+              {error && (
+                <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-md">
+                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  <span className="text-sm text-red-700">{error}</span>
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="text-sm font-medium">Name *</label>
@@ -283,10 +415,22 @@ const CustomerManagement = ({ onNavigate }) => {
                 </div>
 
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+                  <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
                     Cancel
                   </Button>
-                  <Button type="submit">Add Customer</Button>
+                  <Button type="submit" disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Add Customer
+                      </>
+                    )}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -357,10 +501,28 @@ const CustomerManagement = ({ onNavigate }) => {
             />
           </div>
 
+          {/* Error Display */}
+          {error && (
+            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700">{error}</span>
+              <Button variant="outline" size="sm" onClick={loadCustomers} className="ml-auto">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          )}
+
           <div className="space-y-4">
-            {filteredCustomers.length === 0 ? (
+            {loading ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
+                <p className="text-muted-foreground">Loading customers...</p>
+              </div>
+            ) : filteredCustomers.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                <p>No customers found</p>
+                <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <p className="text-lg font-medium">No customers found</p>
                 <p className="text-sm">Try adjusting your search or add a new customer</p>
               </div>
             ) : (
@@ -388,13 +550,23 @@ const CustomerManagement = ({ onNavigate }) => {
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center space-x-2">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleCustomerDetails(customer)}
                       >
+                        <Edit className="h-4 w-4 mr-2" />
                         View Details
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeleteCustomer(customer.id)}
+                        disabled={saving}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>

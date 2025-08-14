@@ -32,7 +32,7 @@ class BarcodeService {
       this.isScanning = true;
 
       // Start scanning
-      const result = await this.codeReader.decodeFromVideoDevice(
+      await this.codeReader.decodeFromVideoDevice(
         selectedDeviceId,
         videoElement,
         (result, error) => {

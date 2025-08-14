@@ -427,15 +427,15 @@ const EnhancedAlertsSystem = ({ onNavigate }) => {
   const actionRequiredAlerts = filteredAlerts.filter(alert => alert.actionRequired);
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
             <Bell className="h-8 w-8 text-blue-600" />
             Enhanced Alerts & Notifications
           </h1>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             {alerts.length} total alerts • {actionRequiredAlerts.length} require action • {criticalAlerts.length} critical
           </p>
         </div>
@@ -626,7 +626,7 @@ const EnhancedAlertsSystem = ({ onNavigate }) => {
                       return priorityOrder[b.priority] - priorityOrder[a.priority];
                     })
                     .map((alert) => (
-                      <div key={alert.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                      <div key={alert.id} className="p-4 border border-border rounded-lg hover:bg-accent/50 transition-colors bg-card">
                         <div className="flex items-start justify-between">
                           <div className="flex items-start space-x-3 flex-1">
                             <div className="flex items-center space-x-2">
@@ -634,22 +634,22 @@ const EnhancedAlertsSystem = ({ onNavigate }) => {
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center space-x-2 mb-2">
-                                <h4 className="font-medium text-gray-900">{alert.title}</h4>
+                                <h4 className="font-medium text-foreground">{alert.title}</h4>
                                 {getTypeBadge(alert.type)}
                                 {getPriorityBadge(alert.priority)}
                                 {alert.actionRequired && (
-                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                  <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
                                     ACTION REQUIRED
                                   </Badge>
                                 )}
                                 {alert.snoozed && (
-                                  <Badge variant="outline" className="text-xs bg-gray-50 text-gray-600">
+                                  <Badge variant="outline" className="text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
                                     SNOOZED
                                   </Badge>
                                 )}
                               </div>
-                              <p className="text-sm text-gray-600 mb-2">{alert.message}</p>
-                              <div className="flex items-center space-x-4 text-xs text-gray-500">
+                              <p className="text-sm text-muted-foreground mb-2">{alert.message}</p>
+                              <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                                 <span>{alert.timestamp.toLocaleDateString()} {alert.timestamp.toLocaleTimeString()}</span>
                                 {alert.productName && <span>Product: {alert.productName}</span>}
                                 {alert.customerName && <span>Customer: {alert.customerName}</span>}

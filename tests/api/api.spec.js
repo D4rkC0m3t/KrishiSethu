@@ -6,7 +6,7 @@ test.describe('KrishiSethu API Tests', () => {
 
   test.beforeAll(async ({ playwright }) => {
     apiContext = await playwright.request.newContext({
-      baseURL: process.env.API_URL || 'http://localhost:3001/api',
+      baseURL: process.env.API_URL || 'http://localhost:3000/api',
       extraHTTPHeaders: {
         'Content-Type': 'application/json',
       }
@@ -20,7 +20,7 @@ test.describe('KrishiSethu API Tests', () => {
   test('should handle CORS properly', async () => {
     const response = await apiContext.get('/products', {
       headers: {
-        'Origin': 'http://localhost:3001'
+        'Origin': 'http://localhost:3000'
       }
     });
     

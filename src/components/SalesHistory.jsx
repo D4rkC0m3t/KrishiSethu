@@ -364,11 +364,11 @@ const SalesHistory = ({ onNavigate }) => {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Enhanced Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
             <BarChart3 className="h-8 w-8 text-blue-600" />
             Sales Analytics
           </h1>

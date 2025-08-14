@@ -405,7 +405,7 @@ const DataImportExport = ({ onNavigate }) => {
   // Check permissions
   if (!hasPermission('staff')) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-center text-red-600">Access Denied</CardTitle>
@@ -424,16 +424,16 @@ const DataImportExport = ({ onNavigate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <div className="space-y-6 p-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-              <Database className="h-8 w-8 text-blue-600" />
+            <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+              <Database className="h-8 w-8 text-primary" />
               Data Import & Export
             </h1>
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               Import and export business data in various formats
             </p>
           </div>
@@ -465,16 +465,16 @@ const DataImportExport = ({ onNavigate }) => {
                     key={key}
                     className={`p-4 border rounded-lg cursor-pointer transition-all ${
                       selectedDataType === key
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:border-border/80'
                     }`}
                     onClick={() => setSelectedDataType(key)}
                   >
                     <div className="flex items-center gap-3">
-                      <IconComponent className="h-6 w-6 text-blue-600" />
+                      <IconComponent className="h-6 w-6 text-primary" />
                       <div>
                         <h3 className="font-medium">{config.name}</h3>
-                        <p className="text-sm text-gray-500">{config.description}</p>
+                        <p className="text-sm text-muted-foreground">{config.description}</p>
                       </div>
                     </div>
                   </div>
@@ -540,7 +540,7 @@ const DataImportExport = ({ onNavigate }) => {
 
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Fields to Export</label>
-                      <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="p-3 bg-muted rounded-lg">
                         <div className="flex flex-wrap gap-2">
                           {DATA_TYPES[selectedDataType].fields.map((field) => (
                             <Badge key={field} variant="outline" className="text-xs">
@@ -553,9 +553,9 @@ const DataImportExport = ({ onNavigate }) => {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                      <h4 className="font-medium text-blue-900 mb-2">Export Preview</h4>
-                      <div className="text-sm text-blue-700 space-y-1">
+                    <div className="p-4 bg-primary/10 rounded-lg">
+                      <h4 className="font-medium text-primary mb-2">Export Preview</h4>
+                      <div className="text-sm text-primary/80 space-y-1">
                         <div>Data Type: {DATA_TYPES[selectedDataType].name}</div>
                         <div>Format: {EXPORT_FORMATS[exportFormat].name}</div>
                         <div>Estimated Records: ~50</div>
@@ -603,7 +603,7 @@ const DataImportExport = ({ onNavigate }) => {
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium mb-2 block">Select File</label>
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -615,7 +615,7 @@ const DataImportExport = ({ onNavigate }) => {
                           <div className="space-y-2">
                             <FileText className="h-8 w-8 text-green-600 mx-auto" />
                             <div className="text-sm font-medium">{importFile.name}</div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-muted-foreground">
                               {(importFile.size / 1024).toFixed(1)} KB
                             </div>
                             <Button
@@ -628,8 +628,8 @@ const DataImportExport = ({ onNavigate }) => {
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            <FileUp className="h-8 w-8 text-gray-400 mx-auto" />
-                            <div className="text-sm text-gray-600">
+                            <FileUp className="h-8 w-8 text-muted-foreground mx-auto" />
+                            <div className="text-sm text-muted-foreground">
                               Click to select a CSV or Excel file
                             </div>
                             <Button
@@ -645,7 +645,7 @@ const DataImportExport = ({ onNavigate }) => {
 
                     <div className="space-y-2">
                       <label className="text-sm font-medium">Required Fields</label>
-                      <div className="p-3 bg-gray-50 rounded-lg">
+                      <div className="p-3 bg-muted rounded-lg">
                         <div className="flex flex-wrap gap-2">
                           {DATA_TYPES[selectedDataType].fields.slice(0, 5).map((field) => (
                             <Badge key={field} variant="outline" className="text-xs">
@@ -750,13 +750,13 @@ const DataImportExport = ({ onNavigate }) => {
                           <div className="font-medium">{DATA_TYPES[export_.dataType].name}</div>
                           {getStatusBadge(export_.status)}
                         </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                           <div>Format: {export_.format.toUpperCase()}</div>
                           <div>Records: {export_.recordCount}</div>
                           <div>Size: {export_.fileSize}</div>
                           <div>By: {export_.exportedBy}</div>
                         </div>
-                        <div className="text-xs text-gray-500 mt-2">
+                        <div className="text-xs text-muted-foreground mt-2">
                           {export_.exportedAt.toLocaleDateString()} {export_.exportedAt.toLocaleTimeString()}
                         </div>
                       </div>
@@ -784,13 +784,13 @@ const DataImportExport = ({ onNavigate }) => {
                           <div className="font-medium">{import_.fileName}</div>
                           {getStatusBadge(import_.status)}
                         </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
                           <div>Type: {DATA_TYPES[import_.dataType].name}</div>
                           <div>Records: {import_.recordCount}</div>
                           <div>Success: {import_.successCount}</div>
                           <div>Errors: {import_.errorCount}</div>
                         </div>
-                        <div className="text-xs text-gray-500 mt-2">
+                        <div className="text-xs text-muted-foreground mt-2">
                           {import_.importedAt.toLocaleDateString()} {import_.importedAt.toLocaleTimeString()}
                         </div>
                       </div>

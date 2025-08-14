@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { imageCacheService } from '../lib/imageCacheService';
-import { productsService } from '../lib/firestore';
+import { productsService } from '../lib/supabaseDb';
 import {
   Database,
   Trash2,

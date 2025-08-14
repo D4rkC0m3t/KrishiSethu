@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+// Removed unused Tabs imports
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import {
   Users,
@@ -12,16 +12,10 @@ import {
   Edit,
   Trash2,
   Shield,
-  Key,
   Eye,
   EyeOff,
   Search,
-  Filter,
-  Download,
-  Upload,
   RefreshCw,
-  Settings,
-  Clock,
   CheckCircle,
   XCircle,
   AlertTriangle,
@@ -30,12 +24,14 @@ import {
   User,
   Mail,
   Phone,
-  Calendar,
   Activity,
   Lock,
   Unlock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { usersService } from '../lib/supabaseDb';
+import { realtimeService } from '../lib/realtime';
+import { supabaseAuthHelpers } from '../lib/supabase';
 
 const UserManagement = ({ onNavigate }) => {
   const { currentUser, userProfile, hasPermission, isAdmin } = useAuth();
@@ -50,6 +46,8 @@ const UserManagement = ({ onNavigate }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   
   // User form data
@@ -145,8 +143,28 @@ const UserManagement = ({ onNavigate }) => {
   };
 
   useEffect(() => {
+    // Set up real-time subscription for users
+    const unsubscribe = realtimeService.subscribeToUsers((data, error) => {
+      if (error) {
+        console.error('Real-time users error:', error);
+        setError('Failed to sync user data. Please refresh.');
+        // Fallback to manual loading
+        loadUsers();
+      } else if (data) {
+        console.log('Real-time users update:', data);
+        setUsers(data);
+        setLoading(false);
+      }
+    });
+
+    // Initial load if real-time fails
     loadUsers();
     loadActivityLog();
+
+    // Cleanup subscription on unmount
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -169,13 +187,33 @@ const UserManagement = ({ onNavigate }) => {
   }, [users, searchTerm, filterRole, filterStatus]);
 
   const loadUsers = async () => {
-    setLoading(true);
     try {
-      // In real app, load from Firebase
-      // const firebaseUsers = await usersService.getAll();
-      
-      // Mock users for demo
-      const mockUsers = [
+      setLoading(true);
+      setError(null);
+      console.log('Loading users from Firebase...');
+
+      const firebaseUsers = await usersService.getAll();
+      console.log('Loaded users:', firebaseUsers);
+
+      if (firebaseUsers && firebaseUsers.length > 0) {
+        setUsers(firebaseUsers);
+      } else {
+        // If no users exist, create some sample data
+        await createSampleUsers();
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+      setError('Failed to load users. Please try again.');
+      // Fallback to empty array
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Create sample users for demo
+  const createSampleUsers = async () => {
+    const sampleUsers = [
         {
           id: '1',
           uid: 'admin-uid',
@@ -233,14 +271,18 @@ const UserManagement = ({ onNavigate }) => {
           lastActivity: 'Account deactivated'
         }
       ];
-      
-      setUsers(mockUsers);
-    } catch (error) {
-      console.error('Error loading users:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+
+      try {
+        for (const user of sampleUsers) {
+          await usersService.create(user);
+        }
+        // Reload users after creating samples
+        const newUsers = await usersService.getAll();
+        setUsers(newUsers);
+      } catch (error) {
+        console.error('Error creating sample users:', error);
+      }
+    };
 
   const loadActivityLog = async () => {
     // Mock activity log
@@ -337,26 +379,48 @@ const UserManagement = ({ onNavigate }) => {
     }
 
     try {
+      setSaving(true);
+      setError(null);
+
+      // Create Firebase Auth user
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        userForm.email,
+        userForm.password
+      );
+
       const newUser = {
-        id: Date.now().toString(),
-        uid: `user-${Date.now()}`,
-        ...userForm,
+        uid: userCredential.user.uid,
+        name: userForm.name,
+        email: userForm.email,
+        phone: userForm.phone,
+        role: userForm.role,
+        isActive: userForm.isActive,
+        permissions: userForm.permissions,
         createdAt: new Date(),
         lastLogin: null,
         loginCount: 0,
         lastActivity: 'Account created'
       };
 
-      setUsers(prev => [newUser, ...prev]);
+      // Save user profile to Firestore
+      await usersService.create(newUser);
+
+      // Refresh users list
+      await loadUsers();
+
       resetForm();
       setShowAddDialog(false);
       alert('User created successfully!');
-      
+
       // Log activity
       logActivity('User Created', `Created new ${userForm.role} user: ${userForm.name}`);
     } catch (error) {
       console.error('Error creating user:', error);
-      alert('Error creating user');
+      setError('Failed to create user. Please try again.');
+      alert('Error creating user: ' + error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -364,44 +428,55 @@ const UserManagement = ({ onNavigate }) => {
     if (!selectedUser) return;
 
     try {
+      setSaving(true);
+      setError(null);
+
       const updatedUser = {
-        ...selectedUser,
         ...userForm,
         updatedAt: new Date()
       };
 
-      setUsers(prev => prev.map(user => 
-        user.id === selectedUser.id ? updatedUser : user
-      ));
-      
+      // Update user in Firestore
+      await usersService.update(selectedUser.id, updatedUser);
+
+      // Refresh users list
+      await loadUsers();
+
       setShowEditDialog(false);
       setSelectedUser(null);
       resetForm();
       alert('User updated successfully!');
-      
+
       // Log activity
       logActivity('User Updated', `Updated user profile: ${userForm.name}`);
     } catch (error) {
       console.error('Error updating user:', error);
-      alert('Error updating user');
+      setError('Failed to update user. Please try again.');
+      alert('Error updating user: ' + error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleToggleUserStatus = async (user) => {
     try {
+      setSaving(true);
+      setError(null);
+
       const updatedUser = {
-        ...user,
         isActive: !user.isActive,
         updatedAt: new Date()
       };
 
-      setUsers(prev => prev.map(u => 
-        u.id === user.id ? updatedUser : u
-      ));
-      
+      // Update user in Firestore
+      await usersService.update(user.id, updatedUser);
+
+      // Refresh users list
+      await loadUsers();
+
       const action = updatedUser.isActive ? 'activated' : 'deactivated';
       alert(`User ${action} successfully!`);
-      
+
       // Log activity
       logActivity(
         updatedUser.isActive ? 'User Activated' : 'User Deactivated',
@@ -409,7 +484,10 @@ const UserManagement = ({ onNavigate }) => {
       );
     } catch (error) {
       console.error('Error toggling user status:', error);
+      setError('Failed to update user status. Please try again.');
       alert('Error updating user status');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -422,7 +500,15 @@ const UserManagement = ({ onNavigate }) => {
     if (!selectedUser) return;
 
     try {
-      setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
+      setSaving(true);
+      setError(null);
+
+      // Delete user from Firestore
+      await usersService.delete(selectedUser.id);
+
+      // Refresh users list
+      await loadUsers();
+
       alert('User deleted successfully!');
 
       // Log activity
@@ -432,7 +518,10 @@ const UserManagement = ({ onNavigate }) => {
       setSelectedUser(null);
     } catch (error) {
       console.error('Error deleting user:', error);
+      setError('Failed to delete user. Please try again.');
       alert('Error deleting user');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -519,7 +608,7 @@ const UserManagement = ({ onNavigate }) => {
   // Check if current user can manage users
   if (!isAdmin() && !hasPermission('manager')) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-center text-red-600">Access Denied</CardTitle>
@@ -538,11 +627,11 @@ const UserManagement = ({ onNavigate }) => {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
             <Users className="h-8 w-8 text-blue-600" />
             User Management
           </h1>
@@ -555,8 +644,8 @@ const UserManagement = ({ onNavigate }) => {
             <Activity className="h-4 w-4 mr-2" />
             Activity Log
           </Button>
-          <Button variant="outline" size="sm" onClick={loadUsers}>
-            <RefreshCw className="h-4 w-4 mr-2" />
+          <Button variant="outline" size="sm" onClick={loadUsers} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           {isAdmin() && (
@@ -735,12 +824,21 @@ const UserManagement = ({ onNavigate }) => {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
                     Cancel
                   </Button>
-                  <Button onClick={handleAddUser}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Create User
+                  <Button onClick={handleAddUser} disabled={saving}>
+                    {saving ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Create User
+                      </>
+                    )}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -803,11 +901,28 @@ const UserManagement = ({ onNavigate }) => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Error Display */}
+          {error && (
+            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700">{error}</span>
+              <Button variant="outline" size="sm" onClick={loadUsers} className="ml-auto">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          )}
+
           {loading ? (
-            <div className="text-center py-8">Loading users...</div>
+            <div className="text-center py-8">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
+              <p className="text-muted-foreground">Loading users...</p>
+            </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
-              No users found matching your criteria
+              <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium">No users found</p>
+              <p className="text-sm">Try adjusting your search criteria</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

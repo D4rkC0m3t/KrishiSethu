@@ -491,7 +491,7 @@ const BackupDataManagement = ({ onNavigate }) => {
   // Check permissions
   if (!hasPermission('staff')) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle className="text-center text-red-600">Access Denied</CardTitle>
@@ -510,17 +510,17 @@ const BackupDataManagement = ({ onNavigate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Main Content */}
       <div className="space-y-6 p-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-              <Database className="h-8 w-8 text-blue-600" />
+            <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
+              <Database className="h-8 w-8 text-primary" />
               Backup & Data Management
             </h1>
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               Manage database backups, data archiving, and storage optimization
             </p>
           </div>
@@ -532,6 +532,180 @@ const BackupDataManagement = ({ onNavigate }) => {
                   Settings
                 </Button>
               </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Backup Settings</DialogTitle>
+                  <DialogDescription>
+                    Configure automatic backup and data management settings
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 max-h-96 overflow-y-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Auto Backup</label>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="autoBackupEnabled"
+                          checked={backupSettings.autoBackupEnabled}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Enable automatic backups</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Backup Frequency</label>
+                      <Select
+                        name="backupFrequency"
+                        value={backupSettings.backupFrequency}
+                        onValueChange={(value) => handleSettingsChange({ target: { name: 'backupFrequency', value } })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Backup Time</label>
+                      <Input
+                        type="time"
+                        name="backupTime"
+                        value={backupSettings.backupTime}
+                        onChange={handleSettingsChange}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Retention Period (days)</label>
+                      <Input
+                        type="number"
+                        name="retentionPeriod"
+                        value={backupSettings.retentionPeriod}
+                        onChange={handleSettingsChange}
+                        min="1"
+                        max="365"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Max Backup Size (MB)</label>
+                      <Input
+                        type="number"
+                        name="maxBackupSize"
+                        value={backupSettings.maxBackupSize}
+                        onChange={handleSettingsChange}
+                        min="10"
+                        max="5000"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Storage Options</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="compressionEnabled"
+                          checked={backupSettings.compressionEnabled}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Enable compression</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="encryptionEnabled"
+                          checked={backupSettings.encryptionEnabled}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Enable encryption</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="cloudStorageEnabled"
+                          checked={backupSettings.cloudStorageEnabled}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Cloud storage</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="localBackupEnabled"
+                          checked={backupSettings.localBackupEnabled}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Local backup</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Notifications</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="notifyOnSuccess"
+                          checked={backupSettings.notifyOnSuccess}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Notify on success</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="notifyOnFailure"
+                          checked={backupSettings.notifyOnFailure}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Notify on failure</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Data Options</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="includeAttachments"
+                          checked={backupSettings.includeAttachments}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Include attachments</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          name="excludeTemporaryData"
+                          checked={backupSettings.excludeTemporaryData}
+                          onChange={handleSettingsChange}
+                        />
+                        <span className="text-sm">Exclude temporary data</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={saveBackupSettings}>
+                    Save Settings
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
             </Dialog>
             <Button variant="outline" size="sm" onClick={() => onNavigate('dashboard')}>
               ← Dashboard
@@ -545,20 +719,20 @@ const BackupDataManagement = ({ onNavigate }) => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Total Storage Used</p>
-                  <p className="text-2xl font-bold text-blue-600">
+                  <p className="text-sm font-medium text-muted-foreground">Total Storage Used</p>
+                  <p className="text-2xl font-bold text-primary">
                     {storageStats.totalUsed.toFixed(1)} MB
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     of {storageStats.totalAvailable} MB available
                   </p>
                 </div>
-                <HardDrive className="h-8 w-8 text-blue-600" />
+                <HardDrive className="h-8 w-8 text-primary" />
               </div>
               <div className="mt-3">
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-muted rounded-full h-2">
                   <div
-                    className="bg-blue-600 h-2 rounded-full"
+                    className="bg-primary h-2 rounded-full"
                     style={{ width: `${(storageStats.totalUsed / storageStats.totalAvailable) * 100}%` }}
                   ></div>
                 </div>
@@ -570,11 +744,11 @@ const BackupDataManagement = ({ onNavigate }) => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Backup Storage</p>
+                  <p className="text-sm font-medium text-muted-foreground">Backup Storage</p>
                   <p className="text-2xl font-bold text-green-600">
                     {storageStats.backupSize.toFixed(1)} MB
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     {backups.filter(b => b.status === 'completed').length} backups
                   </p>
                 </div>
@@ -587,11 +761,11 @@ const BackupDataManagement = ({ onNavigate }) => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Archive Storage</p>
+                  <p className="text-sm font-medium text-muted-foreground">Archive Storage</p>
                   <p className="text-2xl font-bold text-purple-600">
                     {storageStats.archiveSize.toFixed(1)} MB
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     {archives.length} archives
                   </p>
                 </div>
@@ -604,18 +778,18 @@ const BackupDataManagement = ({ onNavigate }) => {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Last Backup</p>
-                  <p className="text-lg font-bold text-gray-900">
+                  <p className="text-sm font-medium text-muted-foreground">Last Backup</p>
+                  <p className="text-lg font-bold text-foreground">
                     {backups.length > 0
                       ? backups[0].createdAt.toLocaleDateString()
                       : 'Never'
                     }
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     {backups.length > 0 && backups[0].status === 'completed' ? 'Successful' : 'Failed'}
                   </p>
                 </div>
-                <Clock className="h-8 w-8 text-gray-600" />
+                <Clock className="h-8 w-8 text-muted-foreground" />
               </div>
             </CardContent>
           </Card>
@@ -634,15 +808,15 @@ const BackupDataManagement = ({ onNavigate }) => {
               {Object.entries(BACKUP_TYPES).map(([key, config]) => {
                 const IconComponent = config.icon;
                 return (
-                  <div key={key} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  <div key={key} className="p-4 border rounded-lg hover:bg-accent transition-colors">
                     <div className="flex items-center gap-3 mb-3">
-                      <IconComponent className="h-6 w-6 text-blue-600" />
+                      <IconComponent className="h-6 w-6 text-primary" />
                       <div>
                         <h3 className="font-medium">{config.name}</h3>
-                        <p className="text-sm text-gray-500">{config.estimatedSize}</p>
+                        <p className="text-sm text-muted-foreground">{config.estimatedSize}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-600 mb-3">{config.description}</p>
+                    <p className="text-sm text-muted-foreground mb-3">{config.description}</p>
                     <Button
                       size="sm"
                       className="w-full"
@@ -673,19 +847,19 @@ const BackupDataManagement = ({ onNavigate }) => {
           </CardHeader>
           <CardContent>
             {filteredBackups.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Database className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <div className="text-center py-8 text-muted-foreground">
+                <Database className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />
                 <p className="text-lg font-medium">No backups found</p>
                 <p className="text-sm">Create your first backup to get started</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {filteredBackups.slice(0, 5).map((backup) => (
-                  <div key={backup.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                  <div key={backup.id} className="p-4 border rounded-lg hover:bg-accent transition-colors">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
-                          <h4 className="font-medium text-gray-900">{backup.name}</h4>
+                          <h4 className="font-medium text-foreground">{backup.name}</h4>
                           {getTypeBadge(backup.type)}
                           {getStatusBadge(backup.status)}
                           {backup.encrypted && (
@@ -696,7 +870,7 @@ const BackupDataManagement = ({ onNavigate }) => {
                           )}
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-2">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground mb-2">
                           <div>Size: {backup.size}</div>
                           <div>Records: {backup.recordCount.toLocaleString()}</div>
                           <div>Created: {backup.createdAt.toLocaleDateString()}</div>
@@ -704,7 +878,7 @@ const BackupDataManagement = ({ onNavigate }) => {
                         </div>
 
                         {backup.error && (
-                          <div className="text-sm text-red-600 mt-2">
+                          <div className="text-sm text-destructive mt-2">
                             Error: {backup.error}
                           </div>
                         )}
@@ -739,7 +913,7 @@ const BackupDataManagement = ({ onNavigate }) => {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleDeleteBackup(backup.id)}
-                            className="text-red-600 hover:text-red-700"
+                            className="text-destructive hover:text-destructive/80"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -753,121 +927,7 @@ const BackupDataManagement = ({ onNavigate }) => {
           </CardContent>
         </Card>
 
-        {/* Settings Dialog */}
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Backup Settings</DialogTitle>
-            <DialogDescription>
-              Configure automatic backup and data management settings
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6 max-h-96 overflow-y-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Auto Backup</label>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    name="autoBackupEnabled"
-                    checked={backupSettings.autoBackupEnabled}
-                    onChange={handleSettingsChange}
-                  />
-                  <span className="text-sm">Enable automatic backups</span>
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Backup Frequency</label>
-                <Select
-                  value={backupSettings.backupFrequency}
-                  onValueChange={(value) => setBackupSettings(prev => ({ ...prev, backupFrequency: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="daily">Daily</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Backup Time</label>
-                <Input
-                  type="time"
-                  name="backupTime"
-                  value={backupSettings.backupTime}
-                  onChange={handleSettingsChange}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Retention Period (days)</label>
-                <Input
-                  type="number"
-                  name="retentionPeriod"
-                  value={backupSettings.retentionPeriod}
-                  onChange={handleSettingsChange}
-                  min="1"
-                  max="365"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-medium">Backup Options</h4>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    name="compressionEnabled"
-                    checked={backupSettings.compressionEnabled}
-                    onChange={handleSettingsChange}
-                  />
-                  <span className="text-sm">Enable compression</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    name="encryptionEnabled"
-                    checked={backupSettings.encryptionEnabled}
-                    onChange={handleSettingsChange}
-                  />
-                  <span className="text-sm">Enable encryption</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    name="cloudStorageEnabled"
-                    checked={backupSettings.cloudStorageEnabled}
-                    onChange={handleSettingsChange}
-                  />
-                  <span className="text-sm">Cloud storage</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    name="includeAttachments"
-                    checked={backupSettings.includeAttachments}
-                    onChange={handleSettingsChange}
-                  />
-                  <span className="text-sm">Include attachments</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSettingsDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={saveBackupSettings}>
-              <Save className="h-4 w-4 mr-2" />
-              Save Settings
-            </Button>
-          </DialogFooter>
-        </DialogContent>
 
         {/* Restore Dialog */}
         <Dialog open={showRestoreDialog} onOpenChange={setShowRestoreDialog}>
@@ -880,9 +940,9 @@ const BackupDataManagement = ({ onNavigate }) => {
             </DialogHeader>
             {selectedBackup && (
               <div className="space-y-4">
-                <div className="p-4 bg-yellow-50 rounded-lg">
-                  <h4 className="font-medium text-yellow-900">⚠️ Warning</h4>
-                  <p className="text-sm text-yellow-700 mt-1">
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                  <h4 className="font-medium text-yellow-900 dark:text-yellow-200">⚠️ Warning</h4>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                     This action will replace all current data with the backup data. Make sure to create a current backup before proceeding.
                   </p>
                 </div>
@@ -901,7 +961,7 @@ const BackupDataManagement = ({ onNavigate }) => {
               <Button
                 onClick={confirmRestoreBackup}
                 disabled={isProcessing}
-                className="bg-red-600 hover:bg-red-700"
+                variant="destructive"
               >
                 {isProcessing ? (
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />

@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import AnimatedHero from './AnimatedHero';
-import AnimatedTitle from './AnimatedTitle';
+import { Card, CardContent, CardHeader } from './ui/card';
+
+import LottieHero from './LottieHero';
+
+
 
 const Login = () => {
   const { signin, demoLogin, USER_ROLES } = useAuth();
@@ -15,7 +16,7 @@ const Login = () => {
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [loginMode, setLoginMode] = useState('demo'); // 'demo' or 'firebase'
+  const [loginMode, setLoginMode] = useState('demo'); // 'demo' or 'supabase'
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -96,51 +97,59 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-row bg-gradient-to-br from-gray-900 via-slate-900 to-black">
       {/* Login Form Section */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4 lg:p-8">
-        <Card className="w-full max-w-md shadow-xl border-0">
-        <CardHeader className="space-y-1 text-center pb-6">
-          {/* Logo */}
-          <div className="flex justify-center mb-4">
-            <img
-              src="/Logo.png"
-              alt="Krishisethu Logo"
-              className="h-16 w-auto object-contain"
-            />
+      <div className="relative w-1/2 flex flex-col items-center justify-center p-4 lg:p-8">
+
+        {/* Logo positioned absolutely above card */}
+        <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-50 logo-container">
+          <img
+            src="/Logo_Horizontal_sidebar.png"
+            alt="Krishisethu Logo"
+            className="h-20 object-contain logo-transparent"
+            style={{ background: 'transparent', backgroundColor: 'transparent' }}
+          />
+        </div>
+
+        {/* Main login card */}
+        <Card className="relative w-full max-w-lg shadow-2xl border border-white/10 bg-black/20 backdrop-blur-xl rounded-3xl overflow-hidden mt-16">
+          {/* Glass effect overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/20 pointer-events-none"></div>
+        <CardHeader className="relative space-y-1 text-center pb-6 z-10 pt-8">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold text-white">Welcome!</h1>
+            <p className="text-gray-300 text-sm">Log in to KrishiSethu to continue to KrishiSethu.</p>
           </div>
-          <AnimatedTitle />
-          <CardDescription className="text-gray-600 mt-4">
-            Welcome back! Sign in to manage your fertilizer shop inventory
-          </CardDescription>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="relative z-10">
           {/* Login Mode Selection */}
           <div className="mb-6">
-            <label className="text-sm font-medium text-gray-700 mb-3 block">Choose Login Method</label>
-            <div className="flex space-x-2 p-1 bg-gray-100 rounded-lg">
+            <label className="text-sm font-medium text-gray-300 mb-3 block">
+              Choose Login Method
+            </label>
+            <div className="flex space-x-2 p-1 bg-white/10 backdrop-blur-sm rounded-lg border border-white/20">
               <button
                 type="button"
                 onClick={() => setLoginMode('demo')}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
                   loginMode === 'demo'
-                    ? 'bg-white text-green-700 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-blue-600/80 text-white shadow-sm border border-blue-500/50'
+                    : 'text-gray-300 hover:text-white hover:bg-white/10'
                 }`}
               >
                 Demo Mode
               </button>
               <button
                 type="button"
-                onClick={() => setLoginMode('firebase')}
+                onClick={() => setLoginMode('supabase')}
                 className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-                  loginMode === 'firebase'
-                    ? 'bg-white text-green-700 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                  loginMode === 'supabase'
+                    ? 'bg-blue-600/80 text-white shadow-sm border border-blue-500/50'
+                    : 'text-gray-300 hover:text-white hover:bg-white/10'
                 }`}
               >
-                Firebase Auth
+                Supabase Auth
               </button>
             </div>
           </div>
@@ -156,7 +165,6 @@ const Login = () => {
               <div className="text-center text-sm text-gray-600 mb-4">
                 Choose a demo role to explore the system
               </div>
-
               <div className="space-y-3">
                 <Button
                   onClick={() => handleDemoLogin(USER_ROLES.ADMIN)}
@@ -250,7 +258,10 @@ const Login = () => {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Need an account for your shop?{' '}
-              <a href="mailto:admin@krishisethu.com" className="text-primary hover:text-primary/80 font-medium">
+              <a
+                href="mailto:admin@example.com"
+                className="text-primary hover:text-primary/80 font-medium"
+              >
                 Contact Administrator
               </a>
             </p>
@@ -262,8 +273,8 @@ const Login = () => {
         </Card>
       </div>
 
-      {/* Animated Hero Section */}
-      <AnimatedHero />
+      {/* Lottie Hero Section */}
+      <LottieHero />
     </div>
   );
 };

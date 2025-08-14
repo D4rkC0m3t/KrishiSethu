@@ -5,9 +5,31 @@ import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { Package, AlertTriangle, TrendingUp, AlarmClock, RefreshCw, Calendar, Users, ShoppingCart, DollarSign, Activity, Truck, Cloud, Sun, CloudRain, CloudSnow, Wind, Droplets, Eye, Thermometer, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Package,
+  AlertTriangle,
+  AlarmClock,
+  RefreshCw,
+  Calendar,
+  Users,
+  ShoppingCart,
+  DollarSign,
+  Activity,
+  Truck,
+  Cloud,
+  Sun,
+  CloudRain,
+  CloudSnow,
+  Wind,
+  Droplets,
+  Eye,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  FileText
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import Sidebar from './Sidebar';
+import SidebarNew from './SidebarNew';
 import Inventory from './Inventory';
 import AddProduct from './AddProduct';
 import BulkAddProductTable from './BulkAddProductTable';
@@ -16,11 +38,13 @@ import SalesHistory from './SalesHistory';
 import StockMovement from './StockMovement';
 import Suppliers from './Suppliers';
 import AlertsPanel from './AlertsPanel';
-import AlertsSystem from './AlertsSystem';
+// import AlertsSystem from './AlertsSystem';
 import Purchases from './Purchases';
 import PurchaseEntry from './PurchaseEntry';
 import CustomerManagement from './CustomerManagement';
+import ReportsDashboard from './ReportsDashboard';
 import Reports from './Reports';
+import InvoiceManagement from './InvoiceManagement';
 import Settings from './Settings';
 import UserManagement from './UserManagement';
 import DataImportExport from './DataImportExport';
@@ -28,19 +52,20 @@ import EnhancedAlertsSystem from './EnhancedAlertsSystem';
 import BackupDataManagement from './BackupDataManagement';
 import EInvoice from './EInvoice';
 import EInvoiceHistory from './EInvoiceHistory';
+import { formatCurrency, formatNumber, safeParseNumber } from '../utils/numberUtils';
 import CategoriesManagement from './CategoriesManagement';
 import BrandsManagement from './BrandsManagement';
 import StockMovementsHistory from './StockMovementsHistory';
 import Documentation from './Documentation';
 import Support from './Support';
 import AnimatedTitle from './AnimatedTitle';
-import DataInitializer from './DataInitializer';
-import DatabaseStatus from './DatabaseStatus';
+// import ThemeTest from './ThemeTest';
+
 import DatabaseSetup from './DatabaseSetup';
 import { productsService, salesService, customersService, suppliersService } from '../lib/firestore';
 
-const Dashboard = ({ onNavigate }) => {
-  const { currentUser, userProfile, logout } = useAuth();
+const Dashboard = () => {
+  const { currentUser, userProfile } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [darkMode, setDarkMode] = useState(() => {
     // Check localStorage first, then system preference
@@ -71,6 +96,7 @@ const Dashboard = ({ onNavigate }) => {
   const [posPrice, setPosPrice] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [productToEdit, setProductToEdit] = useState(null);
 
   // Enhanced chart data
   const salesData = [
@@ -198,18 +224,29 @@ const Dashboard = ({ onNavigate }) => {
 
   // Apply initial dark mode state to DOM
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    const applyTheme = () => {
+      if (darkMode) {
+        document.documentElement.classList.add('dark');
+        document.body.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.body.classList.remove('dark');
+      }
+    };
+
+    applyTheme();
+
+    // Also apply on next tick to ensure it takes effect
+    setTimeout(applyTheme, 0);
   }, [darkMode]);
 
-  const handleNavigation = (page) => {
+  const handleNavigation = (page, product = null) => {
     setCurrentPage(page);
-    // Also notify parent component for mobile navigation
-    if (onNavigate) {
-      onNavigate(page);
+    if (page === 'edit-product' && product) {
+      setProductToEdit(product);
+      setCurrentPage('add-product'); // Use the same component for editing
+    } else if (page === 'add-product') {
+      setProductToEdit(null); // Clear when adding new product
     }
   };
 
@@ -220,12 +257,20 @@ const Dashboard = ({ onNavigate }) => {
     // Save to localStorage
     localStorage.setItem('darkMode', JSON.stringify(newDarkMode));
 
-    // Apply to DOM
-    if (newDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    // Apply to DOM immediately
+    const applyTheme = () => {
+      if (newDarkMode) {
+        document.documentElement.classList.add('dark');
+        document.body.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.body.classList.remove('dark');
+      }
+    };
+
+    applyTheme();
+    // Force re-render by applying on next tick as well
+    setTimeout(applyTheme, 0);
   };
 
   // Generate sample sparkline data
@@ -240,7 +285,7 @@ const Dashboard = ({ onNavigate }) => {
     return data;
   };
 
-  const StatCard = ({ title, value, description, icon, trend, onClick, chartColor = '#10b981', bgGradient = 'from-blue-500 to-blue-600', subItems = [] }) => {
+  const StatCard = ({ title, value, description, icon, trend, onClick, bgGradient = 'from-blue-500 to-blue-600', subItems = [] }) => {
     const sparklineData = generateSparklineData(trend > 0 ? 'up' : 'down');
 
     return (
@@ -327,7 +372,7 @@ const Dashboard = ({ onNavigate }) => {
 
   // Weather Widget Component
   const WeatherWidget = () => {
-    const [weather, setWeather] = useState({
+    const [weather] = useState({
       location: 'Hyderabad, IN',
       temperature: 28,
       condition: 'Partly Cloudy',
@@ -348,15 +393,15 @@ const Dashboard = ({ onNavigate }) => {
     const getWeatherIcon = (iconType) => {
       switch (iconType) {
         case 'sun': return <Sun className="h-5 w-5 text-yellow-400" />;
-        case 'cloud': return <Cloud className="h-5 w-5 text-gray-400" />;
-        case 'cloud-rain': return <CloudRain className="h-5 w-5 text-blue-400" />;
-        case 'cloud-snow': return <CloudSnow className="h-5 w-5 text-blue-200" />;
+        case 'cloud': return <Cloud className="h-5 w-5 text-muted-foreground" />;
+        case 'cloud-rain': return <CloudRain className="h-5 w-5 text-gray-400" />;
+        case 'cloud-snow': return <CloudSnow className="h-5 w-5 text-gray-200" />;
         default: return <Sun className="h-5 w-5 text-yellow-400" />;
       }
     };
 
     return (
-      <Card className="relative overflow-hidden bg-gradient-to-br from-blue-400 via-blue-500 to-blue-600 text-white border-0 shadow-xl h-[400px]">
+      <Card className="relative overflow-hidden bg-gradient-to-br from-cyan-400 via-cyan-500 to-cyan-600 text-white border-0 shadow-xl h-[400px]">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-4 right-4 w-24 h-24 rounded-full border border-white/20"></div>
@@ -590,9 +635,9 @@ const Dashboard = ({ onNavigate }) => {
     };
 
     const events = [
-      { date: new Date(2024, 0, 15), title: 'Team Meeting', color: 'bg-blue-500' },
+      { date: new Date(2024, 0, 15), title: 'Team Meeting', color: 'bg-orange-500' },
       { date: new Date(2024, 0, 20), title: 'Product Launch', color: 'bg-green-500' },
-      { date: new Date(2024, 0, 25), title: 'Review Session', color: 'bg-purple-500' }
+      { date: new Date(2024, 0, 25), title: 'Review Session', color: 'bg-red-500' }
     ];
 
     const hasEvent = (date) => {
@@ -601,7 +646,7 @@ const Dashboard = ({ onNavigate }) => {
     };
 
     return (
-      <Card className="relative overflow-hidden bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white border-0 shadow-xl h-[400px]">
+      <Card className="relative overflow-hidden bg-gradient-to-br from-rose-500 via-pink-500 to-orange-500 text-white border-0 shadow-xl h-[400px]">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-4 right-4 w-20 h-20 rounded-full border border-white/20"></div>
@@ -705,7 +750,7 @@ const Dashboard = ({ onNavigate }) => {
       case 'inventory':
         return <Inventory onNavigate={handleNavigation} />;
       case 'add-product':
-        return <AddProduct onNavigate={handleNavigation} />;
+        return <AddProduct onNavigate={handleNavigation} productToEdit={productToEdit} />;
       case 'bulk-add-products':
         return <BulkAddProductTable onNavigate={handleNavigation} />;
       case 'stock-movement':
@@ -736,6 +781,18 @@ const Dashboard = ({ onNavigate }) => {
         return <EnhancedAlertsSystem onNavigate={handleNavigation} />;
       case 'reports':
         return <Reports onNavigate={handleNavigation} />;
+      case 'reports-dashboard':
+        return <ReportsDashboard onNavigate={handleNavigation} />;
+      case 'reports-advanced':
+        return <Reports onNavigate={handleNavigation} />;
+      case 'reports-sales':
+        return <Reports onNavigate={handleNavigation} defaultTab="sales" />;
+      case 'reports-inventory':
+        return <Reports onNavigate={handleNavigation} defaultTab="inventory" />;
+      case 'reports-financial':
+        return <Reports onNavigate={handleNavigation} defaultTab="financial" />;
+      case 'invoices':
+        return <InvoiceManagement onNavigate={handleNavigation} />;
       case 'settings':
         return <Settings onNavigate={handleNavigation} />;
       case 'user-management':
@@ -748,13 +805,15 @@ const Dashboard = ({ onNavigate }) => {
         return <Documentation onNavigate={handleNavigation} />;
       case 'support':
         return <Support onNavigate={handleNavigation} />;
+      // case 'theme-test':
+        // return <ThemeTest onNavigate={handleNavigation} />;
       default:
         return renderDashboard();
     }
   };
 
   const renderDashboard = () => (
-    <main className="px-6 py-8">
+    <main className="px-6 py-8 bg-background text-foreground min-h-full">
       <Tabs defaultValue="overview" className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -797,7 +856,7 @@ const Dashboard = ({ onNavigate }) => {
                }}>
             {/* Inner Card */}
             <Card className="rounded-xl overflow-hidden border-none">
-              <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500
+              <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500
                              bg-[length:200%_200%] animate-gradient
                              text-white p-6 rounded-xl relative">
                 {/* Background Pattern */}
@@ -869,6 +928,15 @@ const Dashboard = ({ onNavigate }) => {
                       variant="secondary"
                       size="sm"
                       className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+                      onClick={() => handleNavigation('invoices')}
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Invoices
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
                       onClick={() => handleNavigation('reports')}
                     >
                       <Activity className="h-4 w-4 mr-2" />
@@ -888,7 +956,7 @@ const Dashboard = ({ onNavigate }) => {
               description="Completed"
               icon={<ShoppingCart className="h-6 w-6 text-white" />}
               trend={stats.monthlyProfitChange}
-              bgGradient="from-blue-500 to-blue-600"
+              bgGradient="from-green-500 to-green-600"
               onClick={() => handleNavigation('sales')}
               subItems={[
                 { label: "Overdue", value: "1", color: "bg-red-400" },
@@ -908,20 +976,20 @@ const Dashboard = ({ onNavigate }) => {
                 { label: "In Stock", value: stats.totalProducts - stats.lowStock, color: "bg-green-400" },
                 { label: "Out Of Stock", value: "12", color: "bg-red-400" },
                 { label: "Low Stock", value: stats.lowStock, color: "bg-yellow-400" },
-                { label: "Dead Stock", value: "2", color: "bg-gray-400" }
+                { label: "Dead Stock", value: "2", color: "bg-muted-foreground" }
               ]}
             />
             <StatCard
               title="Revenue"
-              value={`₹${stats.totalRevenue.toLocaleString()}`}
+              value={formatCurrency(stats.totalRevenue)}
               description="This Month"
               icon={<DollarSign className="h-6 w-6 text-white" />}
               trend={stats.todaysSalesChange}
               bgGradient="from-green-500 to-emerald-600"
               onClick={() => handleNavigation('reports')}
               subItems={[
-                { label: "Sales", value: `₹${(stats.totalRevenue * 0.7).toLocaleString()}`, color: "bg-green-400" },
-                { label: "Profit", value: `₹${stats.monthlyProfit.toLocaleString()}`, color: "bg-blue-400" }
+                { label: "Sales", value: formatCurrency((stats.totalRevenue || 0) * 0.7), color: "bg-green-400" },
+                { label: "Profit", value: formatCurrency(stats.monthlyProfit), color: "bg-orange-400" }
               ]}
             />
             <StatCard
@@ -930,24 +998,24 @@ const Dashboard = ({ onNavigate }) => {
               description="Active Users"
               icon={<Users className="h-6 w-6 text-white" />}
               trend={15}
-              bgGradient="from-purple-500 to-indigo-600"
+              bgGradient="from-orange-500 to-red-600"
               onClick={() => handleNavigation('customers')}
               subItems={[
                 { label: "New", value: "8", color: "bg-green-400" },
-                { label: "Regular", value: stats.totalCustomers - 8, color: "bg-blue-400" }
+                { label: "Regular", value: stats.totalCustomers - 8, color: "bg-teal-400" }
               ]}
             />
           </div>
 
           {/* Quick Stats Row */}
           <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            <Card className="p-4 bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('inventory')}>
+            <Card className="p-4 bg-gradient-to-r from-emerald-50 to-emerald-100 border-emerald-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('inventory')}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-blue-600 font-medium">Products</p>
-                  <p className="text-lg font-bold text-blue-900">{stats.totalProducts}</p>
+                  <p className="text-xs text-emerald-600 font-medium">Products</p>
+                  <p className="text-lg font-bold text-emerald-900">{stats.totalProducts}</p>
                 </div>
-                <Package className="h-5 w-5 text-blue-500" />
+                <Package className="h-5 w-5 text-emerald-500" />
               </div>
             </Card>
 
@@ -981,23 +1049,23 @@ const Dashboard = ({ onNavigate }) => {
               </div>
             </Card>
 
-            <Card className="p-4 bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('customers')}>
+            <Card className="p-4 bg-gradient-to-r from-amber-50 to-amber-100 border-amber-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('customers')}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-purple-600 font-medium">Customers</p>
-                  <p className="text-lg font-bold text-purple-900">{stats.totalCustomers}</p>
+                  <p className="text-xs text-amber-600 font-medium">Customers</p>
+                  <p className="text-lg font-bold text-amber-900">{stats.totalCustomers}</p>
                 </div>
-                <Users className="h-5 w-5 text-purple-500" />
+                <Users className="h-5 w-5 text-amber-500" />
               </div>
             </Card>
 
-            <Card className="p-4 bg-gradient-to-r from-indigo-50 to-indigo-100 border-indigo-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('suppliers')}>
+            <Card className="p-4 bg-gradient-to-r from-teal-50 to-teal-100 border-teal-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('suppliers')}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-indigo-600 font-medium">Suppliers</p>
-                  <p className="text-lg font-bold text-indigo-900">{stats.activeSuppliers}</p>
+                  <p className="text-xs text-teal-600 font-medium">Suppliers</p>
+                  <p className="text-lg font-bold text-teal-900">{stats.activeSuppliers}</p>
                 </div>
-                <Truck className="h-5 w-5 text-indigo-500" />
+                <Truck className="h-5 w-5 text-teal-500" />
               </div>
             </Card>
           </div>
@@ -1063,8 +1131,8 @@ const Dashboard = ({ onNavigate }) => {
                     <div className={`w-2 h-2 rounded-full mt-2 ${
                       activity.type === 'sale' ? 'bg-green-500' :
                       activity.type === 'stock' ? 'bg-yellow-500' :
-                      activity.type === 'purchase' ? 'bg-blue-500' :
-                      'bg-purple-500'
+                      activity.type === 'purchase' ? 'bg-orange-500' :
+                      'bg-red-500'
                     }`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">
@@ -1072,7 +1140,7 @@ const Dashboard = ({ onNavigate }) => {
                       </p>
                       {activity.amount && (
                         <p className="text-sm text-green-600 font-semibold">
-                          ₹{activity.amount.toLocaleString()}
+                          {formatCurrency(activity.amount)}
                         </p>
                       )}
                       <p className="text-xs text-muted-foreground">
@@ -1232,8 +1300,8 @@ const Dashboard = ({ onNavigate }) => {
                 </div>
 
                 <div className="flex items-center space-x-4 p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors">
-                  <div className="flex-shrink-0 w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                    <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <div className="flex-shrink-0 w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+                    <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">Pending Payments</p>
@@ -1256,10 +1324,10 @@ const Dashboard = ({ onNavigate }) => {
   );
 
   return (
-    <div className={`min-h-screen flex transition-colors duration-300 ${darkMode ? 'dark bg-gray-900' : 'bg-gray-50'}`}>
+    <div className="h-screen flex transition-colors duration-300 bg-background">
       {/* Sidebar - Hide for POS */}
       {currentPage !== 'pos' && (
-        <Sidebar
+        <SidebarNew
           theme={darkMode ? 'dark' : 'light'}
           currentPage={currentPage}
           onNavigate={handleNavigation}
@@ -1268,10 +1336,10 @@ const Dashboard = ({ onNavigate }) => {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
         {/* Header - Hide for POS */}
         {currentPage !== 'pos' && (
-          <header className="bg-white shadow-lg border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700 transition-colors duration-300">
+          <header className="bg-background shadow-lg border-b border-border transition-colors duration-300">
           <div className="px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center py-4">
               <div className="flex items-center space-x-4">
@@ -1284,10 +1352,10 @@ const Dashboard = ({ onNavigate }) => {
               </div>
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                  <span className="text-sm text-muted-foreground">
                     Welcome, {userProfile?.name || currentUser?.email}
                   </span>
-                  <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                  <Badge variant="secondary" className="text-xs">
                     {userProfile?.role}
                   </Badge>
                 </div>
@@ -1297,7 +1365,7 @@ const Dashboard = ({ onNavigate }) => {
                   variant="ghost"
                   size="sm"
                   onClick={toggleDarkMode}
-                  className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                  className="text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
                 >
                   {darkMode ? '☀️' : '🌙'}
                 </Button>
@@ -1306,7 +1374,7 @@ const Dashboard = ({ onNavigate }) => {
                 <Button
                   variant="ghost"
                   onClick={() => handleNavigation('alerts-system')}
-                  className="relative text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                  className="relative text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
                 >
                   🔔 Alerts
                   {alerts.filter(a => !a.isRead).length > 0 && (
@@ -1322,11 +1390,7 @@ const Dashboard = ({ onNavigate }) => {
         )}
 
         {/* Main Content */}
-        <div className={`flex-1 transition-colors duration-300 ${
-          currentPage === 'pos'
-            ? 'bg-background'
-            : 'bg-gray-50 dark:bg-zinc-900 overflow-auto'
-        }`}>
+        <div className="flex-1 transition-colors duration-300 overflow-auto bg-background">
           {renderCurrentPage()}
         </div>
       </div>

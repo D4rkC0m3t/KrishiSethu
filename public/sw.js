@@ -1,7 +1,8 @@
 // Krishisethu Inventory Management - Service Worker
-// Version 1.0.0
+// Version 1.0.1
 
-const CACHE_NAME = 'krishisethu-v1.0.0';
+const CACHE_VERSION = '1.0.1';
+const CACHE_NAME = `krishisethu-v${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
 // Resources to cache for offline functionality
@@ -52,8 +53,27 @@ self.addEventListener('install', (event) => {
         console.log('[SW] Caching static resources');
         await cache.addAll(STATIC_CACHE_URLS);
         
-        // Force activation of new service worker
-        await self.skipWaiting();
+        // Don't skip waiting automatically - let the app control updates
+        console.log(`[SW] Service worker v${CACHE_VERSION} installed, waiting for activation`);
+
+        // Notify clients about update availability
+        self.clients.matchAll().then(clients => {
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'UPDATE_AVAILABLE',
+              version: CACHE_VERSION,
+              details: {
+                version: CACHE_VERSION,
+                features: [
+                  'Enhanced offline capabilities',
+                  'Improved barcode scanning',
+                  'Better notification system',
+                  'Performance improvements'
+                ]
+              }
+            });
+          });
+        });
       } catch (error) {
         console.error('[SW] Failed to cache static resources:', error);
       }
@@ -282,114 +302,485 @@ async function cleanupCache(cacheName, maxEntries) {
 
 // Background sync for offline actions
 self.addEventListener('sync', (event) => {
-  console.log('[SW] Background sync:', event.tag);
-  
-  if (event.tag === 'background-sync-sales') {
-    event.waitUntil(syncOfflineSales());
-  } else if (event.tag === 'background-sync-inventory') {
-    event.waitUntil(syncOfflineInventory());
+  console.log('[SW] Background sync triggered:', event.tag);
+
+  switch (event.tag) {
+    case 'background-sync-sales':
+      event.waitUntil(syncOfflineSales());
+      break;
+    case 'background-sync-inventory':
+      event.waitUntil(syncOfflineInventory());
+      break;
+    case 'background-sync-all':
+      event.waitUntil(syncAllOfflineData());
+      break;
+    default:
+      console.log('[SW] Unknown sync tag:', event.tag);
   }
 });
 
 // Sync offline sales data
 async function syncOfflineSales() {
   try {
+    console.log('[SW] Starting offline sales sync...');
+
     // Get offline sales from IndexedDB
-    const offlineSales = await getOfflineData('sales');
-    
+    const offlineSales = await getOfflineData('offline_sales');
+
+    if (offlineSales.length === 0) {
+      console.log('[SW] No offline sales to sync');
+      return;
+    }
+
+    console.log(`[SW] Found ${offlineSales.length} offline sales to sync`);
+
+    let syncedCount = 0;
+    let failedCount = 0;
+
     for (const sale of offlineSales) {
       try {
         // Attempt to sync with Firebase
         await syncSaleToFirebase(sale);
-        await removeOfflineData('sales', sale.id);
+
+        // Mark as synced instead of removing (for audit trail)
+        await markDataSynced('offline_sales', sale.id);
+
+        syncedCount++;
+        console.log(`[SW] Successfully synced sale: ${sale.id}`);
       } catch (error) {
+        failedCount++;
         console.error('[SW] Failed to sync sale:', sale.id, error);
+
+        // Don't throw here, continue with other sales
       }
     }
+
+    console.log(`[SW] Sales sync completed: ${syncedCount} synced, ${failedCount} failed`);
+
+    // Send notification about sync results
+    if (syncedCount > 0) {
+      self.registration.showNotification('Sales Synced', {
+        body: `${syncedCount} offline sales have been synced to the server.`,
+        icon: '/logo192.png',
+        tag: 'sales-sync'
+      });
+    }
   } catch (error) {
-    console.error('[SW] Background sync failed:', error);
+    console.error('[SW] Background sales sync failed:', error);
   }
 }
 
 // Sync offline inventory updates
 async function syncOfflineInventory() {
   try {
-    const offlineUpdates = await getOfflineData('inventory');
-    
+    console.log('[SW] Starting offline inventory sync...');
+
+    const offlineUpdates = await getOfflineData('offline_inventory');
+
+    if (offlineUpdates.length === 0) {
+      console.log('[SW] No offline inventory updates to sync');
+      return;
+    }
+
+    console.log(`[SW] Found ${offlineUpdates.length} offline inventory updates to sync`);
+
+    let syncedCount = 0;
+    let failedCount = 0;
+
     for (const update of offlineUpdates) {
       try {
         await syncInventoryToFirebase(update);
-        await removeOfflineData('inventory', update.id);
+
+        // Mark as synced instead of removing
+        await markDataSynced('offline_inventory', update.id);
+
+        syncedCount++;
+        console.log(`[SW] Successfully synced inventory update: ${update.id}`);
       } catch (error) {
-        console.error('[SW] Failed to sync inventory:', update.id, error);
+        failedCount++;
+        console.error('[SW] Failed to sync inventory update:', update.id, error);
       }
+    }
+
+    console.log(`[SW] Inventory sync completed: ${syncedCount} synced, ${failedCount} failed`);
+
+    // Send notification about sync results
+    if (syncedCount > 0) {
+      self.registration.showNotification('Inventory Synced', {
+        body: `${syncedCount} inventory updates have been synced to the server.`,
+        icon: '/logo192.png',
+        tag: 'inventory-sync'
+      });
     }
   } catch (error) {
     console.error('[SW] Inventory sync failed:', error);
   }
 }
 
+// Sync all offline data
+async function syncAllOfflineData() {
+  try {
+    console.log('[SW] Starting complete offline data sync...');
+
+    await Promise.all([
+      syncOfflineSales(),
+      syncOfflineInventory()
+    ]);
+
+    console.log('[SW] Complete offline data sync finished');
+  } catch (error) {
+    console.error('[SW] Complete sync failed:', error);
+  }
+}
+
 // Push notification handling
 self.addEventListener('push', (event) => {
   console.log('[SW] Push received:', event);
-  
+
+  let notificationData = {
+    title: 'Krishisethu Inventory',
+    body: 'New notification from Krishisethu',
+    type: 'general'
+  };
+
+  // Parse push data if available
+  if (event.data) {
+    try {
+      notificationData = event.data.json();
+    } catch (error) {
+      console.warn('[SW] Failed to parse push data, using text:', error);
+      notificationData.body = event.data.text();
+    }
+  }
+
+  // Configure notification based on type
   const options = {
-    body: event.data ? event.data.text() : 'New notification from Krishisethu',
+    body: notificationData.body,
     icon: '/logo192.png',
     badge: '/logo192.png',
     vibrate: [200, 100, 200],
+    timestamp: Date.now(),
+    requireInteraction: notificationData.requireInteraction || false,
+    silent: notificationData.silent || false,
+    tag: notificationData.tag || 'general',
     data: {
+      ...notificationData,
       dateOfArrival: Date.now(),
-      primaryKey: 1
-    },
-    actions: [
-      {
-        action: 'explore',
-        title: 'Open App',
-        icon: '/logo192.png'
-      },
-      {
-        action: 'close',
-        title: 'Close',
-        icon: '/logo192.png'
-      }
-    ]
+      url: notificationData.url || '/'
+    }
   };
-  
+
+  // Add actions based on notification type
+  switch (notificationData.type) {
+    case 'lowStock':
+    case 'outOfStock':
+      options.actions = [
+        { action: 'view-inventory', title: 'View Inventory', icon: '/logo192.png' },
+        { action: 'reorder', title: 'Reorder', icon: '/logo192.png' },
+        { action: 'dismiss', title: 'Dismiss', icon: '/logo192.png' }
+      ];
+      options.requireInteraction = true;
+      break;
+
+    case 'expiring':
+    case 'expired':
+      options.actions = [
+        { action: 'view-product', title: 'View Product', icon: '/logo192.png' },
+        { action: 'apply-discount', title: 'Apply Discount', icon: '/logo192.png' },
+        { action: 'dismiss', title: 'Dismiss', icon: '/logo192.png' }
+      ];
+      options.requireInteraction = true;
+      break;
+
+    case 'sale':
+      options.actions = [
+        { action: 'view-receipt', title: 'View Receipt', icon: '/logo192.png' },
+        { action: 'print-receipt', title: 'Print', icon: '/logo192.png' },
+        { action: 'dismiss', title: 'Dismiss', icon: '/logo192.png' }
+      ];
+      break;
+
+    case 'sync':
+      options.actions = [
+        { action: 'open-app', title: 'Open App', icon: '/logo192.png' },
+        { action: 'dismiss', title: 'Dismiss', icon: '/logo192.png' }
+      ];
+      break;
+
+    default:
+      options.actions = [
+        { action: 'open-app', title: 'Open App', icon: '/logo192.png' },
+        { action: 'dismiss', title: 'Dismiss', icon: '/logo192.png' }
+      ];
+  }
+
   event.waitUntil(
-    self.registration.showNotification('Krishisethu Inventory', options)
+    self.registration.showNotification(notificationData.title, options)
   );
 });
 
 // Notification click handling
 self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification click:', event);
-  
+
   event.notification.close();
-  
-  if (event.action === 'explore') {
-    event.waitUntil(
-      clients.openWindow('/')
-    );
+
+  const notificationData = event.notification.data || {};
+  const action = event.action;
+
+  // Handle different actions
+  let targetUrl = '/';
+
+  switch (action) {
+    case 'view-inventory':
+      targetUrl = '/inventory';
+      if (notificationData.productId) {
+        targetUrl += `?highlight=${notificationData.productId}`;
+      }
+      break;
+
+    case 'view-product':
+      if (notificationData.productId) {
+        targetUrl = `/inventory?highlight=${notificationData.productId}`;
+      } else {
+        targetUrl = '/inventory';
+      }
+      break;
+
+    case 'reorder':
+      targetUrl = '/inventory';
+      // Could add reorder functionality here
+      break;
+
+    case 'apply-discount':
+      targetUrl = '/pos';
+      // Could pre-populate discount for the product
+      break;
+
+    case 'view-receipt':
+      if (notificationData.saleId) {
+        targetUrl = `/sales?receipt=${notificationData.saleId}`;
+      } else {
+        targetUrl = '/sales';
+      }
+      break;
+
+    case 'print-receipt':
+      // Handle print action
+      targetUrl = '/pos';
+      break;
+
+    case 'open-app':
+    case 'explore':
+      targetUrl = notificationData.url || '/';
+      break;
+
+    case 'dismiss':
+      // Just close the notification, don't open anything
+      return;
+
+    default:
+      // Default click (not on action button)
+      targetUrl = notificationData.url || '/';
   }
+
+  // Open the target URL
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      // Check if app is already open
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin)) {
+          // Focus existing window and navigate
+          client.focus();
+          client.postMessage({
+            type: 'NOTIFICATION_CLICK',
+            action: action,
+            data: notificationData,
+            targetUrl: targetUrl
+          });
+          return;
+        }
+      }
+
+      // Open new window if app is not open
+      return clients.openWindow(targetUrl);
+    })
+  );
 });
+
+// IndexedDB helper functions for offline storage
+class ServiceWorkerOfflineDB {
+  constructor() {
+    this.dbName = 'KrishisethuOfflineDB';
+    this.dbVersion = 1;
+    this.db = null;
+  }
+
+  async init() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, this.dbVersion);
+
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getOfflineData(storeName) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([storeName], 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        // Return only unsynced data
+        const unsyncedData = request.result.filter(item => !item.synced);
+        resolve(unsyncedData);
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async removeOfflineData(storeName, id) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([storeName], 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.delete(id);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async markDataSynced(storeName, id) {
+    if (!this.db) await this.init();
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([storeName], 'readwrite');
+      const store = transaction.objectStore(storeName);
+
+      // Get the item first
+      const getRequest = store.get(id);
+
+      getRequest.onsuccess = () => {
+        const item = getRequest.result;
+        if (item) {
+          item.synced = true;
+          item.syncedAt = new Date().toISOString();
+
+          const putRequest = store.put(item);
+          putRequest.onsuccess = () => resolve();
+          putRequest.onerror = () => reject(putRequest.error);
+        } else {
+          resolve(); // Item not found, consider it handled
+        }
+      };
+
+      getRequest.onerror = () => reject(getRequest.error);
+    });
+  }
+}
+
+// Create instance for service worker
+const swOfflineDB = new ServiceWorkerOfflineDB();
 
 // Helper functions for IndexedDB operations
 async function getOfflineData(storeName) {
-  // Implementation would use IndexedDB to get offline data
-  return [];
+  try {
+    return await swOfflineDB.getOfflineData(storeName);
+  } catch (error) {
+    console.error('[SW] Error getting offline data:', error);
+    return [];
+  }
 }
 
 async function removeOfflineData(storeName, id) {
-  // Implementation would remove data from IndexedDB
+  try {
+    await swOfflineDB.removeOfflineData(storeName, id);
+  } catch (error) {
+    console.error('[SW] Error removing offline data:', error);
+  }
+}
+
+async function markDataSynced(storeName, id) {
+  try {
+    await swOfflineDB.markDataSynced(storeName, id);
+  } catch (error) {
+    console.error('[SW] Error marking data as synced:', error);
+  }
 }
 
 async function syncSaleToFirebase(sale) {
-  // Implementation would sync sale data to Firebase
+  try {
+    // Simulate Firebase API call
+    const response = await fetch('/api/sales', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(sale)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    console.log('[SW] Sale synced to Firebase:', sale.id);
+    return true;
+  } catch (error) {
+    console.error('[SW] Error syncing sale to Firebase:', error);
+    throw error;
+  }
 }
 
 async function syncInventoryToFirebase(update) {
-  // Implementation would sync inventory update to Firebase
+  try {
+    // Simulate Firebase API call
+    const response = await fetch('/api/inventory', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(update)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    console.log('[SW] Inventory update synced to Firebase:', update.id);
+    return true;
+  } catch (error) {
+    console.error('[SW] Error syncing inventory to Firebase:', error);
+    throw error;
+  }
 }
+
+// Message handling for app updates and communication
+self.addEventListener('message', (event) => {
+  console.log('[SW] Message received:', event.data);
+
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    // Skip waiting and activate the new service worker
+    self.skipWaiting();
+  } else if (event.data && event.data.type === 'CHECK_FOR_UPDATES') {
+    // Check for updates (could trigger update check logic)
+    console.log('[SW] Update check requested');
+
+    // For now, just respond that we're the current version
+    event.ports[0]?.postMessage({
+      type: 'UPDATE_CHECK_COMPLETE',
+      version: CACHE_VERSION
+    });
+  }
+});
 
 console.log('[SW] Service Worker loaded successfully');

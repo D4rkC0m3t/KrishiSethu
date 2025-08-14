@@ -18,9 +18,9 @@ const testData = {
     description: 'Test NPK fertilizer for automated testing'
   },
   urls: {
-    base: 'http://localhost:3001',
-    login: 'http://localhost:3001/login',
-    dashboard: 'http://localhost:3001/dashboard'
+    base: 'http://localhost:3000',
+    login: 'http://localhost:3000/login',
+    dashboard: 'http://localhost:3000/dashboard'
   }
 };
 

@@ -55,13 +55,48 @@ const PWAInstallPrompt = () => {
       e.preventDefault();
       setDeferredPrompt(e);
       setInstallSupported(true);
-      
-      // Show install prompt after a delay if not installed
-      setTimeout(() => {
-        if (!isInstalled) {
-          setShowInstallPrompt(true);
+
+      // Check if we should show the prompt
+      const shouldShowPrompt = checkShouldShowPrompt();
+
+      if (shouldShowPrompt) {
+        // Show install prompt after a delay if not installed
+        setTimeout(() => {
+          if (!isInstalled) {
+            setShowInstallPrompt(true);
+          }
+        }, 15000); // Show after 15 seconds
+      }
+    };
+
+    // Check if we should show the install prompt
+    const checkShouldShowPrompt = () => {
+      // Don't show if already installed
+      if (isInstalled || localStorage.getItem('pwa-installed') === 'true') {
+        return false;
+      }
+
+      // Check dismiss count and last dismiss time
+      const dismissCount = parseInt(localStorage.getItem('pwa-install-dismiss-count') || '0');
+      const lastDismiss = localStorage.getItem('pwa-install-last-dismiss');
+
+      // Don't show if dismissed too many times
+      if (dismissCount >= 3) {
+        return false;
+      }
+
+      // Don't show if dismissed recently (within 24 hours)
+      if (lastDismiss) {
+        const lastDismissTime = new Date(lastDismiss);
+        const now = new Date();
+        const hoursSinceLastDismiss = (now - lastDismissTime) / (1000 * 60 * 60);
+
+        if (hoursSinceLastDismiss < 24) {
+          return false;
         }
-      }, 10000); // Show after 10 seconds
+      }
+
+      return true;
     };
 
     // Listen for app installed event
@@ -102,16 +137,34 @@ const PWAInstallPrompt = () => {
     try {
       // Show the install prompt
       deferredPrompt.prompt();
-      
+
       // Wait for the user to respond to the prompt
       const { outcome } = await deferredPrompt.userChoice;
-      
+
       if (outcome === 'accepted') {
         console.log('User accepted the install prompt');
+
+        // Track installation
+        localStorage.setItem('pwa-installed', 'true');
+        localStorage.setItem('pwa-install-date', new Date().toISOString());
+
+        // Show success notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Krishisethu Installed!', {
+            body: 'App installed successfully. You can now access it from your home screen.',
+            icon: '/logo192.png',
+            tag: 'pwa-installed'
+          });
+        }
       } else {
         console.log('User dismissed the install prompt');
+
+        // Track dismissal
+        const dismissCount = parseInt(localStorage.getItem('pwa-install-dismiss-count') || '0') + 1;
+        localStorage.setItem('pwa-install-dismiss-count', dismissCount.toString());
+        localStorage.setItem('pwa-install-last-dismiss', new Date().toISOString());
       }
-      
+
       // Clear the deferredPrompt
       setDeferredPrompt(null);
       setShowInstallPrompt(false);

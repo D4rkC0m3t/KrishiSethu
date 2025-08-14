@@ -1,6 +1,6 @@
 // Image Cache Service - Store fetched images in Firebase to avoid re-fetching
 import { db } from './firebase';
-import { collection, doc, getDoc, setDoc, updateDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, updateDoc, query, getDocs, serverTimestamp } from 'firebase/firestore';
 
 class ImageCacheService {
   constructor() {

@@ -15,13 +15,13 @@ import {
   Settings,
   ShoppingCart
 } from 'lucide-react';
-import { 
-  productsService, 
-  suppliersService, 
+import {
+  productsService,
+  suppliersService,
   customersService,
   salesService,
   purchasesService
-} from '../lib/firestore';
+} from '../lib/supabaseDb';
 
 const DatabaseStatus = () => {
   const [status, setStatus] = useState({

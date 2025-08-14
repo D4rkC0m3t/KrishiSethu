@@ -1,13 +1,320 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    @apply bg-background;
+  }
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-track {
+  background: #2d3748;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4a5568;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
+
+/* Sidebar specific scrollbar */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--border)) transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 2px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* Hide scrollbar completely when sidebar is collapsed */
+.sidebar-collapsed {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar-collapsed::-webkit-scrollbar {
+  display: none;
+}
+
+/* Force proper flex behavior for sidebar */
+.sidebar-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Prevent main content from overlapping sidebar */
+.dashboard-layout {
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+.dashboard-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Animation classes */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Floating animations removed to prevent card floating */
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-in-out;
+}
+
+/* Floating animation classes removed */
+
+/* Print styles - isolate report content only */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only report containers and their children */
+  #report-content, #report-content *,
+  #inventory-report, #inventory-report *,
+  #sales-report, #sales-report *,
+  #financial-report, #financial-report *,
+  #profit-report, #profit-report *,
+  #gst-report, #gst-report *,
+  [id$='-report'], [id$='-report'] * {
+    visibility: visible !important;
+  }
+
+  /* Position the report normally (flow layout) and ensure full width */
+  #report-content,
+  #inventory-report,
+  #sales-report,
+  #financial-report,
+  #profit-report,
+  #gst-report,
+  [id$='-report'] {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Explicitly hide common app chrome */
+  .no-print,
+  .sidebar,
+  .sidebar-container,
+  .dashboard-layout > aside,
+  aside,
+  nav,
+  header,
+  footer,
+  .tabs-list,
+  .controls,
+  .page-controls,
+  .breadcrumb,
+  .shadcn-tabs,
+  .print-hide,
+  button:not(.print-only) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  html, body, #root { background: white !important; }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+  .mobile-hidden {
+    display: none;
+  }
+
+  .mobile-visible {
+    display: block;
+  }
+}
+
+/* Lottie Animation Transparency Fix */
+.lottie-container svg,
+.lottie-container canvas {
+  background: transparent !important;
+}
+
+/* Advanced white background removal for Lottie */
+.lottie-container svg rect[fill="#ffffff"],
+.lottie-container svg rect[fill="#fff"],
+.lottie-container svg rect[fill="white"],
+.lottie-container svg path[fill="#ffffff"],
+.lottie-container svg path[fill="#fff"],
+.lottie-container svg path[fill="white"] {
+  fill: transparent !important;
+  opacity: 0 !important;
+}
+
+/* Mix blend mode to help with white backgrounds */
+.lottie-container {
+  isolation: isolate;
+}
+
+.lottie-container svg {
+  mix-blend-mode: multiply;
+}
+
+/* Force logo transparency - Debug white background issue */
+img[alt="Krishisethu Logo"],
+img[src*="Logo_Horizontal_sidebar"] {
+  background: transparent !important;
+  background-color: transparent !important;
+  /* Force white areas to be transparent using mix-blend-mode */
+  mix-blend-mode: multiply;
+  filter: contrast(1.2) brightness(1.1);
+}
+
+/* Force parent containers to be transparent */
+.logo-container,
+.logo-container * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Alternative approach - use CSS to make white transparent */
+.logo-transparent {
+  background: transparent !important;
+  /* Make white pixels transparent */
+  filter:
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))
+    contrast(1.2)
+    brightness(1.1);
+  mix-blend-mode: multiply;
+}
+
+/* Fix sidebar layout issues */
+aside {
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Ensure proper dark mode application */
+.dark {
+  color-scheme: dark;
+}
+
+/* Fix any potential layout conflicts */
+.min-h-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
 }

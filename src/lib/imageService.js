@@ -148,10 +148,33 @@ class ImageService {
       // const bighaatResult = await this.fetchFromBigHaat(productName, brand);
       // const unsplashResult = await this.searchUnsplash(searchQuery);
 
-      console.log(`⚠️ No images found for ${productName}, using fallback`);
+      // Try Unsplash as final fallback
+      console.log(`🔍 Trying Unsplash for: ${searchQuery}`);
+      try {
+        const unsplashResult = await this.searchUnsplash(searchQuery);
+        if (unsplashResult.success) {
+          this.cache.set(cacheKey, unsplashResult);
+          console.log(`✅ Found Unsplash image for ${productName} from ${unsplashResult.source}`);
+          return unsplashResult;
+        }
+      } catch (unsplashError) {
+        console.warn('Unsplash search failed:', unsplashError);
+      }
 
-      // AUTOMATIC FETCHING DISABLED - Use manual upload only
-      console.log(`📁 Automatic image fetching disabled. Use manual upload for: ${productName}`);
+      // Try generic fertilizer search as last resort
+      console.log(`🔍 Trying generic fertilizer search for: ${category}`);
+      try {
+        const genericResult = await this.searchUnsplash(`${category} fertilizer agriculture`);
+        if (genericResult.success) {
+          this.cache.set(cacheKey, genericResult);
+          console.log(`✅ Found generic image for ${productName}`);
+          return genericResult;
+        }
+      } catch (genericError) {
+        console.warn('Generic search failed:', genericError);
+      }
+
+      console.log(`⚠️ No images found for ${productName}, using fallback`);
       return this.getFallbackImage(category, productName);
 
     } catch (error) {
@@ -725,8 +748,32 @@ class ImageService {
         };
       }
 
-      // AUTOMATIC FETCHING DISABLED - Return fallback image
-      console.log(`📁 No manual upload found for: ${product.name}. Use manual upload to add images.`);
+      // Try automatic fetching if enabled
+      const autoFetchEnabled = localStorage.getItem('autoImageFetch') !== 'false';
+
+      if (autoFetchEnabled) {
+        console.log(`🔍 Attempting automatic image fetch for: ${product.name}`);
+
+        try {
+          const fetchResult = await this.fetchImageFromWeb(
+            product.name,
+            product.category || 'fertilizer',
+            product
+          );
+
+          if (fetchResult.success) {
+            console.log(`✅ Auto-fetched image for: ${product.name}`);
+            return fetchResult;
+          } else {
+            console.log(`❌ Auto-fetch failed for: ${product.name}, using fallback`);
+          }
+        } catch (error) {
+          console.warn(`⚠️ Auto-fetch error for: ${product.name}:`, error);
+        }
+      } else {
+        console.log(`📁 Auto-fetch disabled for: ${product.name}. Use manual upload to add images.`);
+      }
+
       return this.getFallbackImage(product.category, product.name);
     } catch (error) {
       console.error('Error getting product image:', error);

@@ -138,25 +138,43 @@ export const getDeviceInfo = () => {
 
 // Handle offline/online status
 export const setupNetworkStatusHandling = (onOnline, onOffline) => {
-  const handleOnline = () => {
+  const handleOnline = async () => {
     console.log('[PWA] Back online');
     if (onOnline) onOnline();
-    
+
     // Show online notification
     showNetworkStatusNotification('online');
-    
+
     // Trigger background sync if available
     if ('serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype) {
-      navigator.serviceWorker.ready.then(registration => {
-        registration.sync.register('background-sync-all');
-      });
+      try {
+        const registration = await navigator.serviceWorker.ready;
+
+        // Register different sync tags for different data types
+        await registration.sync.register('background-sync-all');
+        await registration.sync.register('background-sync-sales');
+        await registration.sync.register('background-sync-inventory');
+
+        console.log('[PWA] Background sync registered successfully');
+
+        // Show sync notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('Syncing Data', {
+            body: 'Syncing offline data with server...',
+            icon: '/logo192.png',
+            tag: 'sync-notification'
+          });
+        }
+      } catch (error) {
+        console.error('[PWA] Failed to register background sync:', error);
+      }
     }
   };
 
   const handleOffline = () => {
     console.log('[PWA] Gone offline');
     if (onOffline) onOffline();
-    
+
     // Show offline notification
     showNetworkStatusNotification('offline');
   };
@@ -220,13 +238,78 @@ export const setupBackgroundSync = () => {
     navigator.serviceWorker.ready.then(registration => {
       // Register sync events
       const syncTags = ['background-sync-sales', 'background-sync-inventory', 'background-sync-all'];
-      
+
       syncTags.forEach(tag => {
         registration.sync.register(tag).catch(error => {
           console.error(`[PWA] Background sync registration failed for ${tag}:`, error);
         });
       });
     });
+  }
+};
+
+// Manually trigger background sync
+export const triggerBackgroundSync = async (syncType = 'all') => {
+  if (!('serviceWorker' in navigator && 'sync' in window.ServiceWorkerRegistration.prototype)) {
+    console.warn('[PWA] Background sync not supported');
+    return false;
+  }
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+
+    const syncTag = syncType === 'all' ? 'background-sync-all' : `background-sync-${syncType}`;
+    await registration.sync.register(syncTag);
+
+    console.log(`[PWA] Background sync triggered: ${syncTag}`);
+
+    // Show notification
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Sync Started', {
+        body: `Syncing ${syncType} data...`,
+        icon: '/logo192.png',
+        tag: 'manual-sync'
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[PWA] Failed to trigger background sync:', error);
+    return false;
+  }
+};
+
+// Check for pending offline data
+export const checkOfflineData = async () => {
+  try {
+    // Import offline storage dynamically to avoid circular dependencies
+    const { default: offlineStorage } = await import('../lib/offlineStorage');
+
+    const unsyncedData = await offlineStorage.getUnsyncedData();
+
+    if (unsyncedData.totalUnsynced > 0) {
+      console.log(`[PWA] Found ${unsyncedData.totalUnsynced} unsynced items`);
+
+      // Show notification about pending data
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Offline Data Pending', {
+          body: `${unsyncedData.totalUnsynced} items waiting to sync`,
+          icon: '/logo192.png',
+          tag: 'offline-data-pending',
+          actions: [
+            {
+              action: 'sync-now',
+              title: 'Sync Now'
+            }
+          ]
+        });
+      }
+    }
+
+    return unsyncedData;
+  } catch (error) {
+    console.error('[PWA] Error checking offline data:', error);
+    return { sales: [], inventory: [], totalUnsynced: 0 };
   }
 };
 
@@ -331,29 +414,52 @@ export const setupMobileViewport = () => {
 };
 
 // Initialize PWA features
-export const initializePWA = (onNavigate) => {
+export const initializePWA = async (onNavigate) => {
   console.log('[PWA] Initializing PWA features...');
-  
+
   // Setup mobile viewport
   setupMobileViewport();
-  
+
   // Register service worker
   registerServiceWorker();
-  
+
   // Request notification permission
   requestNotificationPermission();
-  
-  // Setup network status handling
-  setupNetworkStatusHandling();
-  
+
+  // Setup network status handling with offline data checking
+  setupNetworkStatusHandling(
+    async () => {
+      // When coming online, check for offline data and trigger sync
+      const offlineData = await checkOfflineData();
+      if (offlineData.totalUnsynced > 0) {
+        await triggerBackgroundSync('all');
+      }
+    },
+    () => {
+      // When going offline, just log
+      console.log('[PWA] App is now offline');
+    }
+  );
+
   // Setup background sync
   setupBackgroundSync();
-  
+
   // Handle app shortcuts
   handleAppShortcuts(onNavigate);
-  
+
+  // Check for offline data on startup
+  setTimeout(async () => {
+    if (navigator.onLine) {
+      const offlineData = await checkOfflineData();
+      if (offlineData.totalUnsynced > 0) {
+        console.log('[PWA] Found offline data on startup, triggering sync...');
+        await triggerBackgroundSync('all');
+      }
+    }
+  }, 5000); // Wait 5 seconds after startup
+
   // Log device info
   console.log('[PWA] Device info:', getDeviceInfo());
-  
+
   console.log('[PWA] PWA features initialized successfully');
 };

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Migration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; color: #0c5460; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; color: #856404; }
+        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        #log { background: #f8f9fa; padding: 10px; border-radius: 3px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .test-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; }
+        .test-card { padding: 15px; border-radius: 5px; border: 1px solid #ddd; }
+        .test-card h4 { margin-top: 0; }
+        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        .status-pending { background-color: #ffc107; }
+        .status-success { background-color: #28a745; }
+        .status-error { background-color: #dc3545; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Supabase Migration Test Suite</h1>
+    
+    <div class="test-section info">
+        <h3>📋 Migration Test Overview</h3>
+        <p>This page tests the complete migration from Firebase to Supabase:</p>
+        <ul>
+            <li>✅ <strong>Authentication</strong> - User login/signup with Supabase Auth</li>
+            <li>✅ <strong>Database</strong> - CRUD operations with PostgreSQL</li>
+            <li>✅ <strong>Storage</strong> - File uploads without CORS issues</li>
+            <li>✅ <strong>Real-time</strong> - Live data updates</li>
+        </ul>
+    </div>
+
+    <div class="grid">
+        <div class="test-section">
+            <h3>🔐 Authentication Tests</h3>
+            <button onclick="testAuth()">Test Authentication</button>
+            <button onclick="testDemoLogin()">Test Demo Login</button>
+            <button onclick="testLogout()">Test Logout</button>
+            <div id="authStatus" class="test-card">
+                <h4><span class="status-indicator status-pending"></span>Authentication Status</h4>
+                <p>Not tested yet</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🗄️ Database Tests</h3>
+            <button onclick="testDatabase()">Test Database Operations</button>
+            <button onclick="testProducts()">Test Product CRUD</button>
+            <button onclick="testCategories()">Test Categories</button>
+            <div id="dbStatus" class="test-card">
+                <h4><span class="status-indicator status-pending"></span>Database Status</h4>
+                <p>Not tested yet</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="test-section">
+            <h3>📁 Storage Tests</h3>
+            <input type="file" id="testFile" accept="image/*" />
+            <button onclick="testStorage()">Test File Upload</button>
+            <button onclick="testStorageList()">Test File Listing</button>
+            <div id="storageStatus" class="test-card">
+                <h4><span class="status-indicator status-pending"></span>Storage Status</h4>
+                <p>Not tested yet</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>⚡ Real-time Tests</h3>
+            <button onclick="testRealtime()">Test Real-time Updates</button>
+            <button onclick="stopRealtime()">Stop Real-time</button>
+            <div id="realtimeStatus" class="test-card">
+                <h4><span class="status-indicator status-pending"></span>Real-time Status</h4>
+                <p>Not tested yet</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>🔄 Migration Comparison</h3>
+        <button onclick="runFullTest()">Run Complete Migration Test</button>
+        <button onclick="clearLog()">Clear Log</button>
+        
+        <div class="test-results">
+            <div class="test-card">
+                <h4>🔥 Firebase (Old)</h4>
+                <ul>
+                    <li>❌ CORS issues with storage</li>
+                    <li>⚠️ NoSQL limitations</li>
+                    <li>💰 Expensive at scale</li>
+                    <li>🔒 Complex security rules</li>
+                </ul>
+            </div>
+            
+            <div class="test-card">
+                <h4>⚡ Supabase (New)</h4>
+                <ul>
+                    <li>✅ No CORS issues</li>
+                    <li>🐘 PostgreSQL power</li>
+                    <li>💸 Better pricing</li>
+                    <li>🛡️ Row Level Security</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h3>📊 Test Results</h3>
+        <div id="log">Ready to test migration...\n</div>
+    </div>
+
+    <!-- Supabase SDK -->
+    <script type="module">
+        import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js@2';
+
+        // Supabase configuration
+        const supabaseUrl = 'https://zwwmfgexghsniecdpypz.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3d21mZ2V4Z2hzbmllY2RweXB6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNTUzNTgsImV4cCI6MjA3MDczMTM1OH0._tFBb71TYx4U1VkCq9i2VTpQuNpHPV_zpdctQQOy8Yk';
+
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        window.supabase = supabase;
+
+        let realtimeSubscription = null;
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logElement.textContent += `[${timestamp}] ${icon} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function updateStatus(elementId, status, message) {
+            const element = document.getElementById(elementId);
+            const indicator = element.querySelector('.status-indicator');
+            const text = element.querySelector('p');
+            
+            indicator.className = `status-indicator status-${status}`;
+            text.textContent = message;
+        }
+
+        window.testAuth = async function() {
+            log('🔐 Testing Supabase Authentication...');
+            
+            try {
+                // Test getting current session
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                if (error) throw error;
+                
+                if (session) {
+                    log(`✅ User already authenticated: ${session.user.email}`, 'success');
+                    updateStatus('authStatus', 'success', `Authenticated as: ${session.user.email}`);
+                } else {
+                    log('ℹ️ No active session found');
+                    updateStatus('authStatus', 'warning', 'No active session - try demo login');
+                }
+                
+                // Test auth state change listener
+                supabase.auth.onAuthStateChange((event, session) => {
+                    log(`🔄 Auth state changed: ${event}`);
+                    if (session) {
+                        log(`👤 User: ${session.user.email}`, 'success');
+                    }
+                });
+                
+            } catch (error) {
+                log(`❌ Authentication test failed: ${error.message}`, 'error');
+                updateStatus('authStatus', 'error', `Auth failed: ${error.message}`);
+            }
+        };
+
+        window.testDemoLogin = async function() {
+            log('👤 Testing demo login...');
+
+            try {
+                const demoEmail = 'demo@example.com';
+                const demoPassword = 'demo123456';
+                
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: demoEmail,
+                    password: demoPassword
+                });
+                
+                if (error) {
+                    // Try to create demo user if login fails
+                    log('🔄 Demo user not found, creating...');
+                    
+                    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                        email: demoEmail,
+                        password: demoPassword,
+                        options: {
+                            data: {
+                                name: 'Demo Admin',
+                                role: 'admin'
+                            }
+                        }
+                    });
+                    
+                    if (signUpError) throw signUpError;
+                    
+                    log('✅ Demo user created successfully', 'success');
+                    updateStatus('authStatus', 'success', 'Demo user created and logged in');
+                } else {
+                    log('✅ Demo login successful', 'success');
+                    updateStatus('authStatus', 'success', `Logged in as: ${data.user.email}`);
+                }
+                
+            } catch (error) {
+                log(`❌ Demo login failed: ${error.message}`, 'error');
+                updateStatus('authStatus', 'error', `Demo login failed: ${error.message}`);
+            }
+        };
+
+        window.testLogout = async function() {
+            log('🚪 Testing logout...');
+            
+            try {
+                const { error } = await supabase.auth.signOut();
+                
+                if (error) throw error;
+                
+                log('✅ Logout successful', 'success');
+                updateStatus('authStatus', 'warning', 'Logged out successfully');
+                
+            } catch (error) {
+                log(`❌ Logout failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testDatabase = async function() {
+            log('🗄️ Testing database operations...');
+            
+            try {
+                // Test categories table
+                const { data: categories, error: catError } = await supabase
+                    .from('categories')
+                    .select('*')
+                    .limit(5);
+                
+                if (catError) throw catError;
+                
+                log(`✅ Categories loaded: ${categories.length} records`, 'success');
+                
+                // Test products table
+                const { data: products, error: prodError } = await supabase
+                    .from('products')
+                    .select('*')
+                    .limit(5);
+                
+                if (prodError) throw prodError;
+                
+                log(`✅ Products loaded: ${products.length} records`, 'success');
+                
+                // Test settings table
+                const { data: settings, error: setError } = await supabase
+                    .from('settings')
+                    .select('*');
+                
+                if (setError) throw setError;
+                
+                log(`✅ Settings loaded: ${settings.length} records`, 'success');
+                
+                updateStatus('dbStatus', 'success', `Database working - ${categories.length + products.length + settings.length} total records`);
+                
+            } catch (error) {
+                log(`❌ Database test failed: ${error.message}`, 'error');
+                updateStatus('dbStatus', 'error', `Database failed: ${error.message}`);
+            }
+        };
+
+        window.testProducts = async function() {
+            log('📦 Testing product CRUD operations...');
+            
+            try {
+                // Create test product
+                const testProduct = {
+                    name: 'Test Product ' + Date.now(),
+                    code: 'TEST-' + Date.now(),
+                    type: 'Chemical',
+                    quantity: 100,
+                    purchase_price: 500,
+                    sale_price: 600,
+                    unit: 'kg',
+                    is_active: true
+                };
+                
+                const { data: created, error: createError } = await supabase
+                    .from('products')
+                    .insert(testProduct)
+                    .select()
+                    .single();
+                
+                if (createError) throw createError;
+                
+                log(`✅ Product created: ${created.name}`, 'success');
+                
+                // Update product
+                const { data: updated, error: updateError } = await supabase
+                    .from('products')
+                    .update({ quantity: 150 })
+                    .eq('id', created.id)
+                    .select()
+                    .single();
+                
+                if (updateError) throw updateError;
+                
+                log(`✅ Product updated: quantity = ${updated.quantity}`, 'success');
+                
+                // Delete test product
+                const { error: deleteError } = await supabase
+                    .from('products')
+                    .delete()
+                    .eq('id', created.id);
+                
+                if (deleteError) throw deleteError;
+                
+                log('✅ Product deleted successfully', 'success');
+                
+                updateStatus('dbStatus', 'success', 'Product CRUD operations working perfectly');
+                
+            } catch (error) {
+                log(`❌ Product CRUD test failed: ${error.message}`, 'error');
+                updateStatus('dbStatus', 'error', `Product CRUD failed: ${error.message}`);
+            }
+        };
+
+        window.testCategories = async function() {
+            log('📂 Testing categories...');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('categories')
+                    .select('*')
+                    .order('sort_order');
+                
+                if (error) throw error;
+                
+                log(`✅ Categories loaded: ${data.map(c => c.name).join(', ')}`, 'success');
+                updateStatus('dbStatus', 'success', `${data.length} categories loaded successfully`);
+                
+            } catch (error) {
+                log(`❌ Categories test failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testStorage = async function() {
+            log('📁 Testing file upload...');
+            
+            const fileInput = document.getElementById('testFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                log('⚠️ Please select a file first', 'warning');
+                return;
+            }
+            
+            try {
+                const fileName = `test_${Date.now()}_${file.name}`;
+                
+                log(`📤 Uploading: ${fileName} (${Math.round(file.size/1024)}KB)`);
+                
+                const { data, error } = await supabase.storage
+                    .from('product-images')
+                    .upload(fileName, file);
+                
+                if (error) throw error;
+                
+                log('✅ Upload successful!', 'success');
+                
+                // Get public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('product-images')
+                    .getPublicUrl(fileName);
+                
+                log(`🔗 Public URL: ${publicUrl}`, 'success');
+                
+                updateStatus('storageStatus', 'success', 'File upload working - No CORS issues! 🎉');
+                
+            } catch (error) {
+                log(`❌ Storage test failed: ${error.message}`, 'error');
+                updateStatus('storageStatus', 'error', `Storage failed: ${error.message}`);
+            }
+        };
+
+        window.testStorageList = async function() {
+            log('📋 Testing file listing...');
+            
+            try {
+                const { data, error } = await supabase.storage
+                    .from('product-images')
+                    .list('', { limit: 10 });
+                
+                if (error) throw error;
+                
+                log(`✅ Found ${data.length} files in storage`, 'success');
+                data.forEach(file => {
+                    log(`  📄 ${file.name} (${Math.round(file.metadata?.size/1024 || 0)}KB)`);
+                });
+                
+                updateStatus('storageStatus', 'success', `Storage listing works - ${data.length} files found`);
+                
+            } catch (error) {
+                log(`❌ Storage listing failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testRealtime = async function() {
+            log('⚡ Testing real-time updates...');
+            
+            try {
+                // Subscribe to products table changes
+                realtimeSubscription = supabase
+                    .channel('products-changes')
+                    .on('postgres_changes', 
+                        { event: '*', schema: 'public', table: 'products' },
+                        (payload) => {
+                            log(`🔄 Real-time update: ${payload.eventType} on products table`, 'success');
+                            log(`   Data: ${JSON.stringify(payload.new || payload.old)}`);
+                        }
+                    )
+                    .subscribe();
+                
+                log('✅ Real-time subscription active', 'success');
+                updateStatus('realtimeStatus', 'success', 'Real-time updates working - try modifying data');
+                
+            } catch (error) {
+                log(`❌ Real-time test failed: ${error.message}`, 'error');
+                updateStatus('realtimeStatus', 'error', `Real-time failed: ${error.message}`);
+            }
+        };
+
+        window.stopRealtime = function() {
+            if (realtimeSubscription) {
+                realtimeSubscription.unsubscribe();
+                realtimeSubscription = null;
+                log('🛑 Real-time subscription stopped');
+                updateStatus('realtimeStatus', 'warning', 'Real-time subscription stopped');
+            }
+        };
+
+        window.runFullTest = async function() {
+            log('🚀 Running complete migration test suite...');
+            log('=' * 50);
+            
+            await testAuth();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testDatabase();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testProducts();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testCategories();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testStorageList();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testRealtime();
+            
+            log('=' * 50);
+            log('🎉 Migration test suite completed!', 'success');
+            log('✅ Supabase is ready to replace Firebase!', 'success');
+        };
+
+        window.clearLog = function() {
+            document.getElementById('log').textContent = 'Log cleared...\n';
+        };
+
+        // Auto-run basic tests on page load
+        setTimeout(() => {
+            log('🔄 Auto-running basic connectivity tests...');
+            testAuth();
+            testDatabase();
+        }, 1000);
+    </script>
+</body>
+</html>

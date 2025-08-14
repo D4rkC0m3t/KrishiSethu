@@ -43,7 +43,7 @@ const AnimatedHero = () => {
   }, []);
 
   return (
-    <div ref={containerRef} className="relative w-full h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden">
+    <div ref={containerRef} className="relative w-full lg:w-1/2 h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden">
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div className="absolute top-10 left-10 w-20 h-20 bg-green-200 rounded-full"></div>

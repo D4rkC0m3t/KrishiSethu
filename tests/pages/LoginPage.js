@@ -14,7 +14,7 @@ class LoginPage {
     this.forgotPasswordLink = "text=Forgot Password, a[href*='forgot']";
   }
 
-  async goto(baseUrl = 'http://localhost:3001') {
+  async goto(baseUrl = 'http://localhost:3000') {
     await this.page.goto(baseUrl);
     
     // Check if we're on landing page, then navigate to login
@@ -56,6 +56,26 @@ class LoginPage {
 
   async clickForgotPassword() {
     await this.page.click(this.forgotPasswordLink);
+  }
+
+  async loginAsAdmin() {
+    const testData = require('../test-data.json');
+    await this.login(testData.users.admin.email, testData.users.admin.password);
+  }
+
+  async loginAsDemo() {
+    const testData = require('../test-data.json');
+    await this.login(testData.users.demo.email, testData.users.demo.password);
+  }
+
+  async loginAsTestUser() {
+    const testData = require('../test-data.json');
+    await this.login(testData.users.testUser.email, testData.users.testUser.password);
+  }
+
+  async loginAsUser() {
+    const testData = require('../test-data.json');
+    await this.login(testData.users.staff.email, testData.users.staff.password);
   }
 }
 

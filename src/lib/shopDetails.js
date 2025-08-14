@@ -5,20 +5,20 @@ import { settingsService } from './firestore';
 
 // Default shop details (fallback)
 const DEFAULT_SHOP_DETAILS = {
-  name: 'VK Fertilizers',
+  name: 'KrishiSethu',
   address: {
-    street: 'Siababa Temple Near Darga, Holagunda',
-    city: 'Holagunda',
-    state: 'Karnataka',
-    pincode: '585102',
+    street: 'Fertilizer Distribution Center',
+    city: 'Hyderabad',
+    state: 'Telangana',
+    pincode: '500001',
     country: 'India'
   },
-  phone: '8688765111',
-  email: 'info@vkfertilizers.com',
-  website: 'https://vkfertilizers.com',
-  gstNumber: '29ABCDE1234F1Z5',
+  phone: '+91 9876543210',
+  email: 'info@krishisethu.com',
+  website: 'https://krishisethu.com',
+  gstNumber: '36ABCDE1234F1Z5',
   panNumber: 'ABCDE1234F',
-  logo: '', // Company logo URL
+  logo: '/Logo.png', // Company logo URL
   // Fertilizer Business Licenses
   fertilizerLicense: 'FL/2024/001',
   seedLicense: 'SD/2024/001',

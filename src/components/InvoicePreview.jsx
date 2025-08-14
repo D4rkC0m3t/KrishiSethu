@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 
 // FORCE REFRESH - Updated Invoice Component
 
@@ -56,6 +57,47 @@ const numberToWordsIndian = (num) => {
   return words.trim();
 };
 
+// QR Code Component
+const QRCodeComponent = ({ data, size = 70 }) => {
+  const [qrCodeUrl, setQrCodeUrl] = useState('');
+
+  useEffect(() => {
+    const generateQR = async () => {
+      try {
+        const url = await QRCode.toDataURL(data, {
+          width: size,
+          margin: 1,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        });
+        setQrCodeUrl(url);
+      } catch (error) {
+        console.error('Error generating QR code:', error);
+      }
+    };
+
+    if (data) {
+      generateQR();
+    }
+  }, [data, size]);
+
+  if (!qrCodeUrl) {
+    return (
+      <div className="w-[70px] h-[70px] border border-black text-center flex items-center justify-center bg-white">
+        <span className="text-xs text-black">Loading...</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-[70px] h-[70px] border border-black bg-white p-1">
+      <img src={qrCodeUrl} alt="QR Code" className="w-full h-full object-contain" />
+    </div>
+  );
+};
+
 // Invoice preview matching the reference image exactly with proper table structure - UPDATED
 const InvoicePreview = ({ sale, settings, compact }) => {
   console.log('🔥 UPDATED INVOICE COMPONENT LOADED - V3', { sale, settings, compact });
@@ -68,13 +110,18 @@ const InvoicePreview = ({ sale, settings, compact }) => {
   const invoiceTotal = sale?.total || 0;
   const taxable = sale?.subtotal || 0;
   const taxAmt = sale?.tax || 0;
-  const roundOff = sale?.roundOff || 0;
+  // const roundOff = sale?.roundOff || 0;
+
+  // Generate QR code data (invoice details)
+  const qrData = `Invoice: ${sale?.saleNumber || 'INV-001'}
+Date: ${sale?.saleDate || new Date().toLocaleDateString()}
+Amount: ₹${invoiceTotal}
+Customer: ${sale?.customerName || 'Walk-in Customer'}
+GSTIN: ${settings?.companyInfo?.gstNumber || ''}`;
 
   return (
     <div className="max-w-4xl mx-auto p-4" key="invoice-preview-updated-v2">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold">Invoice Preview - Updated Layout</h2>
-      </div>
+      {/* Title removed for clean print */}
 
     <div className="invoice-container w-[208mm] h-[297mm] py-[3mm] px-[3mm] mx-auto border border-black font-mono text-xs box-border bg-white text-black" style={{backgroundColor: '#ffffff', color: '#000000'}}>
       <style>{`
@@ -110,21 +157,47 @@ const InvoicePreview = ({ sale, settings, compact }) => {
               <div className="text-xs italic mt-1 flex items-center justify-center h-full text-black">(ORIGINAL FOR RECIPIENT)</div>
             </td>
             <td className="border-0 text-right align-top p-1" style={{width: '25%', backgroundColor: '#ffffff', color: '#000000'}}>
-              <div className="w-[70px] h-[70px] border border-black text-center flex items-center justify-center ml-auto bg-white">
-                <span className="text-xs text-black">QR</span>
+              <div className="ml-auto">
+                <QRCodeComponent data={qrData} size={70} />
               </div>
             </td>
           </tr>
         </tbody>
       </table>
 
-      {/* Invoice Title and Company Info */}
-      <div className="text-center py-1 border-b border-black leading-tight bg-white text-black" style={{backgroundColor: '#ffffff', color: '#000000'}}>
-        <h1 className="text-lg font-bold mb-0.5 text-black">INVOICE - UPDATED LAYOUT ✅</h1>
-        <h2 className="font-bold text-sm mb-0.5 text-black">{fmt(settings?.companyInfo?.name) || 'New Eralingeswara Fertilizer 2025-26'}</h2>
-        <p className="text-xs mb-0.5 text-black">{fmt(settings?.companyInfo?.address?.street) || '6/902 Teru Bazar Holagunda [V]'}, {fmt(settings?.companyInfo?.address?.city) || 'Holagunda [M]'}, {fmt(settings?.companyInfo?.address?.district) || 'Alur [T], Kurnool [Dist]'}</p>
-        <p className="text-xs mb-0.5 text-black">GSTIN: {fmt(settings?.companyInfo?.gstNumber) || '37ARNPG9380K1Z2'}, State Name: {fmt(settings?.companyInfo?.address?.state) || 'Andhra Pradesh'}, Code: {fmt(settings?.companyInfo?.stateCode) || '37'}</p>
-        <p className="text-xs text-black">Mobile Number: {fmt(settings?.companyInfo?.phone) || '9989354866'}, E-Mail: {fmt(settings?.companyInfo?.email) || 'Gopal.nef@gmail.com'}</p>
+      {/* Logo and Company Info Section */}
+      <div className="border-b border-black bg-white text-black" style={{backgroundColor: '#ffffff', color: '#000000'}}>
+        <table className="w-full border-collapse">
+          <tbody>
+            <tr>
+              <td className="border-0 align-top p-2" style={{width: '25%', backgroundColor: '#ffffff', color: '#000000'}}>
+                {/* Company Logo */}
+                <div className="w-[100px] h-[80px] border border-black bg-white flex items-center justify-center">
+                  {settings?.companyInfo?.logo ? (
+                    <img
+                      src={settings.companyInfo.logo}
+                      alt="Company Logo"
+                      className="max-w-full max-h-full object-contain"
+                      style={{maxWidth: '100%', maxHeight: '100%'}}
+                    />
+                  ) : (
+                    <span className="text-xs text-black text-center">LOGO</span>
+                  )}
+                </div>
+              </td>
+              <td className="border-0 text-center align-top p-2" style={{width: '75%', backgroundColor: '#ffffff', color: '#000000'}}>
+                {/* Company Info */}
+                <div className="text-center leading-tight">
+                  <h1 className="text-lg font-bold mb-0.5 text-black">TAX INVOICE</h1>
+                  <h2 className="font-bold text-sm mb-0.5 text-black">{fmt(settings?.companyInfo?.name) || 'Krishisethu Fertilizers'}</h2>
+                  <p className="text-xs mb-0.5 text-black">{fmt(settings?.companyInfo?.address?.street) || '123 Agricultural Complex, Mumbai'}, {fmt(settings?.companyInfo?.address?.city) || 'Mumbai'}, {fmt(settings?.companyInfo?.address?.district) || 'Maharashtra'}</p>
+                  <p className="text-xs mb-0.5 text-black">GSTIN: {fmt(settings?.companyInfo?.gstNumber) || '27AAAAA0000A1Z5'}, State Name: {fmt(settings?.companyInfo?.address?.state) || 'Maharashtra'}, Code: {fmt(settings?.companyInfo?.stateCode) || '27'}</p>
+                  <p className="text-xs text-black">Mobile Number: {fmt(settings?.companyInfo?.phone) || '+91-9876543210'}, E-Mail: {fmt(settings?.companyInfo?.email) || 'info@krishisethu.com'}</p>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <table className="w-full border-collapse">

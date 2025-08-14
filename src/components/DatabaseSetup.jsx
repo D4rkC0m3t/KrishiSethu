@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, collection, addDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import { supabaseAuthHelpers } from '../lib/supabase';
+import { usersService } from '../lib/supabaseDb';
 import { CheckCircle, AlertCircle, Loader2, User, Database, Settings } from 'lucide-react';
 
 const DatabaseSetup = () => {

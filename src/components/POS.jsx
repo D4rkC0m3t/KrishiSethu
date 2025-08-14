@@ -6,11 +6,15 @@ import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { customersService, salesService, productsService } from '../lib/firestore';
+import { customersService, salesService, productsService } from '../lib/supabaseDb';
 import { shopDetailsService } from '../lib/shopDetails';
 import { imageService } from '../lib/imageService';
 import { barcodeService } from '../lib/barcodeService';
 import { thermalPrintService } from '../lib/thermalPrintService';
+import BarcodeScanner from './BarcodeScanner';
+import offlineStorage from '../lib/offlineStorage';
+import { notificationService } from '../lib/notificationService';
+import { EmptyProducts } from './EmptyState';
 import {
   ShoppingCart,
   Plus,
@@ -103,7 +107,8 @@ const POS = ({ onNavigate }) => {
   const [paymentData, setPaymentData] = useState({
     method: 'cash',
     cardNumber: '',
-    upiId: ''
+    upiId: '',
+    amountReceived: 0
   });
   const [showImageUploadDialog, setShowImageUploadDialog] = useState(false);
   const [selectedProductForUpload, setSelectedProductForUpload] = useState(null);
@@ -117,6 +122,59 @@ const POS = ({ onNavigate }) => {
     const day = date.getDate().toString().padStart(2, '0');
     const time = Date.now().toString().slice(-6);
     return `BILL${year}${month}${day}${time}`;
+  };
+
+  // Convert number to words (Indian format)
+  const numberToWordsIndian = (num) => {
+    if (num === 0) return 'Zero';
+
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    const convertHundreds = (n) => {
+      let result = '';
+      if (n >= 100) {
+        result += ones[Math.floor(n / 100)] + ' Hundred ';
+        n %= 100;
+      }
+      if (n >= 20) {
+        result += tens[Math.floor(n / 10)] + ' ';
+        n %= 10;
+      } else if (n >= 10) {
+        result += teens[n - 10] + ' ';
+        return result;
+      }
+      if (n > 0) {
+        result += ones[n] + ' ';
+      }
+      return result;
+    };
+
+    let result = '';
+    let crore = Math.floor(num / 10000000);
+    if (crore > 0) {
+      result += convertHundreds(crore) + 'Crore ';
+      num %= 10000000;
+    }
+
+    let lakh = Math.floor(num / 100000);
+    if (lakh > 0) {
+      result += convertHundreds(lakh) + 'Lakh ';
+      num %= 100000;
+    }
+
+    let thousand = Math.floor(num / 1000);
+    if (thousand > 0) {
+      result += convertHundreds(thousand) + 'Thousand ';
+      num %= 1000;
+    }
+
+    if (num > 0) {
+      result += convertHundreds(num);
+    }
+
+    return result.trim();
   };
 
   // Initialize bill number and load products data
@@ -166,9 +224,56 @@ const POS = ({ onNavigate }) => {
     const loadShopDetails = async () => {
       try {
         const details = await shopDetailsService.getShopDetails();
-        setShopDetails(details);
+        console.log('Loaded shop details:', details);
+
+        // Ensure address is properly structured
+        if (details && details.address && typeof details.address === 'object') {
+          setShopDetails(details);
+        } else if (details) {
+          // If address is a string, convert it to object structure
+          const addressString = details.address || '';
+          setShopDetails({
+            ...details,
+            address: typeof addressString === 'string' ? {
+              street: addressString,
+              city: '',
+              state: '',
+              pincode: ''
+            } : {
+              street: '',
+              city: '',
+              state: '',
+              pincode: ''
+            }
+          });
+        } else {
+          // Set default shop details if none found
+          setShopDetails({
+            name: 'KrishiSethu Fertilizers',
+            address: {
+              street: '123 Agricultural Complex',
+              city: 'Mumbai',
+              state: 'Maharashtra',
+              pincode: '400001'
+            },
+            phone: '+91-9876543210',
+            gstNumber: '27AAAAA0000A1Z5'
+          });
+        }
       } catch (error) {
         console.error('Failed to load shop details:', error);
+        // Set default shop details on error
+        setShopDetails({
+          name: 'KrishiSethu Fertilizers',
+          address: {
+            street: '123 Agricultural Complex',
+            city: 'Mumbai',
+            state: 'Maharashtra',
+            pincode: '400001'
+          },
+          phone: '+91-9876543210',
+          gstNumber: '27AAAAA0000A1Z5'
+        });
       }
     };
 
@@ -200,92 +305,54 @@ const POS = ({ onNavigate }) => {
         // AUTOMATIC IMAGE LOADING DISABLED - Use manual upload only
         console.log('📁 Automatic image loading disabled. Products loaded without images.');
 
-        // If no products, use mock data for demo
+        // Handle empty product database
         if (firebaseProducts.length === 0) {
-          const mockProducts = [
-      {
-        id: '1',
-        name: 'Urea 50kg Bag',
-        brand: 'IFFCO',
-        price: 450,
-        stock: 25,
-        category: 'Nitrogen',
-        hsn: '31021000',
-        unit: 'BAG',
-        gstRate: 5
-      },
-      {
-        id: '2',
-        name: 'DAP 50kg Bag',
-        brand: 'Coromandel',
-        price: 1500,
-        stock: 15,
-        category: 'Phosphorus',
-        hsn: '31054000',
-        unit: 'BAG',
-        gstRate: 5
-      },
-      {
-        id: '3',
-        name: 'NPK 20-20-20 50kg',
-        brand: 'Tata Chemicals',
-        price: 950,
-        stock: 30,
-        category: 'Compound',
-        hsn: '31052000',
-        unit: 'BAG',
-        gstRate: 5
-      },
-      {
-        id: '4',
-        name: 'Potash 50kg Bag',
-        brand: 'ICL',
-        price: 800,
-        stock: 20,
-        category: 'Potassium',
-        hsn: '31042000',
-        unit: 'BAG',
-        gstRate: 5
-      },
-      {
-        id: '5',
-        name: 'Organic Compost 25kg',
-        brand: 'Green Gold',
-        price: 200,
-        stock: 50,
-        category: 'Organic',
-        hsn: '31010000',
-        unit: 'BAG',
-        gstRate: 5
-      },
-      {
-        id: '6',
-        name: 'Zinc Sulphate',
-        brand: 'Tata Chemicals',
-        price: 220,
-        stock: 35,
-        category: 'Micronutrient',
-        hsn: 'N/A',
-        unit: 'kg',
-        gstRate: 5
-      }
-    ];
-          setProducts(mockProducts);
+          console.log('📦 No products found in database');
+          setProducts([]);
+
+          // Show notification to add products
+          const notification = document.createElement('div');
+          notification.className = 'fixed top-4 right-4 bg-blue-500 text-white p-3 rounded-lg shadow-lg z-50';
+          notification.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span>📦</span>
+              <div>
+                <div class="font-medium">No Products Found</div>
+                <div class="text-sm">Add products in the Inventory section to start selling</div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(notification);
+
+          setTimeout(() => {
+            if (document.body.contains(notification)) {
+              document.body.removeChild(notification);
+            }
+          }, 8000);
         }
       } catch (error) {
         console.error('Error loading products:', error);
-        // Fallback to mock data on error
-        const mockProducts = [
-          {
-            id: '1',
-            name: 'Urea 50kg Bag',
-            brand: 'IFFCO',
-            price: 450,
-            stock: 25,
-            category: 'Nitrogen'
+        setProducts([]);
+
+        // Show error notification
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span>❌</span>
+            <div>
+              <div class="font-medium">Failed to Load Products</div>
+              <div class="text-sm">Check your internet connection and try refreshing</div>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
           }
-        ];
-        setProducts(mockProducts);
+        }, 8000);
       }
     };
 
@@ -301,49 +368,66 @@ const POS = ({ onNavigate }) => {
       setCustomers(firebaseCustomers);
     } catch (error) {
       console.error('Error loading customers:', error);
-      // Use mock customers for demo
-      const mockCustomers = [
-        {
-          id: '1',
-          name: 'Rajesh Farmer',
-          phone: '+91-9876543210',
-          email: 'rajesh@example.com',
-          address: 'Village Kharadi, Pune',
-          city: 'Pune',
-          pincode: '411014',
-          gstNumber: '',
-          creditLimit: 50000,
-          currentCredit: 15000,
-          totalPurchases: 125000,
-          status: 'VIP'
-        },
-        {
-          id: '2',
-          name: 'Sunita Agro Dealer',
-          phone: '+91-9876543211',
-          email: 'sunita@agrostore.com',
-          address: 'Shop 15, Market Yard',
-          city: 'Mumbai',
-          pincode: '400001',
-          gstNumber: '27AAAAA0000A1Z5',
-          creditLimit: 100000,
-          currentCredit: 25000,
-          totalPurchases: 350000,
-          status: 'VIP'
+      setCustomers([]);
+
+      // Show warning notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white p-3 rounded-lg shadow-lg z-50';
+      notification.innerHTML = `
+        <div class="flex items-center gap-2">
+          <span>⚠️</span>
+          <div>
+            <div class="font-medium">Failed to Load Customers</div>
+            <div class="text-sm">You can still make sales to walk-in customers</div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        if (document.body.contains(notification)) {
+          document.body.removeChild(notification);
         }
-      ];
-      setCustomers(mockCustomers);
+      }, 6000);
     }
   };
 
-  // Filter products based on search
+  // Filter products based on search term and category
   useEffect(() => {
-    const filtered = products.filter(product =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.brand.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    let filtered = products;
+
+    // Filter by category first
+    if (selectedCategory !== 'All Items') {
+      filtered = filtered.filter(product => {
+        const productCategory = (product.category || '').toLowerCase().trim();
+        const selectedCat = selectedCategory.toLowerCase().trim();
+
+        // Exact match first
+        if (productCategory === selectedCat) {
+          return true;
+        }
+
+        // For broader categories, check if product category contains the selected category
+        if (selectedCat === 'fertilizer' && productCategory.includes('fertilizer')) {
+          return true;
+        }
+
+        // For specific matches
+        return productCategory.includes(selectedCat);
+      });
+    }
+
+    // Then filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(product =>
+        (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.category || '').toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
     setFilteredProducts(filtered);
-  }, [searchTerm, products]);
+  }, [searchTerm, products, selectedCategory]);
 
   // Add product to cart
   const addToCart = (product) => {
@@ -376,8 +460,50 @@ const POS = ({ onNavigate }) => {
     setCart(cart.filter(item => item.id !== id));
   };
 
+  // Number to words function
+  const numberToWords = (num) => {
+    const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const thousands = ['', 'Thousand', 'Lakh', 'Crore'];
+
+    if (num === 0) return 'Zero';
+
+    const convertHundreds = (n) => {
+      let result = '';
+      if (n >= 100) {
+        result += ones[Math.floor(n / 100)] + ' Hundred ';
+        n %= 100;
+      }
+      if (n >= 20) {
+        result += tens[Math.floor(n / 10)] + ' ';
+        n %= 10;
+      } else if (n >= 10) {
+        result += teens[n - 10] + ' ';
+        return result;
+      }
+      if (n > 0) {
+        result += ones[n] + ' ';
+      }
+      return result;
+    };
+
+    let result = '';
+    let thousandIndex = 0;
+
+    while (num > 0) {
+      if (num % 1000 !== 0) {
+        result = convertHundreds(num % 1000) + thousands[thousandIndex] + ' ' + result;
+      }
+      num = Math.floor(num / 1000);
+      thousandIndex++;
+    }
+
+    return result.trim();
+  };
+
   // Enhanced calculation functions
-  const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const subtotal = cart.reduce((sum, item) => sum + ((item.price || 0) * item.quantity), 0);
 
   const calculateDiscount = () => {
     if (discountType === 'percentage') {
@@ -397,18 +523,47 @@ const POS = ({ onNavigate }) => {
   // Handle barcode scan
   const handleBarcodeScan = async (barcode) => {
     try {
+      console.log('[POS] Processing barcode:', barcode);
+
       const result = await barcodeService.findProductByBarcode(barcode, products);
 
       if (result.success) {
         addToCart(result.product);
-        alert(`Product added: ${result.product.name}`);
+
+        // Show success notification
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.textContent = `✓ Added: ${result.product.name}`;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 3000);
+
         setShowBarcodeScanner(false);
       } else {
-        alert(`Product not found for barcode: ${barcode}`);
+        // Show error notification
+        const notification = document.createElement('div');
+        notification.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.textContent = `❌ Product not found: ${barcode}`;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 3000);
       }
     } catch (error) {
       console.error('Error handling barcode scan:', error);
-      alert('Error processing barcode');
+
+      // Show error notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+      notification.textContent = '❌ Error processing barcode';
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 3000);
     }
   };
 
@@ -456,14 +611,13 @@ const POS = ({ onNavigate }) => {
   // Handle category selection
   const handleCategorySelect = (category) => {
     setSelectedCategory(category);
-    // Filter products by category if needed
+    // Products will be filtered automatically by the useEffect above
   };
 
 
-  // Enhanced sale completion
+  // Enhanced sale completion with offline support
   const completeSale = async () => {
     console.log('completeSale function called');
-    alert('Payment processing started!'); // Immediate feedback
 
     // Validation
     if (cart.length === 0) {
@@ -480,16 +634,128 @@ const POS = ({ onNavigate }) => {
     setIsProcessing(true);
 
     try {
-      // Simple test - just show receipt without Firebase
-      console.log('Simulating payment processing...');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Prepare sale data
+      const saleData = {
+        id: `sale_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        billNumber: currentBillNumber,
+        items: cart.map(item => ({
+          productId: item.id,
+          productName: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity,
+          hsn: item.hsn || '',
+          gstRate: item.gstRate || 5
+        })),
+        customer: selectedCustomer || {
+          name: customerForm.name || 'Walk-in Customer',
+          phone: customerForm.phone || '',
+          address: customerForm.address || ''
+        },
+        subtotal,
+        discount: discountAmount,
+        discountType,
+        discountReason,
+        tax: taxAmount,
+        total,
+        paymentMethod: paymentData.method,
+        paymentStatus: 'completed',
+        notes,
+        timestamp: new Date(),
+        createdBy: 'POS_USER',
+        shopDetails
+      };
+
+      // Try to save to Firebase first
+      let savedToFirebase = false;
+      try {
+        if (navigator.onLine) {
+          await salesService.create(saleData);
+          savedToFirebase = true;
+          console.log('Sale saved to Firebase successfully');
+        }
+      } catch (firebaseError) {
+        console.warn('Failed to save to Firebase, will store offline:', firebaseError);
+      }
+
+      // If Firebase failed or offline, store in IndexedDB
+      if (!savedToFirebase) {
+        try {
+          await offlineStorage.addOfflineSale(saleData);
+          console.log('Sale stored offline successfully');
+
+          // Show offline notification
+          const notification = document.createElement('div');
+          notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white p-3 rounded-lg shadow-lg z-50';
+          notification.textContent = '📱 Sale saved offline - will sync when online';
+          document.body.appendChild(notification);
+
+          setTimeout(() => {
+            document.body.removeChild(notification);
+          }, 5000);
+        } catch (offlineError) {
+          console.error('Failed to store sale offline:', offlineError);
+          throw new Error('Failed to save sale both online and offline');
+        }
+      }
+
+      // Update inventory quantities
+      for (const item of cart) {
+        try {
+          const product = products.find(p => p.id === item.id);
+          if (product) {
+            const newQuantity = Math.max(0, product.quantity - item.quantity);
+
+            if (navigator.onLine) {
+              await productsService.update(product.id, { quantity: newQuantity });
+            } else {
+              // Store inventory update offline
+              await offlineStorage.addOfflineInventoryUpdate({
+                id: `inv_update_${Date.now()}_${item.id}`,
+                productId: item.id,
+                type: 'sale',
+                quantityChange: -item.quantity,
+                newQuantity,
+                saleId: saleData.id,
+                timestamp: new Date()
+              });
+            }
+          }
+        } catch (inventoryError) {
+          console.warn('Failed to update inventory for product:', item.id, inventoryError);
+        }
+      }
 
       // Close payment dialog and show receipt
       setShowPaymentDialog(false);
       setShowReceiptDialog(true);
 
       console.log('Payment completed successfully!');
-      alert('Payment completed! Receipt will be shown.');
+
+      // Show success notification
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg z-50';
+      notification.textContent = '✅ Sale completed successfully!';
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 3000);
+
+      // Send push notification for sale completion
+      try {
+        if (notificationService.isTypeEnabled('sales')) {
+          notificationService.showSalesNotification({
+            id: saleData.id,
+            total: total,
+            customerName: selectedCustomer?.name || customerForm.name || 'Walk-in Customer',
+            itemCount: cart.length,
+            timestamp: new Date()
+          });
+        }
+      } catch (notificationError) {
+        console.warn('Failed to send sales notification:', notificationError);
+      }
 
     } catch (error) {
       console.error('Error in payment:', error);
@@ -527,32 +793,12 @@ const POS = ({ onNavigate }) => {
     }
   };
 
-  const startBarcodeScanning = async () => {
-    setIsScanning(true);
-    try {
-      // Subscribe to barcode scans
-      const unsubscribe = barcodeService.subscribe(handleBarcodeScan);
+  const openBarcodeScanner = () => {
+    setShowBarcodeScanner(true);
+  };
 
-      // Check camera support
-      const cameraSupport = await barcodeService.checkCameraSupport();
-      if (!cameraSupport.supported) {
-        alert('Camera not supported on this device');
-        setIsScanning(false);
-        return;
-      }
-
-      // For demo, simulate barcode scan after 2 seconds
-      setTimeout(() => {
-        setIsScanning(false);
-        setBarcodeInput('1'); // Simulate scanned barcode
-        handleBarcodeSearch();
-        unsubscribe();
-      }, 2000);
-    } catch (error) {
-      console.error('Error starting barcode scan:', error);
-      setIsScanning(false);
-      alert('Error starting camera scan');
-    }
+  const closeBarcodeScanner = () => {
+    setShowBarcodeScanner(false);
   };
 
   // Enhanced discount management
@@ -582,26 +828,415 @@ const POS = ({ onNavigate }) => {
   // Print receipt function
   const printReceipt = () => {
     if (receiptRef.current) {
-      const printWindow = window.open('', '_blank');
+      const printWindow = window.open('', '_blank', 'width=794,height=1123');
       printWindow.document.write(`
+        <!DOCTYPE html>
         <html>
           <head>
-            <title>Receipt - ${currentBillNumber}</title>
+            <title>Sales Invoice - ${currentBillNumber}</title>
             <style>
-              body { font-family: monospace; margin: 20px; }
-              .receipt { max-width: 300px; margin: 0 auto; }
-              .center { text-align: center; }
-              .line { border-bottom: 1px dashed #000; margin: 10px 0; }
-              .total { font-weight: bold; font-size: 1.2em; }
+              /* Shared Styles (apply to both screen and print) */
+              body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background: #f5f5f5;
+              }
+
+              #invoice {
+                max-width: 210mm;
+                margin: 0 auto;
+                background: white;
+                padding: 20px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
+                border: 2px solid #000 !important;
+                box-sizing: border-box;
+                min-height: 280mm;
+              }
+
+              /* Force table borders for both screen and print */
+              #invoice table,
+              #invoice th,
+              #invoice td {
+                border: 1px solid #000 !important;
+                border-collapse: collapse !important;
+              }
+
+              .invoice-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid #000 !important;
+                padding-bottom: 10px;
+                margin-bottom: 10px;
+              }
+
+              .company-details {
+                text-align: center;
+                flex: 1;
+              }
+
+              .company-details h2 {
+                font-size: 18px;
+                font-weight: bold;
+                margin-bottom: 5px;
+              }
+
+              .invoice-meta {
+                display: flex;
+                justify-content: space-between;
+                margin: 10px 0;
+                border-bottom: 1px solid #000 !important;
+                padding-bottom: 10px;
+              }
+
+              .buyer-details {
+                flex: 1;
+                padding-right: 20px;
+              }
+
+              .invoice-details {
+                width: 200px;
+                text-align: right;
+              }
+
+              .invoice-table {
+                width: 100%;
+                border-collapse: collapse !important;
+                margin: 10px 0;
+                font-size: 10px;
+              }
+
+              .invoice-table th,
+              .invoice-table td {
+                border: 1px solid #000 !important;
+                padding: 4px;
+                text-align: left;
+                vertical-align: top;
+              }
+
+              .invoice-table th {
+                font-weight: bold;
+                text-align: center;
+                background-color: #f5f5f5 !important;
+              }
+
+              .totals {
+                margin: 10px 0;
+                text-align: right;
+                border-top: 1px solid #000 !important;
+                padding-top: 10px;
+              }
+
+              .invoice-footer {
+                margin-top: 15px;
+                border-top: 1px solid #000 !important;
+                padding-top: 10px;
+                font-size: 10px;
+              }
+
+              .terms-section {
+                margin-top: 10px;
+              }
+
+              .signatures {
+                display: flex;
+                justify-content: space-between;
+                margin-top: 20px;
+                padding-top: 10px;
+              }
+
+              /* Print-specific styles */
+              @media print {
+                @page {
+                  size: A4 portrait;
+                  margin: 10mm;
+                }
+
+                body {
+                  font-size: 12px;
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+                  margin: 0;
+                  padding: 0;
+                  background: white;
+                }
+
+                #invoice {
+                  width: 100%;
+                  max-width: 210mm;
+                  margin: auto;
+                  background: white;
+                  padding: 10px;
+                  box-shadow: none;
+                  min-height: 280mm;
+                }
+                /* Hide UI elements in print */
+                .sidebar, .navbar, .app-header, .no-print {
+                  display: none !important;
+                }
+
+                /* Ensure borders are visible in print */
+                * {
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+
+                #invoice * {
+                  box-sizing: border-box !important;
+                }
+              }
+              .text-center { text-align: center !important; }
+              .text-right { text-align: right !important; }
+              .text-left { text-align: left !important; }
+              .font-bold { font-weight: bold !important; }
+              .font-medium { font-weight: 500 !important; }
+              .border-t { border-top: 1px solid #000 !important; }
+              .border-b { border-bottom: 1px solid #000 !important; }
+              .border-r { border-right: 1px solid #000 !important; }
+              .border-l { border-left: 1px solid #000 !important; }
+              .border { border: 1px solid #000 !important; }
+              .border-2 { border: 2px solid #000 !important; }
+              .border-black { border-color: #000 !important; }
+              .border-2.border-black { border: 2px solid #000 !important; }
+              .p-1 { padding: 2px 4px !important; }
+              .p-2 { padding: 4px 8px !important; }
+              .px-1 { padding-left: 4px !important; padding-right: 4px !important; }
+              .py-0\\.5 { padding-top: 1px !important; padding-bottom: 1px !important; }
+              .mb-1 { margin-bottom: 4px !important; }
+              .mb-2 { margin-bottom: 8px !important; }
+              .mb-3 { margin-bottom: 12px !important; }
+              .mb-4 { margin-bottom: 16px !important; }
+              .mb-6 { margin-bottom: 24px !important; }
+              .pt-2 { padding-top: 8px !important; }
+              .pt-0\\.5 { padding-top: 1px !important; }
+              .space-y-0\\.5 > * + * { margin-top: 2px !important; }
+              .space-y-1 > * + * { margin-top: 4px !important; }
+              .flex { display: flex !important; }
+              .justify-between { justify-content: space-between !important; }
+              .items-center { align-items: center !important; }
+              .grid { display: grid !important; }
+              .grid-cols-3 { grid-template-columns: repeat(3, 1fr) !important; }
+              .gap-2 { gap: 8px !important; }
+              .bg-gray-50 { background-color: #f9fafb !important; }
+              .text-gray-600 { color: #4b5563 !important; }
+              .text-xs { font-size: 8px !important; }
+              .text-sm { font-size: 9px !important; }
+              .text-base { font-size: 12px !important; }
+              .text-lg { font-size: 14px !important; }
+              .text-xl { font-size: 16px !important; }
+              .text-2xl { font-size: 20px !important; }
+              .w-16 { width: 64px !important; }
+              .w-20 { width: 80px !important; }
+              .flex-1 { flex: 1 !important; }
+              @media print {
+                @page {
+                  size: A4 portrait;
+                  margin: 8mm;
+                }
+                html, body {
+                  width: 100%;
+                  height: 100%;
+                  margin: 0;
+                  padding: 0;
+                  font-size: 10px;
+                  -webkit-print-color-adjust: exact;
+                  print-color-adjust: exact;
+                }
+                .receipt-content {
+                  width: 100% !important;
+                  max-width: 194mm !important; /* A4 width minus margins */
+                  margin: 0 auto !important;
+                  padding: 0 !important;
+                  page-break-inside: avoid;
+                }
+                .no-print { display: none !important; }
+                table {
+                  page-break-inside: avoid;
+                  width: 100% !important;
+                  border-collapse: collapse !important;
+                }
+                tr { page-break-inside: avoid; }
+                th, td {
+                  font-size: 9px !important;
+                  padding: 3px 4px !important;
+                  border: 1px solid #000 !important;
+                }
+                .border-2 { border: 2px solid #000 !important; }
+                /* Hide any UI elements that shouldn't print */
+                button, .dialog-header, .dialog-footer { display: none !important; }
+              }
             </style>
           </head>
           <body>
-            ${receiptRef.current.innerHTML}
+            <div style="width: 100%; height: 100%; padding: 0; margin: 0;">
+              <div id="invoice">
+              <header class="invoice-header">
+                <div class="gstin-info">
+                  <strong>GSTIN: ${shopDetails?.gstNumber || '27AAAAA0000A1Z5'}</strong>
+                </div>
+                <div class="company-details">
+                  <h2>${shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
+                  <p>${shopDetails?.address || '123 Agricultural Complex, Mumbai, Maharashtra - 400001'}</p>
+                  <p>Mobile: ${shopDetails?.phone || '+91-9876543210'} | Email: ${shopDetails?.email || 'info@krishisethu.com'}</p>
+                  <p>PAN No: ${shopDetails?.panNumber || 'AAAAA0000A'} | FSSAI Lic No: ${shopDetails?.fssaiNumber || 'RWMKTRP'}</p>
+                </div>
+                <div class="invoice-type">
+                  <strong>SALES INVOICE</strong><br>
+                  <strong>Original For Buyer</strong>
+                </div>
+              </header>
+
+              <section class="invoice-meta">
+                <div class="buyer-details">
+                  <p><strong>Buyer's Name and Address</strong></p>
+                  <p><strong>${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</strong></p>
+                  ${(selectedCustomer?.address || customerForm.address) ? `<p>${selectedCustomer?.address || customerForm.address}</p>` : ''}
+                  <p>Contact No.: ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</p>
+                  <p>GSTIN: ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</p>
+                </div>
+                <div class="invoice-details">
+                  <p><strong>Invoice No.:</strong> ${currentBillNumber}</p>
+                  <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-GB')}</p>
+                  <p><strong>LR Reference No.:</strong> 123456</p>
+                  <p><strong>Narration:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}</p>
+                </div>
+              </section>
+
+              <table class="invoice-table">
+                <thead>
+                  <tr>
+                    <th style="width: 30px;">Sr.</th>
+                    <th style="width: 200px;">Product, Name & Rate</th>
+                    <th style="width: 80px;">HSN Code</th>
+                    <th style="width: 70px;">Basic Price</th>
+                    <th style="width: 60px;">CGST Rs. CGST %</th>
+                    <th style="width: 60px;">SGST Rs. SGST %</th>
+                    <th style="width: 60px;">IGST Rs. IGST %</th>
+                    <th style="width: 70px;">Sales Price</th>
+                    <th style="width: 40px;">Qty</th>
+                    <th style="width: 40px;">Unit</th>
+                    <th style="width: 80px;">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${cart.map((item, index) => {
+                    const itemTotal = (item.price || 0) * item.quantity;
+                    const gstRate = item.gstRate || 18;
+                    const basicPrice = itemTotal / (1 + gstRate / 100);
+                    const gstAmount = itemTotal - basicPrice;
+                    const cgstAmount = gstAmount / 2;
+                    const sgstAmount = gstAmount / 2;
+
+                    return `
+                      <tr>
+                        <td style="text-align: center;">${index + 1}</td>
+                        <td>
+                          <div style="font-weight: bold;">${item.name}</div>
+                          <div style="font-size: 8px; color: #666;">Batch Exp: abc123456 10-2022</div>
+                        </td>
+                        <td style="text-align: center;">${item.hsnCode || '31052000'}</td>
+                        <td style="text-align: right;">₹${basicPrice.toFixed(2)}</td>
+                        <td style="text-align: center;">
+                          ₹${cgstAmount.toFixed(2)}<br>
+                          ${(gstRate/2).toFixed(1)}%
+                        </td>
+                        <td style="text-align: center;">
+                          ₹${sgstAmount.toFixed(2)}<br>
+                          ${(gstRate/2).toFixed(1)}%
+                        </td>
+                        <td style="text-align: center;">
+                          ₹0.00<br>
+                          0.0%
+                        </td>
+                        <td style="text-align: right;">₹${(item.price || 0).toFixed(2)}</td>
+                        <td style="text-align: center;">${item.quantity}</td>
+                        <td style="text-align: center;">Bag</td>
+                        <td style="text-align: right;">₹${itemTotal.toFixed(2)}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+
+              <section class="totals">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr>
+                    <td style="border: 1px solid #000; padding: 4px; width: 15%;">
+                      <strong>GST %</strong><br>
+                      18%
+                    </td>
+                    <td style="border: 1px solid #000; padding: 4px; width: 15%;">
+                      <strong>Taxable Amt</strong><br>
+                      ₹${(subtotal / 1.18).toFixed(2)}
+                    </td>
+                    <td style="border: 1px solid #000; padding: 4px; width: 15%;">
+                      <strong>SGST Amt.</strong><br>
+                      ₹${((subtotal - (subtotal / 1.18)) / 2).toFixed(2)}
+                    </td>
+                    <td style="border: 1px solid #000; padding: 4px; width: 15%;">
+                      <strong>CGST Amt.</strong><br>
+                      ₹${((subtotal - (subtotal / 1.18)) / 2).toFixed(2)}
+                    </td>
+                    <td style="border: 1px solid #000; padding: 4px; width: 15%;">
+                      <strong>Tax Amt.</strong><br>
+                      ₹${(subtotal - (subtotal / 1.18)).toFixed(2)}
+                    </td>
+                    <td style="border: 1px solid #000; padding: 4px; width: 25%;">
+                      <strong>Total Amount Bef ore Tax</strong><br>
+                      Add: SGST ₹${((subtotal - (subtotal / 1.18)) / 2).toFixed(2)}<br>
+                      Add: CGST ₹${((subtotal - (subtotal / 1.18)) / 2).toFixed(2)}<br>
+                      Add: IGST ₹0.00<br>
+                      <strong>Total Tax Amount : GST ₹${(subtotal - (subtotal / 1.18)).toFixed(2)}</strong><br>
+                      (-) Round Off ₹${(Math.round(total) - total).toFixed(2)}
+                    </td>
+                  </tr>
+                </table>
+
+                <div style="text-align: right; margin-top: 10px; border: 2px solid #000; padding: 10px;">
+                  <p style="font-size: 14px;"><strong>GRAND TOTAL: ₹${Math.round(total).toFixed(2)}</strong></p>
+                  <p style="font-size: 10px; margin-top: 5px;">For KrishiSethu Fertilizers</p>
+                </div>
+              </section>
+
+              <footer class="invoice-footer">
+                <div style="display: flex; justify-content: space-between;">
+                  <div style="width: 48%;">
+                    <p><strong>Bank Name:</strong> ${shopDetails?.bankName || 'Punjab National Bank'}</p>
+                    <p><strong>Ac No.:</strong> ${shopDetails?.accountNumber || '04050070000822'}</p>
+                    <p><strong>IFSC Code:</strong> ${shopDetails?.ifscCode || 'PUNB0040500'} Br. ${shopDetails?.branchName || 'Circular Rd, Rewari.'}</p>
+                    <p><strong>Bill Amount in Words:</strong> ${numberToWords(Math.round(total))} Only</p>
+                  </div>
+                  <div style="width: 48%; text-align: right;">
+                    <p style="margin-top: 30px;"><strong>Auth. Signatory</strong></p>
+                  </div>
+                </div>
+
+                <div class="terms-section">
+                  <p><strong>Terms & Conditions:</strong></p>
+                  <p>1) Goods once sold will not be taken back or exchanged</p>
+                  <p>2) Cheque Bounce Charges Rs. 450</p>
+                  <p>3) Subject to Vadodara Jurisdiction</p>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; margin-top: 20px; border-top: 1px solid #000; padding-top: 10px;">
+                  <div><strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}</div>
+                  <div><strong>Change:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}</div>
+                  <div><strong>Payment Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}</div>
+                </div>
+              </footer>
+              </div>
+            </div>
           </body>
         </html>
       `);
       printWindow.document.close();
-      printWindow.print();
+
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
     }
   };
 
@@ -666,6 +1301,7 @@ const POS = ({ onNavigate }) => {
   };
 
   return (
+    <>
     <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
       {/* Enhanced Header */}
       <div className="bg-card shadow-sm border-b p-4">
@@ -673,7 +1309,7 @@ const POS = ({ onNavigate }) => {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <ShoppingCart className="h-6 w-6 text-green-600" />
-              <h1 className="text-2xl font-bold text-gray-900">Point of Sale</h1>
+              <h1 className="text-2xl font-bold text-foreground">Point of Sale</h1>
             </div>
             <Badge variant="outline" className="text-sm">
               Bill #{currentBillNumber}
@@ -688,7 +1324,7 @@ const POS = ({ onNavigate }) => {
               <Upload className="h-3 w-3 mr-1" />
               UPLOAD IMAGES
             </Button>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               {new Date().toLocaleTimeString()}
             </div>
@@ -722,21 +1358,11 @@ const POS = ({ onNavigate }) => {
                   </div>
                   <div className="text-center">
                     <Button
-                      onClick={startBarcodeScanning}
-                      disabled={isScanning}
+                      onClick={openBarcodeScanner}
                       className="w-full"
                     >
-                      {isScanning ? (
-                        <>
-                          <Camera className="h-4 w-4 mr-2 animate-pulse" />
-                          Scanning...
-                        </>
-                      ) : (
-                        <>
-                          <QrCode className="h-4 w-4 mr-2" />
-                          Start Camera Scan
-                        </>
-                      )}
+                      <Camera className="h-4 w-4 mr-2" />
+                      Start Camera Scan
                     </Button>
                   </div>
                 </div>
@@ -767,7 +1393,7 @@ const POS = ({ onNavigate }) => {
               <CardContent className="pt-6">
                 <div className="space-y-4">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-5 w-5" />
                     <Input
                       placeholder="Search products by name, brand, or category..."
                       value={searchTerm}
@@ -996,7 +1622,7 @@ const POS = ({ onNavigate }) => {
         <Card>
           <CardContent className="pt-4">
             <div className="flex gap-2 mb-4 overflow-x-auto">
-              {['All Items', 'Fertilizers', 'Seeds', 'Pesticides', 'Organic'].map((category) => (
+              {['All Items', 'Chemical Fertilizer', 'Organic Fertilizer', 'Bio Fertilizer', 'Seeds', 'NPK Fertilizers'].map((category) => (
                 <Button
                   key={category}
                   variant={category === selectedCategory ? 'default' : 'outline'}
@@ -1032,9 +1658,11 @@ const POS = ({ onNavigate }) => {
                           onError={(e) => {
                             // Hide broken image and show fallback
                             e.target.style.display = 'none';
-                            const fallbackDiv = e.target.parentElement.querySelector('.fallback-icon');
-                            if (fallbackDiv) {
-                              fallbackDiv.style.display = 'flex';
+                            if (e.target.parentElement) {
+                              const fallbackDiv = e.target.parentElement.querySelector('.fallback-icon');
+                              if (fallbackDiv) {
+                                fallbackDiv.style.display = 'flex';
+                              }
                             }
                           }}
                           onLoad={(e) => {
@@ -1116,11 +1744,35 @@ const POS = ({ onNavigate }) => {
             </div>
 
             {/* No Products Found */}
-            {filteredProducts.length === 0 && (
+            {filteredProducts.length === 0 && products.length === 0 && (
+              <EmptyProducts
+                onAddProduct={() => {
+                  // Navigate to inventory page
+                  if (window.location.pathname !== '/inventory') {
+                    window.location.href = '/inventory';
+                  }
+                }}
+              />
+            )}
+
+            {/* No Search Results */}
+            {filteredProducts.length === 0 && products.length > 0 && (
               <div className="text-center py-12">
                 <Package className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">No products found</p>
-                <p className="text-sm text-gray-400">Try adjusting your search terms</p>
+                <p className="text-sm text-gray-400">
+                  {searchTerm ? `No results for "${searchTerm}"` : 'Try adjusting your search terms'}
+                </p>
+                {searchTerm && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => setSearchTerm('')}
+                  >
+                    Clear Search
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -1333,13 +1985,96 @@ const POS = ({ onNavigate }) => {
                           Confirm Payment ✅
                         </Button>
                       </DialogTrigger>
-                      <PaymentDialog
-                        total={total}
-                        paymentData={paymentData}
-                        setPaymentData={setPaymentData}
-                        onComplete={completeSale}
-                        isProcessing={isProcessing}
-                      />
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>💳 Payment</DialogTitle>
+                          <DialogDescription>
+                            Complete the payment for this sale
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4">
+                          {/* Payment Method Selection */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Payment Method</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                variant={paymentData.method === 'cash' ? 'default' : 'outline'}
+                                onClick={() => setPaymentData(prev => ({ ...prev, method: 'cash' }))}
+                                className="flex items-center gap-2"
+                              >
+                                💵 Cash
+                              </Button>
+                              <Button
+                                variant={paymentData.method === 'card' ? 'default' : 'outline'}
+                                onClick={() => setPaymentData(prev => ({ ...prev, method: 'card' }))}
+                                className="flex items-center gap-2"
+                              >
+                                💳 Card
+                              </Button>
+                              <Button
+                                variant={paymentData.method === 'upi' ? 'default' : 'outline'}
+                                onClick={() => setPaymentData(prev => ({ ...prev, method: 'upi' }))}
+                                className="flex items-center gap-2"
+                              >
+                                📱 UPI
+                              </Button>
+                              <Button
+                                variant={paymentData.method === 'credit' ? 'default' : 'outline'}
+                                onClick={() => setPaymentData(prev => ({ ...prev, method: 'credit' }))}
+                                className="flex items-center gap-2"
+                              >
+                                🏦 Credit
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Amount Details */}
+                          <div className="bg-gray-50 p-3 rounded-lg">
+                            <div className="flex justify-between items-center text-lg font-semibold">
+                              <span>Total Amount:</span>
+                              <span>₹{total.toFixed(2)}</span>
+                            </div>
+                          </div>
+
+                          {/* Payment Amount Input */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Amount Received</label>
+                            <Input
+                              type="number"
+                              value={paymentData.amountReceived}
+                              onChange={(e) => setPaymentData(prev => ({
+                                ...prev,
+                                amountReceived: parseFloat(e.target.value) || 0
+                              }))}
+                              placeholder="Enter amount received"
+                              className="text-lg"
+                            />
+                          </div>
+
+                          {/* Change Calculation */}
+                          {paymentData.amountReceived > 0 && (
+                            <div className="bg-green-50 p-3 rounded-lg">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">Change to Return:</span>
+                                <span className="text-lg font-semibold text-green-600">
+                                  ₹{Math.max(0, paymentData.amountReceived - total).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <DialogFooter>
+                          <Button
+                            onClick={completeSale}
+                            disabled={isProcessing || paymentData.amountReceived < total}
+                            className="w-full bg-green-600 hover:bg-green-700"
+                          >
+                            {isProcessing ? 'Processing...' : 'Complete Payment'}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
                     </Dialog>
                     </div>
                   </div>
@@ -1351,17 +2086,284 @@ const POS = ({ onNavigate }) => {
       </div>
 
       {/* Receipt Dialog */}
-      <ReceiptDialog
-        open={showReceiptDialog}
-        onOpenChange={setShowReceiptDialog}
-        cart={cart}
-        customer={selectedCustomer}
-        payment={paymentData}
-        totals={{ subtotal, discount: discountAmount, tax: taxAmount, total }}
-        billNumber={currentBillNumber}
-        shopDetails={shopDetails}
-        onNewSale={startNewSale}
-      />
+      <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              🧾 Payment Receipt
+              <Badge variant="outline" className="ml-auto">#{currentBillNumber}</Badge>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            {/* Receipt Content - Professional Invoice Format */}
+            <div ref={receiptRef} className="receipt-content bg-white p-2" style={{
+              fontFamily: 'Arial, sans-serif',
+              width: '194mm', // A4 width minus margins
+              minHeight: '277mm', // A4 height minus margins
+              maxWidth: '194mm',
+              fontSize: '10px',
+              lineHeight: '1.3',
+              margin: '0 auto',
+              overflow: 'visible',
+              border: '1px solid #ddd'
+            }}>
+
+              {/* Complete Invoice with Border */}
+              <div className="border-2 border-black" style={{ height: '100%', width: '100%' }}>
+                {/* Top Header with GSTIN and Invoice Type */}
+                <div className="border-b border-black p-1 flex justify-between items-center text-xs">
+                  <span><strong>GSTIN: {shopDetails?.gstNumber || '27AAAAA0000A1Z5'}</strong></span>
+                  <span><strong>SALES INVOICE</strong></span>
+                  <span><strong>Original For Buyer</strong></span>
+                </div>
+
+                {/* Company Name and Details */}
+                <div className="text-center p-2 border-b border-black">
+                  <h2 className="text-base font-bold mb-1">{shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
+                  <p className="text-xs mb-1">
+                    {shopDetails?.address && typeof shopDetails.address === 'object' ?
+                      `${shopDetails.address.street || ''}, ${shopDetails.address.city || ''}, ${shopDetails.address.state || ''} - ${shopDetails.address.pincode || ''}`.replace(/^,\s*|,\s*$/, '').replace(/,\s*,/g, ',')
+                      : shopDetails?.address || 'A/12, Shrenik Park, Opp. Jain Temple, Near Akota Stadium, Akota Dandia Bazar, Vadodara, Gujarat'
+                    }
+                  </p>
+                  <p className="text-xs">
+                    Mobile: {shopDetails?.phone || '+91-9876543210'} | Email: {shopDetails?.email || 'info@krishisethu.com'}
+                  </p>
+                  <p className="text-xs">
+                    FLZ Lic No.: RWA/147F, Seed Lic No.: RWA/203RS, Pesticide Lic No.: RWA/47RP
+                  </p>
+                </div>
+
+                {/* Buyer Details and Invoice Info */}
+                <div className="flex border-b border-black">
+                  {/* Left - Buyer Details */}
+                  <div className="flex-1 p-1 border-r border-black">
+                    <p className="text-xs font-bold mb-1">Buyer's Name and Address</p>
+                    <p className="text-xs font-semibold">{selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</p>
+                    {(selectedCustomer?.address || customerForm.address) && (
+                      <p className="text-xs">{selectedCustomer?.address || customerForm.address}</p>
+                    )}
+                    <p className="text-xs">Contact No.: {selectedCustomer?.phone || customerForm.phone || 'N/A'}</p>
+                    <p className="text-xs">GSTIN: {selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</p>
+                  </div>
+
+                  {/* Right - Invoice Details */}
+                  <div className="w-40 p-1">
+                    <div className="text-xs space-y-0.5">
+                      <div className="flex justify-between">
+                        <span>Invoice No.:</span>
+                        <span>{currentBillNumber}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Date:</span>
+                        <span>{new Date().toLocaleDateString('en-GB')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>LR Reference No:</span>
+                        <span>123456</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Narration:</span>
+                        <span>{paymentData.method?.toUpperCase() || 'CASH'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
+                  <thead>
+                    <tr>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '25px' }}>Sr.</th>
+                      <th className="border border-black px-1 py-0.5 text-left" style={{ width: '180px' }}>Product, Name & Rate</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>HSN Code</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>Basic Price</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>CGST Rs. CGST %</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>SGST Rs. SGST %</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>IGST Rs. IGST %</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>Sales Price</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '35px' }}>Qty</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '35px' }}>Unit</th>
+                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.map((item, index) => {
+                      const itemTotal = item.price * item.quantity;
+                      const gstRate = item.gstRate || 5;
+                      const basicPrice = itemTotal / (1 + gstRate / 100);
+                      const gstAmount = itemTotal - basicPrice;
+                      const cgstAmount = gstAmount / 2;
+                      const sgstAmount = gstAmount / 2;
+
+                      return (
+                        <tr key={index}>
+                          <td className="border border-black px-1 py-0.5 text-center">{index + 1}</td>
+                          <td className="border border-black px-1 py-0.5">
+                            <div className="font-medium">{item.name}</div>
+                            <div style={{ fontSize: '8px' }} className="text-gray-600">Batch Exp: abc123456 10-2022</div>
+                          </td>
+                          <td className="border border-black px-1 py-0.5 text-center">{item.hsn || '31051000'}</td>
+                          <td className="border border-black px-1 py-0.5 text-center">
+                            <div>{basicPrice.toFixed(2)}</div>
+                            <div style={{ fontSize: '8px' }}>{(gstRate/2).toFixed(1)}%</div>
+                          </td>
+                          <td className="border border-black px-1 py-0.5 text-center">
+                            <div>{cgstAmount.toFixed(2)}</div>
+                            <div style={{ fontSize: '8px' }}>{(gstRate/2).toFixed(1)}%</div>
+                          </td>
+                          <td className="border border-black px-1 py-0.5 text-center">
+                            <div>{sgstAmount.toFixed(2)}</div>
+                            <div style={{ fontSize: '8px' }}>{(gstRate/2).toFixed(1)}%</div>
+                          </td>
+                          <td className="border border-black px-1 py-0.5 text-center">
+                            <div>0.00</div>
+                            <div style={{ fontSize: '8px' }}>0.00%</div>
+                          </td>
+                          <td className="border border-black px-1 py-0.5 text-center">{item.price.toFixed(2)}</td>
+                          <td className="border border-black px-1 py-0.5 text-center">{item.quantity}</td>
+                          <td className="border border-black px-1 py-0.5 text-center">Bag</td>
+                          <td className="border border-black px-1 py-0.5 text-center font-medium">{itemTotal.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* Empty rows for spacing */}
+                    {Array.from({ length: Math.max(0, 4 - cart.length) }).map((_, index) => (
+                      <tr key={`empty-${index}`} style={{ height: '20px' }}>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                        <td className="border border-black px-1 py-0.5"></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Tax Summary */}
+                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
+                  <tbody>
+                    <tr>
+                      <td className="border border-black p-1 w-16 text-center"><strong>GST %</strong><br/>5%</td>
+                      <td className="border border-black p-1 w-20 text-center"><strong>Taxable Amt</strong><br/>{(subtotal - discountAmount).toFixed(2)}</td>
+                      <td className="border border-black p-1 w-20 text-center"><strong>SGST Amt.</strong><br/>{(taxAmount/2).toFixed(2)}</td>
+                      <td className="border border-black p-1 w-20 text-center"><strong>CGST Amt.</strong><br/>{(taxAmount/2).toFixed(2)}</td>
+                      <td className="border border-black p-1 w-20 text-center"><strong>Tax Amt.</strong><br/>{taxAmount.toFixed(2)}</td>
+                      <td className="border border-black p-1">
+                        <div className="space-y-0.5">
+                          <div className="flex justify-between">
+                            <span>Total Amount Before Tax</span>
+                            <span>{(subtotal - discountAmount).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Add: SGST</span>
+                            <span>{(taxAmount/2).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Add: CGST</span>
+                            <span>{(taxAmount/2).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Add: IGST</span>
+                            <span>0.00</span>
+                          </div>
+                          <div className="flex justify-between border-t border-black pt-0.5">
+                            <span><strong>Total Tax Amount : GST</strong></span>
+                            <span><strong>{taxAmount.toFixed(2)}</strong></span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>(-) Round Off</span>
+                            <span>-0.31</span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Bank Details and Grand Total */}
+                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
+                  <tbody>
+                    <tr>
+                      <td className="border border-black p-1" style={{ width: '60%' }}>
+                        <div className="space-y-1">
+                          <p><strong>Bank Name:</strong> Punjab National Bank</p>
+                          <p><strong>Ac No.:</strong> 0405008700008228</p>
+                          <p><strong>IFSC Code:</strong> PUNB0040500 Br. Circular Rd, Rewari.</p>
+                          <p><strong>Bill Amount in Words:</strong> {numberToWordsIndian(Math.round(total))} Only</p>
+                        </div>
+                      </td>
+                      <td className="border border-black p-1 text-center" style={{ width: '40%' }}>
+                        <div className="text-sm font-bold mb-1">GRAND TOTAL</div>
+                        <div className="text-xl font-bold mb-2">{total.toFixed(2)}</div>
+                        <div style={{ fontSize: '8px' }} className="mb-3">For {shopDetails?.name || 'KrishiSethu Fertilizers'}</div>
+                        <div style={{ fontSize: '8px' }} className="border-t border-black pt-2">Auth. Signatory</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Terms and Conditions */}
+                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
+                  <tbody>
+                    <tr>
+                      <td className="border border-black p-1">
+                        <p><strong>Terms & Conditions:</strong></p>
+                        <p>1) Goods once sold will not be taken back or exchanged</p>
+                        <p>2) Cheque Bounce Charges Rs. 450</p>
+                        <p>3) Subject to Vadodara Jurisdiction</p>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Payment Log Section */}
+                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
+                  <tbody>
+                    <tr>
+                      <td className="border border-black p-1 bg-gray-50">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <p><strong>Amount Received:</strong></p>
+                            <p className="text-sm font-bold">₹{paymentData.amountReceived?.toFixed(2) || '0.00'}</p>
+                          </div>
+                          <div>
+                            <p><strong>Change:</strong></p>
+                            <p className="text-sm font-bold">₹{Math.max(0, (paymentData.amountReceived || 0) - total).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p><strong>Payment Method:</strong></p>
+                            <p className="text-sm font-bold">{paymentData.method?.toUpperCase() || 'CASH'}</p>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowReceiptDialog(false)}>
+              Close
+            </Button>
+            <Button variant="outline" onClick={printReceipt}>
+              🖨️ Print Receipt
+            </Button>
+            <Button onClick={startNewSale} className="bg-green-600 hover:bg-green-700">
+              🔁 New Sale
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Manual Image Upload Dialog */}
       <Dialog open={showImageUploadDialog} onOpenChange={setShowImageUploadDialog}>
@@ -1453,436 +2455,18 @@ const POS = ({ onNavigate }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Barcode Scanner Component */}
+      <BarcodeScanner
+        isOpen={showBarcodeScanner}
+        onScan={handleBarcodeScan}
+        onClose={closeBarcodeScanner}
+      />
     </div>
+    </>
   );
 };
 
-// Payment Dialog Component
-const PaymentDialog = ({ total, paymentData, setPaymentData, onComplete, isProcessing }) => {
 
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>💳 Payment</DialogTitle>
-        <DialogDescription>
-          Complete the payment for this sale
-        </DialogDescription>
-      </DialogHeader>
-
-      <div className="space-y-4">
-        <div className="text-center">
-          <p className="text-2xl font-bold">Total: ₹{total.toFixed(2)}</p>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Payment Method</label>
-          <Select
-            value={paymentData.method}
-            onValueChange={(value) => setPaymentData(prev => ({ ...prev, method: value }))}
-            disabled={isProcessing}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="cash">💵 Cash</SelectItem>
-              <SelectItem value="card">💳 Card</SelectItem>
-              <SelectItem value="upi">📱 UPI</SelectItem>
-              <SelectItem value="credit">📝 Credit</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {isProcessing && (
-          <div className="text-center p-4 bg-blue-50 rounded-lg">
-            <div className="animate-spin h-6 w-6 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-            <p className="text-sm text-blue-600">Processing payment...</p>
-          </div>
-        )}
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" disabled={isProcessing}>
-          Back
-        </Button>
-        <Button
-          onClick={() => {
-            console.log('Complete Payment button clicked!');
-            onComplete();
-          }}
-          disabled={isProcessing}
-          className="bg-green-600 hover:bg-green-700"
-        >
-          {isProcessing ? (
-            <>
-              <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-              Processing...
-            </>
-          ) : (
-            'Complete Payment ✅'
-          )}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-};
-
-// Receipt Dialog Component
-const ReceiptDialog = ({ open, onOpenChange, cart, customer, payment, totals, onNewSale, billNumber, shopDetails }) => {
-  const currentDate = new Date();
-  const receiptRef = useRef();
-
-  // Handle thermal printing
-  const handleThermalPrint = async () => {
-    try {
-      const receiptData = {
-        shopDetails,
-        billNumber,
-        customer,
-        items: cart,
-        totals,
-        payment,
-        date: currentDate
-      };
-
-      const result = await thermalPrintService.printReceipt(receiptData);
-
-      if (result.success) {
-        alert('Receipt sent to thermal printer!');
-      } else {
-        alert(`Print error: ${result.error}`);
-      }
-    } catch (error) {
-      console.error('Error printing thermal receipt:', error);
-      alert('Error printing receipt');
-    }
-  };
-
-  // Handle regular printing
-  const handlePrint = () => {
-    try {
-      // Create a new window for printing
-      const printWindow = window.open('', '_blank', 'width=800,height=600');
-      
-      if (!printWindow) {
-        alert('Please allow popups for printing');
-        return;
-      }
-
-      // Get the receipt content
-      const receiptContent = receiptRef.current;
-      if (!receiptContent) {
-        alert('Receipt content not found');
-        return;
-      }
-
-      // Create the print document
-      const printDocument = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Receipt - ${billNumber}</title>
-          <style>
-            @page { 
-              size: A4 portrait; 
-              margin: 10mm; 
-            }
-            
-            body {
-              font-family: 'Courier New', monospace;
-              font-size: 12px;
-              line-height: 1.4;
-              color: black;
-              background: white;
-              margin: 0;
-              padding: 20px;
-            }
-            
-            .receipt-container {
-              max-width: 100%;
-              margin: 0 auto;
-              background: white;
-              color: black;
-            }
-            
-            .text-center { text-align: center; }
-            .text-sm { font-size: 11px; }
-            .text-xs { font-size: 10px; }
-            .text-lg { font-size: 14px; }
-            .font-bold { font-weight: bold; }
-            .border-b { border-bottom: 1px solid black; }
-            .border-b-2 { border-bottom: 2px solid black; }
-            .border-t { border-top: 1px solid black; }
-            .pb-1 { padding-bottom: 4px; }
-            .pb-2 { padding-bottom: 8px; }
-            .pb-3 { padding-bottom: 12px; }
-            .pt-0\\.5 { padding-top: 2px; }
-            .pt-1 { padding-top: 4px; }
-            .pt-2 { padding-top: 8px; }
-            .mt-1 { margin-top: 4px; }
-            .mt-2 { margin-top: 8px; }
-            .mb-1 { margin-bottom: 4px; }
-            .mb-2 { margin-bottom: 8px; }
-            .space-y-1 > * + * { margin-top: 4px; }
-            .space-y-2 > * + * { margin-top: 8px; }
-            .space-y-3 > * + * { margin-top: 12px; }
-            .grid { display: grid; }
-            .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-            .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-            .gap-1 { gap: 4px; }
-            .gap-2 { gap: 8px; }
-            .flex { display: flex; }
-            .justify-between { justify-content: space-between; }
-            .text-gray-600 { color: #666; }
-            
-            /* Table styles */
-            table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin: 8px 0;
-            }
-            th, td { 
-              padding: 2px 4px; 
-              text-align: left; 
-              font-size: 10px;
-            }
-            th { 
-              font-weight: bold; 
-            }
-            .text-right { text-align: right; }
-            .text-left { text-align: left; }
-            .text-center { text-align: center; }
-            
-            /* Specific border classes used in the table */
-            .border-b { border-bottom: 1px solid black !important; }
-            .border-b-2 { border-bottom: 2px solid black !important; }
-            .border-t { border-top: 1px solid black !important; }
-            .border-r { border-right: 1px solid black !important; }
-            .border-l { border-left: 1px solid black !important; }
-            .border { border: 1px solid black !important; }
-            .border-black { border-color: black !important; }
-            
-            /* Width classes */
-            .w-8 { width: 2rem; }
-            .w-12 { width: 3rem; }
-            .w-16 { width: 4rem; }
-            .w-20 { width: 5rem; }
-            .w-full { width: 100%; }
-            
-            /* Padding classes */
-            .px-1 { padding-left: 4px; padding-right: 4px; }
-            .py-0\.5 { padding-top: 2px; padding-bottom: 2px; }
-            
-            /* Grid layout for non-table content */
-            .grid-cols-2 { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr; 
-              gap: 8px; 
-            }
-            .grid-cols-3 { 
-              display: grid; 
-              grid-template-columns: 1fr 1fr 1fr; 
-              gap: 4px; 
-            }
-          </style>
-        </head>
-        <body>
-          <div class="receipt-container">
-            ${receiptContent.innerHTML}
-          </div>
-        </body>
-        </html>
-      `;
-
-      // Write the document and print
-      printWindow.document.write(printDocument);
-      printWindow.document.close();
-      
-      // Wait for content to load then print
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-          printWindow.close();
-        }, 250);
-      };
-
-    } catch (error) {
-      console.error('Error printing receipt:', error);
-      alert('Error printing receipt');
-    }
-  };
-
-  // Local helper function to format address
-  const formatAddress = (address) => {
-    if (!address) return '';
-    if (typeof address === 'string') return address;
-
-    const parts = [
-      address.street,
-      address.city,
-      address.state,
-      address.pincode
-    ].filter(part => part && part.trim() !== '');
-
-    return parts.join(', ');
-  };
-  
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col bg-white text-black" style={{ backgroundColor: 'white', color: 'black' }}>
-        <DialogHeader className="bg-white" style={{ backgroundColor: 'white' }}>
-          <DialogTitle className="text-black" style={{ color: 'black' }}>🧾 Receipt</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex-1 max-h-[70vh] overflow-y-auto receipt-scroll pr-3 bg-white" style={{ backgroundColor: 'white' }}>
-          <div ref={receiptRef} id="printable-invoice" className="bg-white p-4 text-black space-y-3 text-sm font-mono border rounded" style={{ backgroundColor: 'white', color: 'black' }}>
-          {/* Shop Header */}
-          <div className="text-center border-b-2 border-black pb-3">
-            {/* Logo and Shop Name */}
-            <div className="flex items-center justify-center gap-3 mb-2">
-              {shopDetails?.logo ? (
-                <img
-                  src={shopDetails.logo}
-                  alt="Shop Logo"
-                  className="w-12 h-12 object-contain"
-                />
-              ) : (
-                <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                  VK
-                </div>
-              )}
-              <h2 className="text-lg font-bold">{shopDetails?.name || 'VK FERTILIZERS'}</h2>
-            </div>
-            <p className="text-sm">{shopDetails ? formatAddress(shopDetails.address) : 'Siababa Temple Near Darga, Holagunda'}</p>
-            <div className="grid grid-cols-2 gap-2 text-sm mt-2">
-              <p>Contact: {shopDetails?.phone || '8688765111'}</p>
-              <p>GSTIN: {shopDetails?.gstNumber || '29ABCDE1234F1Z5'}</p>
-            </div>
-            <div className="grid grid-cols-3 gap-1 text-sm mt-2">
-              <p>FLZ: {shopDetails?.fertilizerLicense || 'FL/2024/001'}</p>
-              <p>Seed: {shopDetails?.seedLicense || 'SD/2024/001'}</p>
-              <p>Pest: {shopDetails?.pesticideLicense || 'PS/2024/001'}</p>
-            </div>
-          </div>
-
-          {/* Invoice Header */}
-          <div className="text-center border-b pb-2">
-            <h3 className="text-base font-bold">RETAIL INVOICE</h3>
-          </div>
-
-          {/* Invoice Details */}
-          <div className="grid grid-cols-2 gap-4 border-b pb-2 text-sm">
-            <div>
-              <p><strong>Invoice:</strong> {billNumber}</p>
-              <p><strong>Date:</strong> {currentDate.toLocaleDateString('en-IN')}</p>
-            </div>
-            <div className="text-right">
-              <p><strong>Cashier:</strong> Admin</p>
-              <p><strong>Buyer:</strong> {customer?.name || 'Walk-in Customer'}</p>
-            </div>
-          </div>
-          
-          {/* Items Table */}
-          <div className="border-b pb-1">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-black">
-                  <th className="text-left border-r border-black px-1 py-0.5 w-8">Sr</th>
-                  <th className="text-left border-r border-black px-1 py-0.5">Description</th>
-                  <th className="text-center border-r border-black px-1 py-0.5 w-16">HSN</th>
-                  <th className="text-center border-r border-black px-1 py-0.5 w-12">GST%</th>
-                  <th className="text-right border-r border-black px-1 py-0.5 w-16">Rate</th>
-                  <th className="text-center border-r border-black px-1 py-0.5 w-12">Qty</th>
-                  <th className="text-right px-1 py-0.5 w-20">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart.map((item, index) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="border-r border-black px-1 py-0.5">{index + 1}</td>
-                    <td className="border-r border-black px-1 py-0.5">
-                      <div className="font-medium">{item.name}</div>
-                      {item.batchNo && <div className="text-xs text-gray-600">B:{item.batchNo}</div>}
-                    </td>
-                    <td className="text-center border-r border-black px-1 py-0.5">{item.hsn || '31051000'}</td>
-                    <td className="text-center border-r border-black px-1 py-0.5">{item.gstRate || '5'}</td>
-                    <td className="text-right border-r border-black px-1 py-0.5">₹{item.price.toFixed(2)}</td>
-                    <td className="text-center border-r border-black px-1 py-0.5">{item.quantity}</td>
-                    <td className="text-right px-1 py-0.5">₹{(item.price * item.quantity).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Totals Section */}
-          <div className="space-y-0.5 border-b pb-1 text-xs">
-            <div className="flex justify-between">
-              <span>Taxable Amt:</span>
-              <span>₹{(totals.subtotal - totals.discount).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>GST @5%:</span>
-              <span>₹{totals.tax.toFixed(2)}</span>
-            </div>
-            {totals.discount > 0 && (
-              <div className="flex justify-between">
-                <span>Discount:</span>
-                <span>-₹{totals.discount.toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between font-bold text-sm border-t pt-0.5">
-              <span>TOTAL:</span>
-              <span>₹{totals.total.toFixed(2)}</span>
-            </div>
-          </div>
-
-          {/* Bank Details */}
-          <div className="border-b pb-3">
-            <p className="font-bold mb-1">Bank Details:</p>
-            <div className="text-xs space-y-1">
-              <p>Bank Name: {shopDetails?.bankName || 'State Bank of India'}</p>
-              <p>A/C No: {shopDetails?.accountNumber || '12345678901234'} | IFSC: {shopDetails?.ifscCode || 'SBIN0001234'}</p>
-            </div>
-          </div>
-
-          {/* Payment Method */}
-          <div className="border-b pb-1 text-xs">
-            <div className="flex justify-between">
-              <span className="font-bold">Payment:</span>
-              <span className="capitalize font-bold">{payment.method}</span>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center text-xs pt-1">
-            <p className="font-bold">Thank you for your purchase!</p>
-            <p>Keep fertilizers in cool, dry place.</p>
-            <p className="text-gray-600">Contact: {shopDetails?.phone || '8688765111'}</p>
-          </div>
-          </div>
-        </div>
-
-        <DialogFooter className="mt-4 pt-4 border-t flex-shrink-0 bg-white" style={{ backgroundColor: 'white' }}>
-          <Button variant="outline" onClick={handlePrint}>
-            🖨️ Print Receipt
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => handleThermalPrint()}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            🖨️ Thermal Print
-          </Button>
-          <Button onClick={onNewSale} className="bg-green-600 hover:bg-green-700">
-            🔁 New Sale
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
-
-  );
-};
 
 export default POS;

@@ -3,8 +3,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-// import { suppliersService } from '../lib/firestore'; // Commented out for demo - using mock data
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { suppliersService } from '../lib/supabaseDb';
+import { realtimeService } from '../lib/realtime';
+import {
+  Truck,
+  Plus,
+  Edit,
+  Trash2,
+  ArrowLeft,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle,
+  Loader2
+} from 'lucide-react';
 
 const Suppliers = ({ onNavigate }) => {
   const [suppliers, setSuppliers] = useState([]);
@@ -25,13 +37,42 @@ const Suppliers = ({ onNavigate }) => {
     gstNumber: ''
   });
   const [errors, setErrors] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  // Mock suppliers data
-  useEffect(() => {
-    const mockSuppliers = [
+  // Load suppliers from Firebase
+  const loadSuppliers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('Loading suppliers from Firebase...');
+
+      const firebaseSuppliers = await suppliersService.getAll();
+      console.log('Loaded suppliers:', firebaseSuppliers);
+
+      if (firebaseSuppliers && firebaseSuppliers.length > 0) {
+        setSuppliers(firebaseSuppliers);
+        setFilteredSuppliers(firebaseSuppliers);
+      } else {
+        // If no suppliers exist, create some sample data
+        await createSampleSuppliers();
+      }
+    } catch (error) {
+      console.error('Error loading suppliers:', error);
+      setError('Failed to load suppliers. Please try again.');
+      // Fallback to empty array
+      setSuppliers([]);
+      setFilteredSuppliers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Create sample suppliers for demo
+  const createSampleSuppliers = async () => {
+    const sampleSuppliers = [
       {
-        id: 'sup1',
         name: 'Tata Chemicals Ltd',
         contactPerson: 'Rajesh Kumar',
         phone: '+91-9876543210',
@@ -42,12 +83,10 @@ const Suppliers = ({ onNavigate }) => {
         pincode: '400001',
         gstNumber: '27AAACT2727Q1ZZ',
         isActive: true,
-        createdAt: new Date('2024-01-15'),
         totalPurchases: 15,
         totalAmount: 450000
       },
       {
-        id: 'sup2',
         name: 'IFFCO Distributors',
         contactPerson: 'Suresh Patel',
         phone: '+91-9876543211',
@@ -58,12 +97,10 @@ const Suppliers = ({ onNavigate }) => {
         pincode: '380001',
         gstNumber: '24AAACI1681G1ZZ',
         isActive: true,
-        createdAt: new Date('2024-02-10'),
         totalPurchases: 12,
         totalAmount: 320000
       },
       {
-        id: 'sup3',
         name: 'Green Gold Organics',
         contactPerson: 'Priya Sharma',
         phone: '+91-9876543212',
@@ -74,12 +111,10 @@ const Suppliers = ({ onNavigate }) => {
         pincode: '411001',
         gstNumber: '27AABCG1234Q1ZZ',
         isActive: true,
-        createdAt: new Date('2024-03-05'),
         totalPurchases: 8,
         totalAmount: 180000
       },
       {
-        id: 'sup4',
         name: 'Coromandel International',
         contactPerson: 'Amit Singh',
         phone: '+91-9876543213',
@@ -90,13 +125,46 @@ const Suppliers = ({ onNavigate }) => {
         pincode: '500001',
         gstNumber: '36AABCC1234Q1ZZ',
         isActive: false,
-        createdAt: new Date('2023-12-20'),
         totalPurchases: 5,
         totalAmount: 125000
       }
     ];
-    setSuppliers(mockSuppliers);
-    setFilteredSuppliers(mockSuppliers);
+
+    try {
+      for (const supplier of sampleSuppliers) {
+        await suppliersService.create(supplier);
+      }
+      // Reload suppliers after creating samples
+      const newSuppliers = await suppliersService.getAll();
+      setSuppliers(newSuppliers);
+      setFilteredSuppliers(newSuppliers);
+    } catch (error) {
+      console.error('Error creating sample suppliers:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Set up real-time subscription for suppliers
+    const unsubscribe = realtimeService.subscribeToSuppliers((data, error) => {
+      if (error) {
+        console.error('Real-time suppliers error:', error);
+        setError('Failed to sync supplier data. Please refresh.');
+        // Fallback to manual loading
+        loadSuppliers();
+      } else if (data) {
+        console.log('Real-time suppliers update:', data);
+        setSuppliers(data);
+        setLoading(false);
+      }
+    });
+
+    // Initial load if real-time fails
+    loadSuppliers();
+
+    // Cleanup subscription on unmount
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Filter suppliers based on search
@@ -193,70 +261,75 @@ const Suppliers = ({ onNavigate }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
 
-    setLoading(true);
-    
     try {
+      setSaving(true);
+      setError(null);
+
       if (selectedSupplier) {
         // Update existing supplier
         console.log('Updating supplier:', selectedSupplier.id, formData);
-        // await suppliersService.update(selectedSupplier.id, formData);
-        
-        // Update local state for demo
-        setSuppliers(prev => prev.map(supplier => 
-          supplier.id === selectedSupplier.id 
-            ? { ...supplier, ...formData, updatedAt: new Date() }
-            : supplier
-        ));
-        
+        await suppliersService.update(selectedSupplier.id, formData);
+
+        // Refresh the supplier list
+        await loadSuppliers();
+
         setShowEditDialog(false);
+        setSelectedSupplier(null);
         alert('Supplier updated successfully!');
       } else {
         // Add new supplier
         console.log('Adding new supplier:', formData);
-        // const newId = await suppliersService.add(formData);
-        
-        // Add to local state for demo
+
         const newSupplier = {
-          id: Date.now().toString(),
           ...formData,
           isActive: true,
-          createdAt: new Date(),
           totalPurchases: 0,
           totalAmount: 0
         };
-        
-        setSuppliers(prev => [newSupplier, ...prev]);
+
+        await suppliersService.create(newSupplier);
+
+        // Refresh the supplier list
+        await loadSuppliers();
+
         setShowAddDialog(false);
         alert('Supplier added successfully!');
       }
-      
+
       resetForm();
       setSelectedSupplier(null);
     } catch (error) {
       console.error('Error saving supplier:', error);
+      setError('Failed to save supplier. Please try again.');
       alert('Error saving supplier. Please try again.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
   const handleDelete = async (supplier) => {
     if (window.confirm(`Are you sure you want to delete ${supplier.name}?`)) {
       try {
+        setSaving(true);
+        setError(null);
+
         console.log('Deleting supplier:', supplier.id);
-        // await suppliersService.delete(supplier.id);
-        
-        // Remove from local state for demo
-        setSuppliers(prev => prev.filter(s => s.id !== supplier.id));
+        await suppliersService.delete(supplier.id);
+
+        // Refresh the supplier list
+        await loadSuppliers();
         alert('Supplier deleted successfully!');
       } catch (error) {
         console.error('Error deleting supplier:', error);
+        setError('Failed to delete supplier. Please try again.');
         alert('Error deleting supplier. Please try again.');
+      } finally {
+        setSaving(false);
       }
     }
   };
@@ -279,19 +352,27 @@ const Suppliers = ({ onNavigate }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Supplier Management</h1>
+          <div className="flex items-center space-x-2 mb-2">
+            <Button variant="outline" size="sm" onClick={() => onNavigate('dashboard')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Dashboard
+            </Button>
+          </div>
+          <h1 className="text-3xl font-bold text-foreground">Supplier Management</h1>
           <p className="text-gray-600">Manage your fertilizer suppliers</p>
         </div>
         <div className="flex space-x-2">
-          <Button onClick={handleAdd} className="bg-green-600 hover:bg-green-700">
-            ➕ Add Supplier
+          <Button variant="outline" onClick={loadSuppliers} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
           </Button>
-          <Button variant="outline" onClick={() => onNavigate('dashboard')}>
-            ← Back to Dashboard
+          <Button onClick={handleAdd} disabled={saving}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Supplier
           </Button>
         </div>
       </div>
@@ -364,20 +445,44 @@ const Suppliers = ({ onNavigate }) => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4">Supplier</th>
-                  <th className="text-left py-3 px-4">Contact</th>
-                  <th className="text-left py-3 px-4">Location</th>
-                  <th className="text-left py-3 px-4">Purchases</th>
-                  <th className="text-left py-3 px-4">Status</th>
-                  <th className="text-left py-3 px-4">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSuppliers.map((supplier) => (
+          {/* Error Display */}
+          {error && (
+            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-md mb-4">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700">{error}</span>
+              <Button variant="outline" size="sm" onClick={loadSuppliers} className="ml-auto">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Retry
+              </Button>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="text-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
+              <p className="text-muted-foreground">Loading suppliers...</p>
+            </div>
+          ) : filteredSuppliers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Truck className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+              <p className="text-lg font-medium">No suppliers found</p>
+              <p className="text-sm">Try adjusting your search or add a new supplier</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-4">Supplier</th>
+                    <th className="text-left py-3 px-4">Contact</th>
+                    <th className="text-left py-3 px-4">Location</th>
+                    <th className="text-left py-3 px-4">Purchases</th>
+                    <th className="text-left py-3 px-4">Status</th>
+                    <th className="text-left py-3 px-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSuppliers.map((supplier) => (
                   <tr key={supplier.id} className="border-b hover:bg-gray-50">
                     <td className="py-3 px-4">
                       <div>
@@ -417,32 +522,27 @@ const Suppliers = ({ onNavigate }) => {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(supplier)}>
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(supplier)} disabled={saving}>
+                          <Edit className="h-4 w-4 mr-1" />
                           Edit
                         </Button>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           size="sm"
-                          onClick={() => toggleSupplierStatus(supplier)}
-                          className={supplier.isActive ? 'text-red-600' : 'text-green-600'}
-                        >
-                          {supplier.isActive ? 'Deactivate' : 'Activate'}
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
                           onClick={() => handleDelete(supplier)}
-                          className="text-red-600"
+                          disabled={saving}
+                          className="text-red-600 hover:text-red-700"
                         >
-                          Delete
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -453,7 +553,7 @@ const Suppliers = ({ onNavigate }) => {
         title="Add New Supplier"
         formData={formData}
         errors={errors}
-        loading={loading}
+        loading={saving}
         onChange={handleChange}
         onSubmit={handleSubmit}
         onCancel={() => {
@@ -469,7 +569,7 @@ const Suppliers = ({ onNavigate }) => {
         title="Edit Supplier"
         formData={formData}
         errors={errors}
-        loading={loading}
+        loading={saving}
         onChange={handleChange}
         onSubmit={handleSubmit}
         onCancel={() => {
@@ -608,11 +708,21 @@ const SupplierDialog = ({ open, onOpenChange, title, formData, errors, loading, 
         </form>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
+          <Button variant="outline" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
           <Button onClick={onSubmit} disabled={loading} className="bg-green-600 hover:bg-green-700">
-            {loading ? 'Saving...' : 'Save Supplier'}
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Save Supplier
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

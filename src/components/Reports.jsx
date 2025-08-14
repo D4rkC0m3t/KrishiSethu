@@ -5,10 +5,10 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { salesService, productsService, customersService, suppliersService, COLLECTIONS } from '../lib/firestore';
-import { db } from '../lib/firebase';
-import { doc, getDoc, collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
+import { salesService, productsService, customersService, suppliersService, COLLECTIONS } from '../lib/supabaseDb';
+import { supabase } from '../lib/supabase';
 import InvoicePreview from './InvoicePreview';
+import ReportHeader from './reports/ReportHeader';
 import {
   BarChart3,
   TrendingUp,
@@ -43,6 +43,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 // ReportHeader functionality implemented inline below
 import { shopDetailsService } from '../lib/shopDetails';
+import GSTReports from './reports/GSTReports';
 // Recharts imports removed as they're not used in this component
 
 // Updated Invoice utility functions
@@ -91,13 +92,15 @@ const numberToWordsIndian = (num) => {
 // Use the working InvoicePreview component instead
 
 
-const Reports = ({ onNavigate }) => {
+const Reports = ({ onNavigate, defaultTab = "overview" }) => {
   const { userProfile } = useAuth();
   const [reportType, setReportType] = useState('sales');
   const [dateRange, setDateRange] = useState('this_month');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedMetrics, setSelectedMetrics] = useState(['revenue', 'transactions', 'profit']);
+  const [reportOrientation, setReportOrientation] = useState('portrait');
+  const [autoDetectOrientation, setAutoDetectOrientation] = useState(true);
   const [companyDetails, setCompanyDetails] = useState(null);
   const [comparisonPeriod, setComparisonPeriod] = useState('previous_month');
   const [exportFormat, setExportFormat] = useState('pdf');
@@ -134,6 +137,166 @@ const Reports = ({ onNavigate }) => {
   const [pdfOrientation, setPdfOrientation] = useState('portrait'); // 'portrait' | 'landscape'
   const [compactInvoice, setCompactInvoice] = useState(false); // smaller font size
 
+  // Print invoice function - simplified approach
+  const handlePrint = () => {
+    // Check if a sale is selected
+    if (!selectedSale || !selectedSaleId) {
+      alert('Please select a sale from the dropdown first.');
+      return;
+    }
+
+    const invoiceElement = document.getElementById('printable-invoice');
+    if (!invoiceElement) {
+      alert('No invoice content found to print. Please select a sale first.');
+      return;
+    }
+
+    // Check if invoice element has content
+    if (!invoiceElement.innerHTML.trim()) {
+      alert('Invoice content is empty. Please select a sale and wait for it to load.');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=900,height=1200');
+    if (!printWindow) {
+      alert('Please allow popups to print the invoice');
+      return;
+    }
+
+    // Wait for QR code and other async content to load
+    const waitForContent = () => {
+      return new Promise((resolve) => {
+        // Check if QR code images are loaded
+        const qrImages = invoiceElement.querySelectorAll('img');
+        let loadedImages = 0;
+        const totalImages = qrImages.length;
+
+        if (totalImages === 0) {
+          resolve();
+          return;
+        }
+
+        qrImages.forEach(img => {
+          if (img.complete) {
+            loadedImages++;
+          } else {
+            img.onload = () => {
+              loadedImages++;
+              if (loadedImages === totalImages) {
+                resolve();
+              }
+            };
+            img.onerror = () => {
+              loadedImages++;
+              if (loadedImages === totalImages) {
+                resolve();
+              }
+            };
+          }
+        });
+
+        if (loadedImages === totalImages) {
+          resolve();
+        }
+
+        // Fallback timeout
+        setTimeout(resolve, 2000);
+      });
+    };
+
+    // Wait for content to be ready, then create print window
+    waitForContent().then(() => {
+      // Get the actual computed styles and content
+      const clonedElement = invoiceElement.cloneNode(true);
+
+      // Create a complete HTML document with inline styles
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Tax Invoice - Print</title>
+            <meta charset="utf-8">
+            <style>
+              @page {
+                size: A4 portrait;
+                margin: 0.5in;
+              }
+              body {
+                margin: 0;
+                padding: 20px;
+                font-family: Arial, sans-serif;
+                background: white;
+                color: black;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+
+              /* Table styles */
+              table {
+                border-collapse: collapse;
+                width: 100%;
+              }
+              td, th {
+                border: 1px solid #000;
+                padding: 4px;
+                vertical-align: top;
+              }
+
+              /* Text alignment */
+              .text-center { text-align: center; }
+              .text-right { text-align: right; }
+              .text-left { text-align: left; }
+
+              /* Font weights and sizes */
+              .font-bold { font-weight: bold; }
+              .text-xs { font-size: 12px; }
+              .text-sm { font-size: 14px; }
+              .text-lg { font-size: 18px; }
+
+              /* Spacing */
+              .mb-0-5 { margin-bottom: 2px; }
+              .mt-1 { margin-top: 4px; }
+              .p-0-5 { padding: 2px; }
+              .p-1 { padding: 4px; }
+
+              /* Colors */
+              .bg-white { background-color: white !important; }
+              .text-black { color: black !important; }
+
+              /* Borders */
+              .border { border: 1px solid #000; }
+              .border-black { border-color: #000; }
+              .border-0 { border: none; }
+
+              /* QR Code */
+              img { max-width: 100%; height: auto; }
+
+              /* Grid and flex */
+              .grid { display: table; width: 100%; }
+              .grid-cols-2 { }
+              .grid-cols-2 > div:first-child { display: table-cell; width: 50%; }
+              .grid-cols-2 > div:last-child { display: table-cell; width: 50%; }
+
+              /* Hide elements */
+              .no-print { display: none !important; }
+            </style>
+          </head>
+          <body>
+            ${clonedElement.innerHTML}
+          </body>
+        </html>
+      `;
+
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+
+      // Wait for content to load, then print
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
+    });
+  };
 
   // Enhanced mock report data with comprehensive analytics
   const mockReportData = {
@@ -274,6 +437,102 @@ const Reports = ({ onNavigate }) => {
     generateReport();
   }, [reportType, dateRange]);
 
+  // Auto-detect orientation based on data complexity
+  const detectOptimalOrientation = (data) => {
+    if (!autoDetectOrientation || !data) return reportOrientation;
+
+    // Check for large tables or many columns
+    const hasLargeTables = data.salesData?.length > 20 ||
+                          data.inventoryData?.length > 30 ||
+                          data.mandatoryFields?.length > 8;
+
+    // Check for wide content
+    const hasWideContent = data.mandatoryFields?.length > 6 ||
+                          (data.summary && Object.keys(data.summary).length > 8);
+
+    return hasLargeTables || hasWideContent ? 'landscape' : 'portrait';
+  };
+
+  // Generate empty report structure with real data structure but zero values
+  const generateEmptyReportStructure = async (reportType) => {
+    const currentDate = new Date().toLocaleDateString();
+
+    switch (reportType) {
+      case 'sales':
+        return {
+          summary: {
+            totalSales: 0,
+            totalTransactions: 0,
+            averageOrderValue: 0,
+            topProduct: 'No sales data available',
+            totalQuantity: 0,
+            uniqueCustomers: 0,
+            avgQuantityPerSale: 0
+          },
+          salesData: [],
+          mandatoryFields: [
+            'Date', 'Invoice No', 'Product Name', 'Batch No', 'Unit',
+            'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
+            'Payment Mode', 'Remarks'
+          ],
+          paymentMethods: [],
+          topProducts: [],
+          period: `No data for ${dateRange}`,
+          generatedDate: currentDate
+        };
+
+      case 'inventory':
+        return {
+          summary: {
+            totalProducts: 0,
+            lowStockProducts: 0,
+            outOfStockProducts: 0,
+            totalInventoryValue: 0,
+            nearExpiryProducts: 0
+          },
+          inventoryData: [],
+          mandatoryFields: [
+            'Product Name', 'Category', 'Current Stock', 'Unit', 'Unit Price',
+            'Total Value', 'Reorder Level', 'Supplier', 'Last Purchase Date',
+            'Expiry Date', 'Batch No', 'HSN Code'
+          ],
+          stockMovementData: [],
+          stockMovementFields: [
+            'Date', 'Product', 'Transaction Type', 'Quantity', 'Unit Price',
+            'Total Value', 'Balance Stock', 'Reason / Transaction', 'Ref'
+          ],
+          period: `No data for ${dateRange}`,
+          generatedDate: currentDate
+        };
+
+      case 'financial':
+      case 'profit':
+        return {
+          summary: {
+            totalRevenue: 0,
+            totalCosts: 0,
+            grossProfit: 0,
+            netProfit: 0,
+            profitMargin: 0
+          },
+          financialData: [],
+          mandatoryFields: [
+            'Period', 'Total Sales', 'COGS', 'Gross Profit', 'Expenses', 'Net Profit', 'Profit Margin (%)'
+          ],
+          period: `No data for ${dateRange}`,
+          generatedDate: currentDate
+        };
+
+      default:
+        return {
+          summary: { message: 'No data available' },
+          data: [],
+          period: `No data for ${dateRange}`,
+          generatedDate: currentDate
+        };
+    }
+  };
+
   // Load sales list and system settings for invoice preview
   const loadSales = async () => {
     const list = await salesService.getAll();
@@ -322,61 +581,30 @@ const Reports = ({ onNavigate }) => {
   const renderReportHeader = (title, subtitle) => {
     if (!companyDetails) return null;
 
+    const period = dateRange.replace('_', ' ').toUpperCase();
+
     return (
-      <div className="bg-white border-b-2 border-black pb-4 mb-6">
-        <div className="flex items-start justify-between mb-4">
-          {/* Logo Section */}
-          <div className="flex-shrink-0">
-            {companyDetails.logo ? (
-              <img
-                src={companyDetails.logo}
-                alt={`${companyDetails.name} Logo`}
-                className="w-20 h-20 object-contain border border-gray-300 bg-gray-50"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'flex';
-                }}
-              />
-            ) : (
-              <div className="w-20 h-20 border border-gray-300 bg-gray-50 flex items-center justify-center text-xs text-gray-500">
-                LOGO
-              </div>
-            )}
-            {/* Fallback logo placeholder */}
-            <div className="w-20 h-20 border border-gray-300 bg-gray-50 flex items-center justify-center text-xs text-gray-500" style={{display: 'none'}}>
-              LOGO
-            </div>
-          </div>
-
-          {/* Company Details */}
-          <div className="flex-1 ml-4">
-            <div className="text-left">
-              <h1 className="text-lg font-bold text-gray-900 mb-1">
-                {companyDetails.name}
-              </h1>
-              <div className="text-sm text-gray-700 leading-tight">
-                <p>{companyDetails.address.street}</p>
-                <p>
-                  {companyDetails.address.city}, {companyDetails.address.state} - {companyDetails.address.pincode}
-                </p>
-                <p>📞 {companyDetails.phone} | 📧 {companyDetails.email}</p>
-                {companyDetails.gstNumber && (
-                  <p><strong>GST:</strong> {companyDetails.gstNumber}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Report Title */}
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-gray-800 mb-1">{title}</h2>
-          <p className="text-sm text-gray-600">
-            <strong>Period:</strong> {dateRange.replace('_', ' ').toUpperCase()} | <strong>Generated on:</strong> {new Date().toLocaleString()}
-          </p>
-        </div>
-      </div>
+      <ReportHeader
+        reportTitle={title}
+        period={period}
+        companyDetails={companyDetails}
+        reportId={`RPT-${Date.now()}`}
+        systemName="KrishiSethu Inventory Management System"
+      />
     );
+  };
+
+  // Test function to check sales data
+  const testSalesData = async () => {
+    try {
+      console.log('🧪 Testing sales data fetch...');
+      const sales = await salesService.getAll();
+      console.log('✅ Test successful - Sales data:', sales);
+      alert(`Sales data test successful! Found ${sales.length} sales records.`);
+    } catch (error) {
+      console.error('❌ Test failed:', error);
+      alert(`Sales data test failed: ${error.message}`);
+    }
   };
 
   useEffect(() => {
@@ -445,22 +673,44 @@ const Reports = ({ onNavigate }) => {
           data = await generateProfitReport(dateFilter);
           break;
         default:
-          data = mockReportData[reportType] || mockReportData.sales;
+          data = await generateEmptyReportStructure(reportType);
       }
       
       if (!data || Object.keys(data).length === 0) {
-        console.warn('No data returned, using mock data');
-        data = mockReportData[reportType] || mockReportData.sales;
+        console.warn('No data returned, generating empty report structure');
+        data = await generateEmptyReportStructure(reportType);
       }
-      
+
       setReportData(data);
-      console.log('Report generated successfully:', data);
+
+      // Auto-detect optimal orientation
+      if (autoDetectOrientation) {
+        const optimalOrientation = detectOptimalOrientation(data);
+        setReportOrientation(optimalOrientation);
+      }
+
+      console.log('Report generated successfully:', {
+        reportType,
+        dataKeys: Object.keys(data),
+        summaryKeys: data.summary ? Object.keys(data.summary) : 'No summary',
+        dataLength: data.salesData?.length || data.inventoryData?.length || 'No data array'
+      });
     } catch (error) {
       console.error('Error generating report:', error);
+
+      // Create error data structure that will be displayed
+      const errorData = {
+        error: true,
+        errorMessage: error.message || 'Unknown error occurred',
+        summary: {
+          error: `Failed to load ${reportType} report data. Please try again.`
+        }
+      };
+
+      setReportData(errorData);
+
       // Show user-friendly error message
-      alert(`Error generating ${reportType} report: ${error.message}. Using sample data instead.`);
-      // Fallback to mock data if real data fails
-      setReportData(mockReportData[reportType] || mockReportData.sales);
+      console.warn(`Error generating ${reportType} report: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -514,16 +764,54 @@ const Reports = ({ onNavigate }) => {
   // Real data fetching functions - Fertilizer Industry Specific
   const generateSalesReport = async (dateFilter) => {
     try {
-      // Fetch sales data
-      const salesQuery = query(
-        collection(db, COLLECTIONS.SALES),
-        where('saleDate', '>=', dateFilter.start),
-        where('saleDate', '<=', dateFilter.end),
-        orderBy('saleDate', 'desc')
-      );
-      
-      const salesSnapshot = await getDocs(salesQuery);
-      const salesData = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log('🔄 Starting sales report generation...');
+      console.log('📅 Date filter:', dateFilter);
+      console.log('🔧 Sales service:', salesService);
+
+      if (!salesService || typeof salesService.getAll !== 'function') {
+        throw new Error('Sales service is not available or not properly imported');
+      }
+
+      console.log('📡 Fetching sales data from Firestore...');
+      const allSales = await salesService.getAll();
+      console.log('✅ Successfully fetched sales:', allSales.length, 'records');
+
+      if (!Array.isArray(allSales)) {
+        console.error('❌ Sales data is not an array:', typeof allSales, allSales);
+        throw new Error('Sales data is not in expected format (not an array)');
+      }
+
+      // For now, use all sales data to avoid date filtering issues
+      // TODO: Implement proper date filtering later
+      const salesData = allSales;
+
+      console.log('Using sales data:', salesData.length);
+
+      // Handle case where there's no sales data
+      if (salesData.length === 0) {
+        console.log('No sales data found, returning empty structure');
+        return {
+          summary: {
+            totalSales: 0,
+            totalTransactions: 0,
+            averageOrderValue: 0,
+            topProduct: 'No sales data available',
+            totalQuantity: 0,
+            uniqueCustomers: 0,
+            avgQuantityPerSale: 0
+          },
+          salesData: [],
+          topProducts: [],
+          paymentMethods: [],
+          mandatoryFields: [
+            'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
+            'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
+            'Payment Mode', 'Remarks'
+          ],
+          period: `${dateRange.replace('_', ' ').toUpperCase()}`,
+          generatedDate: new Date().toLocaleDateString()
+        };
+      }
       
       // Format sales data according to fertilizer industry standard
       const formattedSalesData = salesData.map(sale => {
@@ -614,7 +902,31 @@ const Reports = ({ onNavigate }) => {
       };
     } catch (error) {
       console.error('Error generating sales report:', error);
-      return mockReportData.sales;
+      console.error('Error details:', error.message, error.stack);
+
+      // Return a meaningful error structure instead of throwing
+      return {
+        summary: {
+          totalSales: 0,
+          totalTransactions: 0,
+          averageOrderValue: 0,
+          topProduct: 'Error loading data',
+          totalQuantity: 0,
+          uniqueCustomers: 0,
+          avgQuantityPerSale: 0,
+          error: `Failed to load sales data: ${error.message}`
+        },
+        salesData: [],
+        topProducts: [],
+        paymentMethods: [],
+        mandatoryFields: [
+          'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
+          'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
+          'Payment Mode', 'Remarks'
+        ],
+        error: true,
+        errorMessage: error.message
+      };
     }
   };
 
@@ -622,6 +934,7 @@ const Reports = ({ onNavigate }) => {
     try {
       // Fetch all products
       const products = await productsService.getAll();
+      console.log('Fetched products for inventory report:', products.length);
       
       // Fetch recent purchases for opening stock calculation
       const purchasesQuery = query(
@@ -742,7 +1055,7 @@ const Reports = ({ onNavigate }) => {
       };
     } catch (error) {
       console.error('Error generating inventory report:', error);
-      return mockReportData.inventory;
+      return await generateEmptyReportStructure('inventory');
     }
   };
 
@@ -857,7 +1170,7 @@ const Reports = ({ onNavigate }) => {
       };
     } catch (error) {
       console.error('Error generating financial report:', error);
-      return mockReportData.financial;
+      return await generateEmptyReportStructure('financial');
     }
   };
 
@@ -1367,13 +1680,28 @@ const Reports = ({ onNavigate }) => {
   const renderSalesReport = () => {
     if (!reportData) return null;
 
+    // Show error message if there's an error
+    if (reportData.error) {
+      return (
+        <div className="text-center py-8">
+          <div className="text-red-600 mb-4">
+            <h3 className="text-lg font-semibold">Error Loading Sales Report</h3>
+            <p className="text-sm">{reportData.errorMessage}</p>
+          </div>
+          <Button onClick={() => generateReport()} variant="outline">
+            Try Again
+          </Button>
+        </div>
+      );
+    }
+
     return (
-      <div className="space-y-6">
+      <div id="report-content" className={`space-y-6 ${reportOrientation === 'landscape' ? 'print-landscape' : 'print-portrait'}`}>
         {/* Report Header with Company Logo and Details */}
         {renderReportHeader("Sales Report", "Comprehensive sales analysis and performance metrics")}
 
         {/* Sales Summary - Fertilizer Industry Specific */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 print-summary-grid print-avoid-break">
           <div className="border border-black p-3 text-center bg-white">
             <div className="text-sm text-gray-600 mb-1">Total Sales</div>
             <div className="text-xl font-bold">₹{reportData.summary.totalSales.toLocaleString()}</div>
@@ -1411,7 +1739,7 @@ const Reports = ({ onNavigate }) => {
         </div>
 
         {/* Sales Data Table - Fertilizer Format */}
-        <Card>
+        <Card className="print-card print-avoid-break">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
@@ -1423,7 +1751,7 @@ const Reports = ({ onNavigate }) => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-black">
+              <table className={`w-full border-collapse border border-black ${reportData.salesData?.length > 15 ? 'large-table' : ''}`}>
                 <thead>
                   <tr className="bg-gray-50">
                     {reportData.mandatoryFields && reportData.mandatoryFields.map((field, index) => (
@@ -1515,15 +1843,58 @@ const Reports = ({ onNavigate }) => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Print Controls */}
+        <div className="no-print flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium">Page Layout:</span>
+            <select
+              value={reportOrientation}
+              onChange={(e) => setReportOrientation(e.target.value)}
+              className="border border-gray-300 rounded px-3 py-1 text-sm"
+            >
+              <option value="portrait">Portrait (A4)</option>
+              <option value="landscape">Landscape (A4)</option>
+            </select>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={autoDetectOrientation}
+                onChange={(e) => setAutoDetectOrientation(e.target.checked)}
+              />
+              Auto-detect optimal layout
+            </label>
+          </div>
+          <button
+            onClick={handlePrint}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
+          >
+            <Printer className="h-4 w-4" />
+            Print Report
+          </button>
+        </div>
       </div>
     );
   };
 
   const renderInventoryReport = () => {
-    if (!reportData || !reportData.summary) return null;
+    if (!reportData || !reportData.summary) {
+      console.warn('No inventory report data available:', reportData);
+      return (
+        <div className="text-center py-8">
+          <p className="text-gray-500">No inventory data available. Please ensure products are added to the system.</p>
+        </div>
+      );
+    }
+
+    console.log('Rendering inventory report with data:', {
+      summaryKeys: Object.keys(reportData.summary),
+      hasInventoryData: !!reportData.inventoryData,
+      inventoryDataLength: reportData.inventoryData?.length
+    });
 
     return (
-      <div className="space-y-6">
+      <div id="report-content" className={`space-y-6 ${reportOrientation === 'landscape' ? 'print-landscape' : 'print-portrait'}`}>
         {/* Report Header with Company Logo and Details */}
         {renderReportHeader("Inventory Report", "Current stock levels and inventory analysis")}
 
@@ -1536,16 +1907,32 @@ const Reports = ({ onNavigate }) => {
   };
 
   const renderInventoryContent = () => {
-    if (!reportData || !reportData.summary) return null;
+    if (!reportData || !reportData.summary) {
+      console.warn('No inventory content data available');
+      return (
+        <div className="text-center py-8">
+          <p className="text-gray-500">No inventory summary data available.</p>
+        </div>
+      );
+    }
 
     // Safe access with default values
     const summary = reportData.summary || {};
     const totalProducts = summary.totalProducts || 0;
-    const totalValue = summary.totalValue || 0;
-    const lowStockItems = summary.lowStockItems || 0;
-    const nearExpiryItems = summary.nearExpiryItems || 0;
-    const outOfStockItems = summary.outOfStockItems || 0;
+    const totalValue = summary.totalValue || summary.totalInventoryValue || 0;
+    const lowStockItems = summary.lowStockItems || summary.lowStockProducts || 0;
+    const nearExpiryItems = summary.nearExpiryItems || summary.nearExpiryProducts || 0;
+    const outOfStockItems = summary.outOfStockItems || summary.outOfStockProducts || 0;
     const totalClosingStock = summary.totalClosingStock || 0;
+
+    console.log('Inventory content summary:', {
+      totalProducts,
+      totalValue,
+      lowStockItems,
+      nearExpiryItems,
+      outOfStockItems,
+      totalClosingStock
+    });
 
     return (
       <div className="space-y-6">
@@ -1763,7 +2150,7 @@ const Reports = ({ onNavigate }) => {
     if (!reportData || !reportData.summary) return null;
 
     return (
-      <div className="space-y-6">
+      <div id="report-content" className="space-y-6">
         {/* Report Header with Company Logo and Details */}
         {renderReportHeader("Financial Report", "Financial performance and profitability analysis")}
 
@@ -1922,7 +2309,7 @@ const Reports = ({ onNavigate }) => {
     if (!reportData || !reportData.summary) return null;
 
     return (
-      <div className="space-y-6">
+      <div id="report-content" className="space-y-6">
         {/* Report Header with Company Logo and Details */}
         {renderReportHeader("Profit Analysis Report", "Detailed profitability and margin analysis")}
 
@@ -2039,14 +2426,14 @@ const Reports = ({ onNavigate }) => {
                   </thead>
                   <tbody>
                     {reportData.monthlyFinancialData.map((month, index) => (
-                      <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="border border-gray-300 px-3 py-2 text-sm">{month.month || 'N/A'}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(month.totalSalesRevenue || 0).toLocaleString()}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(month.cogs || 0).toLocaleString()}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium text-green-600">₹{(month.grossProfit || 0).toLocaleString()}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(month.operatingExpenses || 0).toLocaleString()}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium text-green-600">₹{(month.netProfit || 0).toLocaleString()}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm">{month.remarks || '—'}</td>
+                      <tr key={index} className={index % 2 === 0 ? 'bg-background' : 'bg-muted/50'}>
+                        <td className="border border-border px-3 py-2 text-sm">{month.month || 'N/A'}</td>
+                        <td className="border border-border px-3 py-2 text-sm text-right">₹{(month.totalSalesRevenue || 0).toLocaleString()}</td>
+                        <td className="border border-border px-3 py-2 text-sm text-right">₹{(month.cogs || 0).toLocaleString()}</td>
+                        <td className="border border-border px-3 py-2 text-sm text-right font-medium text-green-600 dark:text-green-400">₹{(month.grossProfit || 0).toLocaleString()}</td>
+                        <td className="border border-border px-3 py-2 text-sm text-right">₹{(month.operatingExpenses || 0).toLocaleString()}</td>
+                        <td className="border border-border px-3 py-2 text-sm text-right font-medium text-green-600 dark:text-green-400">₹{(month.netProfit || 0).toLocaleString()}</td>
+                        <td className="border border-border px-3 py-2 text-sm">{month.remarks || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2244,11 +2631,12 @@ const Reports = ({ onNavigate }) => {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
+      {/* Print styles are now in global print.css */}
       {/* Enhanced Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
             <BarChart3 className="h-8 w-8 text-blue-600" />
             Reports & Analytics
           </h1>
@@ -2256,7 +2644,7 @@ const Reports = ({ onNavigate }) => {
             Comprehensive business insights and performance metrics
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="no-print flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={generateReport} disabled={isGenerating}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isGenerating ? 'animate-spin' : ''}`} />
             {isGenerating ? 'Generating...' : 'Generate Report'}
@@ -2273,14 +2661,46 @@ const Reports = ({ onNavigate }) => {
             </SelectContent>
           </Select>
 
+          {/* Page Orientation Controls */}
+          <div className="flex items-center gap-2 border rounded-lg px-3 py-1">
+            <Printer className="h-4 w-4 text-gray-500" />
+            <Select value={reportOrientation} onValueChange={setReportOrientation}>
+              <SelectTrigger className="w-32 border-0 shadow-none">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="portrait">Portrait</SelectItem>
+                <SelectItem value="landscape">Landscape</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Auto-detect toggle */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="auto-detect"
+              checked={autoDetectOrientation}
+              onChange={(e) => setAutoDetectOrientation(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="auto-detect" className="text-sm text-gray-600">
+              Auto-detect
+            </label>
+          </div>
+
           <Button variant="outline" size="sm" onClick={() => exportReport(exportFormat)} disabled={isGenerating}>
             <Download className="h-4 w-4 mr-2" />
             Export {exportFormat.toUpperCase()}
           </Button>
 
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Button variant="outline" size="sm" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />
             Print
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={testSalesData}>
+            🧪 Test Sales Data
           </Button>
 
           <Button variant="outline" size="sm" onClick={scheduleReport}>
@@ -2294,13 +2714,14 @@ const Reports = ({ onNavigate }) => {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+      <Tabs defaultValue={defaultTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sales">Sales Analytics</TabsTrigger>
           <TabsTrigger value="inventory">Inventory Reports</TabsTrigger>
           <TabsTrigger value="financial">Financial Reports</TabsTrigger>
           <TabsTrigger value="profit">Profit Analysis</TabsTrigger>
+          <TabsTrigger value="gst">GST Reports</TabsTrigger>
           <TabsTrigger value="invoice">Invoice & Bank</TabsTrigger>
         </TabsList>
 
@@ -2443,6 +2864,11 @@ const Reports = ({ onNavigate }) => {
           }
         </TabsContent>
 
+        {/* GST Reports Tab */}
+        <TabsContent value="gst" className="space-y-6">
+          <GSTReports />
+        </TabsContent>
+
         {/* Invoice & Bank Menu (Blank Details) */}
         <TabsContent value="invoice" className="space-y-6">
           <Card>
@@ -2493,7 +2919,7 @@ const Reports = ({ onNavigate }) => {
                 <Button variant="outline" size="sm" onClick={openInvoicePreviewWindow}>
                   <Eye className="h-4 w-4 mr-2" /> Preview (New Window)
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => window.print()} title="Prints exactly what you see in the preview">
+                <Button variant="outline" size="sm" onClick={handlePrint} title="Prints exactly what you see in the preview">
                   <Printer className="h-4 w-4 mr-2" /> Print Invoice
                 </Button>
               </div>

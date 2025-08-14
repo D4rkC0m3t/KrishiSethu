@@ -334,13 +334,13 @@ const Purchases = ({ onNavigate }) => {
   const getPaymentStatusBadge = (status) => {
     switch (status) {
       case 'paid':
-        return <Badge className="bg-green-100 text-green-800">Paid</Badge>;
+        return <Badge className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">Paid</Badge>;
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
+        return <Badge className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">Pending</Badge>;
       case 'partial':
-        return <Badge className="bg-orange-100 text-orange-800">Partial</Badge>;
+        return <Badge className="bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300">Partial</Badge>;
       case 'overdue':
-        return <Badge className="bg-red-100 text-red-800">Overdue</Badge>;
+        return <Badge className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">Overdue</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -369,12 +369,12 @@ const Purchases = ({ onNavigate }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Purchase Management</h1>
-          <p className="text-gray-600">Track all purchase orders and supplier transactions</p>
+          <h1 className="text-3xl font-bold text-foreground">Purchase Management</h1>
+          <p className="text-muted-foreground">Track all purchase orders and supplier transactions</p>
         </div>
         <div className="flex space-x-2">
           <Button onClick={() => setShowAddDialog(true)} className="bg-green-600 hover:bg-green-700">

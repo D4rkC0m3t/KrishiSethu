@@ -5,26 +5,31 @@ import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { productsService, suppliersService } from '../lib/firestore';
 import { Trash2, Plus, Upload, Download, RefreshCw } from 'lucide-react';
-
-const fertilizerTypes = ['Micro','Macro','Chemical','Organic','Bio-fertilizer','Liquid','Granular','Water Soluble','Slow Release','Controlled Release','Foliar Spray','Soil Conditioner','Micronutrient Mix','Bio-stimulant','Herbal','Mineral','Soluble Powder','Seeds'];
-const categories = ['Nitrogen (N)','Phosphorus (P)','Potassium (K)','Compound (NPK)','Urea','DAP','MOP','SSP','10:26:26','20:20:0:13','19:19:19','Micronutrients','Zinc','Boron','Calcium','Sulphur','Compost','Vermicompost','Bio-stimulants','Soil Conditioner','Organic Manure','Seaweed Extract','Humic/Fulvic','Amino Acid'];
-const units = ['kg','bags','liters','tons','packets'];
+import {
+  CATEGORIES,
+  FERTILIZER_TYPES,
+  UNITS,
+  GST_RATES,
+  getTypesForCategory,
+  getHSNCode,
+  getSuggestedGSTRate
+} from '../config/fertilizerConfig';
 
 const COLUMNS = [
   { key: 'name', label: 'Product Name*', width: 220, required: true },
   { key: 'brand', label: 'Brand*', width: 160, required: true },
-  { key: 'type', label: 'Type*', width: 140, required: true, options: fertilizerTypes },
-  { key: 'category', label: 'Category*', width: 170, required: true, options: categories },
+  { key: 'category', label: 'Category*', width: 170, required: true, options: CATEGORIES },
+  { key: 'type', label: 'Type*', width: 140, required: true, options: FERTILIZER_TYPES, dependsOn: 'category' },
   { key: 'batchNo', label: 'Batch No*', width: 140, required: true },
   { key: 'barcode', label: 'Barcode/QR', width: 150 },
   { key: 'hsn', label: 'HSN', width: 110 },
-  { key: 'gstRate', label: 'GST %', width: 100, type: 'number' },
+  { key: 'gstRate', label: 'GST %', width: 100, options: GST_RATES.map(r => r.toString()) },
   { key: 'manufacturingDate', label: 'Mfg Date', width: 150, type: 'date' },
   { key: 'expiryDate', label: 'Expiry Date*', width: 150, required: true, type: 'date' },
   { key: 'purchasePrice', label: 'Purchase ₹*', width: 120, required: true, type: 'number' },
   { key: 'salePrice', label: 'Sale ₹*', width: 110, required: true, type: 'number' },
   { key: 'quantity', label: 'Qty*', width: 90, required: true, type: 'number' },
-  { key: 'unit', label: 'Unit*', width: 110, required: true, options: units },
+  { key: 'unit', label: 'Unit*', width: 110, required: true, options: UNITS },
   { key: 'supplierId', label: 'Supplier*', width: 200, required: true, type: 'supplier' },
   { key: 'description', label: 'Description', width: 240 },
 ];
@@ -62,7 +67,26 @@ export default function BulkAddProductTable({ onNavigate }) {
   const removeRow = (idx) => setRows(prev => prev.filter((_, i) => i !== idx));
 
   const handleCellChange = (idx, key, value) => {
-    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: value } : r));
+    setRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+
+      const updatedRow = { ...r, [key]: value };
+
+      // Auto-populate based on field changes
+      if (key === 'category') {
+        // Reset type when category changes and auto-populate GST rate
+        updatedRow.type = '';
+        updatedRow.gstRate = getSuggestedGSTRate(value).toString();
+      } else if (key === 'type' && r.category) {
+        // Auto-populate HSN code when type is selected
+        const hsnCode = getHSNCode(r.category, value);
+        if (hsnCode) {
+          updatedRow.hsn = hsnCode;
+        }
+      }
+
+      return updatedRow;
+    }));
   };
 
   // Paste TSV/CSV from clipboard into the focused cell and auto-spread into grid
@@ -182,12 +206,27 @@ export default function BulkAddProductTable({ onNavigate }) {
                     {COLUMNS.map((col, cIdx) => (
                       <td key={col.key} className="px-2 py-1 align-top">
                         {col.options ? (
-                          <Select value={row[col.key] || ''} onValueChange={(v) => handleCellChange(rIdx, col.key, v)}>
+                          <Select
+                            value={row[col.key] || ''}
+                            onValueChange={(v) => handleCellChange(rIdx, col.key, v)}
+                            disabled={col.dependsOn && !row[col.dependsOn]}
+                          >
                             <SelectTrigger className="h-8">
-                              <SelectValue placeholder={`Select ${col.label.replace('*','')}`} />
+                              <SelectValue placeholder={
+                                col.dependsOn && !row[col.dependsOn]
+                                  ? `Select ${col.dependsOn} first`
+                                  : `Select ${col.label.replace('*','')}`
+                              } />
                             </SelectTrigger>
                             <SelectContent>
-                              {col.options.map(opt => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}
+                              {(col.key === 'type' && row.category
+                                ? getTypesForCategory(row.category)
+                                : col.options
+                              ).map(opt => (
+                                <SelectItem key={opt} value={opt}>
+                                  {col.key === 'gstRate' ? `${opt}%` : opt}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         ) : col.type === 'supplier' ? (

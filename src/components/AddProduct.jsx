@@ -3,11 +3,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { productsService, suppliersService } from '../lib/firestore';
-import { storage, db } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, setDoc } from 'firebase/firestore';
+import { productsService, suppliersService } from '../lib/supabaseDb';
+import { storageService } from '../lib/storage';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  CATEGORIES,
+  FERTILIZER_TYPES,
+  UNITS,
+  GST_RATES,
+  getTypesForCategory,
+  getHSNCode,
+  getSuggestedGSTRate
+} from '../config/fertilizerConfig';
 
 const AddProduct = ({ onNavigate, productToEdit = null }) => {
   const { currentUser, userProfile, isManager } = useAuth();
@@ -34,14 +41,48 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
   const [suppliers, setSuppliers] = useState([]);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({});
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+
+  // Helper function to safely convert date to input format
+  const formatDateForInput = (date) => {
+    if (!date) return '';
+
+    try {
+      // Handle different date formats
+      let dateObj;
+
+      if (date instanceof Date) {
+        dateObj = date;
+      } else if (typeof date === 'string' || typeof date === 'number') {
+        dateObj = new Date(date);
+      } else if (date.toDate && typeof date.toDate === 'function') {
+        // Handle Firestore Timestamp
+        dateObj = date.toDate();
+      } else {
+        return '';
+      }
+
+      // Check if date is valid
+      if (isNaN(dateObj.getTime())) {
+        return '';
+      }
+
+      return dateObj.toISOString().split('T')[0];
+    } catch (error) {
+      console.warn('Error formatting date:', error);
+      return '';
+    }
+  };
 
   useEffect(() => {
     loadSuppliers();
     if (productToEdit) {
       setFormData({
         ...productToEdit,
-        expiryDate: productToEdit.expiryDate ? 
-          new Date(productToEdit.expiryDate).toISOString().split('T')[0] : ''
+        expiryDate: formatDateForInput(productToEdit.expiryDate),
+        manufacturingDate: formatDateForInput(productToEdit.manufacturingDate)
       });
     }
   }, [productToEdit]);
@@ -78,21 +119,212 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
-    // Temporarily disable file attachments to prevent storage errors
+
     if (name === 'attachments' && files) {
-      console.log('File attachments temporarily disabled');
+      handleFileUpload(Array.from(files));
       return;
     }
+
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
+
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
         [name]: ''
       }));
+    }
+  };
+
+  // Handle category change with auto-population
+  const handleCategoryChange = (category) => {
+    setFormData(prev => ({
+      ...prev,
+      category: category,
+      type: '', // Reset type when category changes
+      gstRate: getSuggestedGSTRate(category).toString() // Auto-populate GST rate
+    }));
+
+    // Clear category error
+    if (errors.category) {
+      setErrors(prev => ({
+        ...prev,
+        category: ''
+      }));
+    }
+  };
+
+  // Handle type change with auto-population
+  const handleTypeChange = (type) => {
+    const hsnCode = getHSNCode(formData.category, type);
+    setFormData(prev => ({
+      ...prev,
+      type: type,
+      hsn: hsnCode || prev.hsn // Auto-populate HSN if available
+    }));
+
+    // Clear type error
+    if (errors.type) {
+      setErrors(prev => ({
+        ...prev,
+        type: ''
+      }));
+    }
+  };
+
+  // Supabase Storage upload
+  const handleFileUpload = async (files) => {
+    if (!files || files.length === 0) return;
+
+    console.log('🔄 Starting Supabase Storage upload...', files);
+
+    try {
+      setUploading(true);
+      setUploadProgress({});
+      const uploadResults = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        console.log(`📁 Processing file ${i + 1}/${files.length}:`, {
+          name: file.name,
+          size: file.size,
+          type: file.type
+        });
+
+        // Basic validation
+        if (file.size > 10 * 1024 * 1024) { // 10MB limit
+          alert(`File "${file.name}" is too large. Maximum size is 10MB.`);
+          continue;
+        }
+
+        // Initialize progress
+        setUploadProgress(prev => ({
+          ...prev,
+          [file.name]: 0
+        }));
+
+        try {
+          // Use Supabase Storage service
+          console.log('🚀 Starting Supabase upload...');
+
+          const uploadResult = await storageService.uploadFile(
+            file,
+            'products/attachments/',
+            (progress) => {
+              setUploadProgress(prev => ({
+                ...prev,
+                [file.name]: progress
+              }));
+            }
+          );
+
+          console.log('✅ Upload completed:', uploadResult);
+
+          const fileData = {
+            name: file.name,
+            url: uploadResult.url,
+            path: uploadResult.path,
+            type: file.type,
+            size: file.size,
+            metadata: {
+              uploadedAt: new Date().toISOString(),
+              originalName: file.name,
+              bucket: uploadResult.bucket
+            }
+          };
+
+          uploadResults.push(fileData);
+
+          // Set progress to 100%
+          setUploadProgress(prev => ({
+            ...prev,
+            [file.name]: 100
+          }));
+
+          console.log('✅ File processed successfully:', file.name);
+
+        } catch (error) {
+          console.error('❌ Supabase upload failed for:', file.name, error);
+
+          // Provide specific error messages
+          let errorMessage = `Failed to upload "${file.name}": `;
+          if (error.message && error.message.includes('Permission denied')) {
+            errorMessage += 'Permission denied. Please check your login status.';
+          } else if (error.message && error.message.includes('payload too large')) {
+            errorMessage += 'File too large. Please choose a smaller file.';
+          } else if (error.message && error.message.includes('bucket')) {
+            errorMessage += 'Storage configuration issue. Please contact support.';
+          } else {
+            errorMessage += error.message || 'Unknown error occurred.';
+          }
+
+          alert(errorMessage);
+
+          // Remove failed file from progress
+          setUploadProgress(prev => {
+            const newProgress = { ...prev };
+            delete newProgress[file.name];
+            return newProgress;
+          });
+        }
+      }
+
+      if (uploadResults.length > 0) {
+        console.log('📋 Updating state with uploaded files:', uploadResults);
+
+        // Update uploaded files state
+        setUploadedFiles(prev => [...prev, ...uploadResults]);
+
+        // Update form data with file URLs
+        setFormData(prev => ({
+          ...prev,
+          attachments: [...(prev.attachments || []), ...uploadResults]
+        }));
+
+        console.log('🎉 Upload process completed!');
+        alert(`Successfully uploaded ${uploadResults.length} file(s)!`);
+      } else {
+        console.log('⚠️ No files were uploaded successfully');
+        alert('No files were uploaded. Please try again.');
+      }
+
+    } catch (error) {
+      console.error('💥 Error in upload process:', error);
+      alert('Error uploading files. Please try again.');
+    } finally {
+      console.log('🏁 Cleaning up upload state...');
+      setUploading(false);
+      // Clear progress after a short delay
+      setTimeout(() => {
+        setUploadProgress({});
+        console.log('🧹 Progress cleared');
+      }, 2000);
+    }
+  };
+
+  const removeFile = async (fileIndex) => {
+    try {
+      const fileToRemove = uploadedFiles[fileIndex];
+
+      // Delete from Supabase Storage
+      if (fileToRemove && fileToRemove.path) {
+        await storageService.deleteFile(fileToRemove.path);
+      }
+
+      // Remove from state
+      setUploadedFiles(prev => prev.filter((_, index) => index !== fileIndex));
+      setFormData(prev => ({
+        ...prev,
+        attachments: prev.attachments.filter((_, index) => index !== fileIndex)
+      }));
+
+      console.log('File removed successfully');
+    } catch (error) {
+      console.error('Error removing file:', error);
+      alert('Error removing file. Please try again.');
     }
   };
 
@@ -233,25 +465,8 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
         console.log('Product added with ID:', productId);
       }
 
-      // Upload attachments if any (optional - don't fail if storage upload fails)
-      if (formData.attachments && formData.attachments.length > 0 && productId) {
-        console.log('Uploading attachments...');
-        try {
-          const urls = [];
-          for (const file of formData.attachments) {
-            const fileRef = ref(storage, `products/${productId}/${Date.now()}_${file.name}`);
-            await uploadBytes(fileRef, file);
-            const url = await getDownloadURL(fileRef);
-            urls.push(url);
-          }
-          await productsService.update(productId, { attachments: urls });
-          console.log('Attachments uploaded successfully');
-        } catch (uploadError) {
-          console.error('Failed to upload attachments:', uploadError);
-          console.warn('Product saved successfully, but attachments could not be uploaded. You can try uploading them later.');
-          // Don't fail the entire operation just because of attachment upload failure
-        }
-      }
+      // Note: File attachments are now handled through the separate file upload system
+      // using Supabase Storage via the handleFileUpload function
 
       alert(productToEdit ? 'Product updated successfully!' : 'Product added successfully!');
 
@@ -276,10 +491,8 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
         errorMessage += 'Database is currently unavailable. Please check your internet connection.';
       } else if (error.code === 'unauthenticated') {
         errorMessage += 'You are not logged in. Please log in and try again.';
-      } else if (error.code === 'storage/retry-limit-exceeded') {
-        errorMessage += 'File upload failed due to network issues. The product was saved but attachments could not be uploaded. Please try uploading files later.';
-      } else if (error.code && error.code.startsWith('storage/')) {
-        errorMessage += 'File upload failed. The product may have been saved but attachments could not be uploaded. Please try again or contact support.';
+      } else if (error.message && error.message.includes('upload')) {
+        errorMessage += 'File upload failed. The product was saved but attachments could not be uploaded. Please try uploading files later.';
       } else if (error.message) {
         errorMessage += error.message;
       } else {
@@ -292,64 +505,16 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
     }
   };
 
-  const fertilizerTypes = [
-    'Micro',
-    'Macro',
-    'Chemical',
-    'Organic',
-    'Bio-fertilizer',
-    'Liquid',
-    'Granular',
-    'Water Soluble',
-    'Slow Release',
-    'Controlled Release',
-    'Foliar Spray',
-    'Soil Conditioner',
-    'Micronutrient Mix',
-    'Bio-stimulant',
-    'Herbal',
-    'Mineral',
-    'Soluble Powder',
-    'Seeds'
-  ];
-
-  const categories = [
-    'Nitrogen (N)',
-    'Phosphorus (P)',
-    'Potassium (K)',
-    'Compound (NPK)',
-    'Urea',
-    'DAP',
-    'MOP',
-    'SSP',
-    '10:26:26',
-    '20:20:0:13',
-    '19:19:19',
-    'Micronutrients',
-    'Zinc',
-    'Boron',
-    'Calcium',
-    'Sulphur',
-    'Compost',
-    'Vermicompost',
-    'Bio-stimulants',
-    'Soil Conditioner',
-    'Organic Manure',
-    'Seaweed Extract',
-    'Humic/Fulvic',
-    'Amino Acid'
-  ];
-
-  const units = [
-    'kg',
-    'bags',
-    'liters',
-    'tons',
-    'packets'
-  ];
+  // Get available types based on selected category
+  const getAvailableTypes = () => {
+    if (formData.category) {
+      return getTypesForCategory(formData.category);
+    }
+    return FERTILIZER_TYPES;
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 p-6 bg-background text-foreground min-h-screen">
       {/* Header */}
       <div className="flex items-center space-x-4">
         <Button 
@@ -378,10 +543,10 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
         </CardHeader>
         <CardContent>
           {/* Authentication Status */}
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-            <strong>Auth Status:</strong> {currentUser ? `Authenticated as ${currentUser.email || currentUser.uid}` : 'Not authenticated'} |
-            <strong> Profile:</strong> {userProfile ? `${userProfile.name} (${userProfile.role})` : 'No profile'} |
-            <strong> Suppliers:</strong> {suppliers.length} loaded
+          <div className="mb-4 p-3 bg-muted/50 border border-border rounded-lg text-sm text-foreground">
+            <strong className="text-foreground">Auth Status:</strong> {currentUser ? `Authenticated as ${currentUser.email || currentUser.uid}` : 'Not authenticated'} |
+            <strong className="text-foreground"> Profile:</strong> {userProfile ? `${userProfile.name} (${userProfile.role})` : 'No profile'} |
+            <strong className="text-foreground"> Suppliers:</strong> {suppliers.length} loaded
           </div>
 
           {/* Permission Warning */}
@@ -424,39 +589,45 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Type *</label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}
-                >
-                  <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
-                    <SelectValue placeholder="Select Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fertilizerTypes.map(type => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.type && <span className="text-red-500 text-sm">{errors.type}</span>}
-              </div>
-
-              <div className="space-y-2">
                 <label className="text-sm font-medium">Category *</label>
                 <Select
                   value={formData.category}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
+                  onValueChange={handleCategoryChange}
                 >
                   <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select Category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map(category => (
+                    {CATEGORIES.map(category => (
                       <SelectItem key={category} value={category}>{category}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {errors.category && <span className="text-red-500 text-sm">{errors.category}</span>}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Type *</label>
+                <Select
+                  value={formData.type}
+                  onValueChange={handleTypeChange}
+                  disabled={!formData.category}
+                >
+                  <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={formData.category ? "Select Type" : "Select Category First"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getAvailableTypes().map(type => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.type && <span className="text-red-500 text-sm">{errors.type}</span>}
+                {formData.category && (
+                  <p className="text-xs text-gray-500">
+                    Showing {getAvailableTypes().length} types for {formData.category}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -495,15 +666,25 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">GST Rate (%)</label>
-                <Input
-                  type="number"
-                  name="gstRate"
+                <Select
                   value={formData.gstRate}
-                  onChange={handleChange}
-                  placeholder="0 - 28"
-                  className={errors.gstRate ? 'border-red-500' : ''}
-                />
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, gstRate: value }))}
+                >
+                  <SelectTrigger className={errors.gstRate ? 'border-red-500' : ''}>
+                    <SelectValue placeholder="Select GST Rate" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GST_RATES.map(rate => (
+                      <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.gstRate && <span className="text-red-500 text-sm">{errors.gstRate}</span>}
+                {formData.category && (
+                  <p className="text-xs text-gray-500">
+                    Suggested: {getSuggestedGSTRate(formData.category)}% for {formData.category}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -579,7 +760,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                     <SelectValue placeholder="Select Unit" />
                   </SelectTrigger>
                   <SelectContent>
-                    {units.map(unit => (
+                    {UNITS.map(unit => (
                       <SelectItem key={unit} value={unit}>{unit}</SelectItem>
                     ))}
                   </SelectContent>
@@ -634,28 +815,126 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
               />
             </div>
 
-            {/* Attachments - Temporarily disabled due to storage configuration issues */}
+            {/* File Attachments */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Attachments (Images, Documents)</label>
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <p className="text-sm text-yellow-800">
-                  📎 File attachments are temporarily disabled while we configure Firebase Storage.
-                  You can add product information and upload files later.
-                </p>
-              </div>
-              {/* Temporarily commented out to prevent storage errors
               <Input
                 type="file"
                 name="attachments"
                 accept="image/*,.pdf,.doc,.docx"
                 multiple
                 onChange={handleChange}
-                disabled
+                disabled={uploading}
+                className="cursor-pointer"
               />
-              {formData.attachments && formData.attachments.length > 0 && (
-                <p className="text-xs text-muted-foreground">{formData.attachments.length} file(s) selected</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  Supported formats: JPG, PNG, GIF, PDF, DOC, DOCX (Max: 10MB)
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      console.log('🧪 Testing Supabase Storage connection...');
+                      const testData = new Blob(['test'], { type: 'text/plain' });
+                      const testFile = new File([testData], 'test.txt', { type: 'text/plain' });
+                      await storageService.uploadFile(testFile, 'test/');
+                      console.log('✅ Supabase Storage is working!');
+                      alert('Supabase Storage connection is working!');
+                    } catch (error) {
+                      console.error('❌ Supabase Storage test failed:', error);
+                      alert(`Storage test failed: ${error.message}`);
+                    }
+                  }}
+                  className="text-xs"
+                >
+                  Test Storage
+                </Button>
+              </div>
+
+              {/* Upload Progress */}
+              {Object.keys(uploadProgress).length > 0 && (
+                <div className="space-y-2">
+                  {Object.entries(uploadProgress).map(([fileName, progress]) => (
+                    <div key={fileName} className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="truncate">{fileName}</span>
+                        <span>{Math.round(progress)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-              */}
+
+              {/* Uploaded Files */}
+              {uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Uploaded Files:</p>
+                  {uploadedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm">
+                          {file.type.startsWith('image/') ? '🖼️' : '📄'}
+                        </span>
+                        <div>
+                          <p className="text-sm font-medium truncate max-w-xs">{file.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {storageService.formatFileSize(file.size)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {file.type.startsWith('image/') && (
+                          <img
+                            src={file.url}
+                            alt={file.name}
+                            className="w-8 h-8 object-cover rounded"
+                          />
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeFile(index)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {uploading && (
+                <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center space-x-2 text-blue-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="text-sm">Uploading files...</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setUploading(false);
+                      setUploadProgress({});
+                      console.log('🛑 Upload cancelled by user');
+                    }}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Submit Buttons */}

@@ -37,6 +37,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { productsService, seedData } from '../lib/firestore';
+import { EmptyInventory, EmptySearch, LoadingState, ErrorState } from './EmptyState';
 
 const Inventory = ({ onNavigate }) => {
   const [products, setProducts] = useState([]);
@@ -315,41 +316,31 @@ const Inventory = ({ onNavigate }) => {
         return; // Exit early if we have real data
       }
 
-      // Only use minimal mock data if Firebase is completely empty
-      console.log('No products found in Firebase, using minimal mock data');
-      const mockProducts = [
-        {
-          id: '1',
-          name: 'NPK 20-20-20',
-          category: 'Fertilizer',
-          brand: 'Tata Chemicals',
-          quantity: 45,
-          purchasePrice: 850,
-          salePrice: 950,
-          expiryDate: new Date('2025-12-31')
-        },
-        {
-          id: '2',
-          name: 'Urea',
-          category: 'Fertilizer',
-          brand: 'IFFCO',
-          quantity: 8,
-          purchasePrice: 280,
-          salePrice: 320,
-          expiryDate: new Date('2026-06-30')
-        },
-        {
-          id: '3',
-          name: 'DAP',
-          category: 'Fertilizer',
-          brand: 'Coromandel',
-          quantity: 25,
-          purchasePrice: 1200,
-          salePrice: 1350,
-          expiryDate: new Date('2025-03-15')
+      // Handle empty inventory database
+      console.log('📦 No products found in inventory database');
+      setProducts([]);
+
+      // Show helpful message for empty inventory
+      const notification = document.createElement('div');
+      notification.className = 'fixed top-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm';
+      notification.innerHTML = `
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">📦</span>
+          <div>
+            <div class="font-medium mb-1">Empty Inventory</div>
+            <div class="text-sm">
+              Your inventory is empty. Click "Add Product" to start adding items to your inventory.
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        if (document.body.contains(notification)) {
+          document.body.removeChild(notification);
         }
-      ];
-      setProducts(mockProducts);
+      }, 10000);
     } catch (error) {
       console.error('Error loading products:', error);
       // Fallback to empty array on error
@@ -363,19 +354,19 @@ const Inventory = ({ onNavigate }) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-64 bg-background text-foreground">
         <div className="text-lg">Loading inventory...</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 min-h-full flex flex-col bg-background text-foreground">
       {/* Enhanced Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
-          <p className="text-gray-600">
+          <h1 className="text-3xl font-bold text-foreground">Inventory Management</h1>
+          <p className="text-muted-foreground">
             {filteredProducts.length} of {products.length} products
             {selectedProducts.length > 0 && ` • ${selectedProducts.length} selected`}
           </p>
@@ -680,7 +671,7 @@ const Inventory = ({ onNavigate }) => {
                             <Package className="h-5 w-5 text-white" />
                           </div>
                           <div>
-                            <div className="font-semibold text-gray-900">{product.name}</div>
+                            <div className="font-semibold text-foreground">{product.name}</div>
                             <div className="text-sm text-gray-500">{product.brand}</div>
                             {product.description && (
                               <div className="text-xs text-gray-400 mt-1">{product.description}</div>
@@ -693,7 +684,7 @@ const Inventory = ({ onNavigate }) => {
                           <Badge variant="secondary" className="text-xs">
                             {product.type}
                           </Badge>
-                          <div className="text-sm text-gray-600">{product.category}</div>
+                          <div className="text-sm text-muted-foreground">{product.category}</div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
@@ -701,7 +692,7 @@ const Inventory = ({ onNavigate }) => {
                           <div className="text-sm font-mono">{product.batchNo}</div>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-3 w-3 text-gray-400" />
-                            <span className="text-xs text-gray-600">
+                            <span className="text-xs text-muted-foreground">
                               {new Date(product.expiryDate).toLocaleDateString()}
                             </span>
                           </div>
@@ -782,7 +773,12 @@ const Inventory = ({ onNavigate }) => {
                           <Button variant="ghost" size="sm" title="View Details">
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" title="Edit Product">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Edit Product"
+                            onClick={() => onNavigate('edit-product', product)}
+                          >
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" title="Delete">
@@ -827,21 +823,27 @@ const Inventory = ({ onNavigate }) => {
             </div>
           )}
 
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-12">
-              <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
-              <p className="text-gray-500 mb-4">
-                {searchTerm || filterCategory !== 'all' || filterType !== 'all' || filterStatus !== 'all'
-                  ? 'Try adjusting your search or filters'
-                  : 'Get started by adding your first product'
-                }
-              </p>
-              <Button onClick={() => onNavigate('add-product')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Product
-              </Button>
-            </div>
+          {/* Empty States */}
+          {filteredProducts.length === 0 && products.length === 0 && !loading && (
+            <EmptyInventory
+              onAddProduct={() => onNavigate('add-product')}
+            />
+          )}
+
+          {filteredProducts.length === 0 && products.length > 0 && !loading && (
+            <EmptySearch
+              searchTerm={searchTerm || 'current filters'}
+              onClearSearch={() => {
+                setSearchTerm('');
+                setFilterCategory('all');
+                setFilterType('all');
+                setFilterStatus('all');
+              }}
+            />
+          )}
+
+          {loading && (
+            <LoadingState message="Loading inventory..." />
           )}
         </CardContent>
       </Card>
@@ -1002,7 +1004,7 @@ const Inventory = ({ onNavigate }) => {
                   }`}></div>
                   <div>
                     <h4 className="font-medium">{alert.product}</h4>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-muted-foreground">
                       Expires: {new Date(alert.expiryDate).toLocaleDateString()}
                     </p>
                     <p className="text-xs text-gray-500">Stock: {alert.quantity} units</p>

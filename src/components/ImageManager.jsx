@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { productsService } from '../lib/firestore';
+import { productsService } from '../lib/supabaseDb';
 import { fertilizerImageFetcher, populateProductImages } from '../utils/fertilizerImageFetcher';
 import { imageService } from '../lib/imageService';
 import {

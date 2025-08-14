@@ -1,12 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  createUserWithEmailAndPassword 
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../lib/firebase';
+import React, { createContext, useContext, useState } from 'react';
 
 const AuthContext = createContext();
 
@@ -21,7 +13,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // User roles
   const USER_ROLES = {
@@ -30,167 +22,61 @@ export const AuthProvider = ({ children }) => {
     MANAGER: 'manager'
   };
 
-  // Sign up new user
+  // Simple placeholder functions
   const signup = async (email, password, userData) => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      // Create user profile in Firestore
-      const userProfileData = {
-        uid: user.uid,
-        email: user.email,
-        name: userData.name || '',
-        role: userData.role || USER_ROLES.STAFF,
-        createdAt: new Date(),
-        isActive: true
-      };
-      
-      await setDoc(doc(db, 'users', user.uid), userProfileData);
-      setUserProfile(userProfileData);
-      
-      return user;
-    } catch (error) {
-      console.error('Signup error:', error);
-      throw error;
-    }
+    console.log('Signup called:', email);
+    throw new Error('Signup not implemented yet');
   };
 
-  // Sign in user
   const signin = async (email, password) => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      return userCredential.user;
-    } catch (error) {
-      console.error('Signin error:', error);
-      throw error;
-    }
+    console.log('Signin called:', email);
+    throw new Error('Signin not implemented yet');
   };
 
-  // Sign out user
   const logout = async () => {
-    try {
-      await signOut(auth);
-      setCurrentUser(null);
-      setUserProfile(null);
-    } catch (error) {
-      console.error('Logout error:', error);
-      throw error;
-    }
+    console.log('Logout called');
+    setCurrentUser(null);
+    setUserProfile(null);
   };
 
-  // Get user profile from Firestore
-  const getUserProfile = async (uid) => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        return userDoc.data();
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting user profile:', error);
-      return null;
-    }
+  const demoLogin = async (role = USER_ROLES.STAFF) => {
+    console.log('Demo login called for role:', role);
+
+    // Create a fake user for demo
+    const demoUser = {
+      id: 'demo-user-id',
+      email: 'demo@example.com'
+    };
+
+    const demoProfile = {
+      id: 'demo-user-id',
+      email: 'demo@example.com',
+      name: `Demo ${role.charAt(0).toUpperCase() + role.slice(1)}`,
+      role: role,
+      is_active: true
+    };
+
+    setCurrentUser(demoUser);
+    setUserProfile(demoProfile);
+
+    return demoUser;
   };
 
-  // Check if user has permission
+  // Permission helpers
   const hasPermission = (requiredRole) => {
     if (!userProfile) return false;
-    
+
     const roleHierarchy = {
-      [USER_ROLES.ADMIN]: 3,
+      [USER_ROLES.STAFF]: 1,
       [USER_ROLES.MANAGER]: 2,
-      [USER_ROLES.STAFF]: 1
+      [USER_ROLES.ADMIN]: 3
     };
-    
-    const userRoleLevel = roleHierarchy[userProfile.role] || 0;
-    const requiredRoleLevel = roleHierarchy[requiredRole] || 0;
-    
-    return userRoleLevel >= requiredRoleLevel;
+
+    return roleHierarchy[userProfile.role] >= roleHierarchy[requiredRole];
   };
 
-  // Check if user is admin
-  const isAdmin = () => {
-    return userProfile?.role === USER_ROLES.ADMIN;
-  };
-
-  // Check if user is manager or above
-  const isManager = () => {
-    return hasPermission(USER_ROLES.MANAGER);
-  };
-
-  // Demo login for testing
-  const demoLogin = async (role = USER_ROLES.STAFF) => {
-    try {
-      // Create a unique demo email for each role to avoid conflicts
-      const demoEmail = `demo-${role}@fertilizer.com`;
-      const demoPassword = 'demo123456';
-
-      console.log(`Attempting demo login for role: ${role}`);
-
-      try {
-        // Try to sign in with existing demo account
-        const userCredential = await signInWithEmailAndPassword(auth, demoEmail, demoPassword);
-        console.log('Signed in with existing demo account:', userCredential.user.uid);
-
-        // Update the user profile with the selected role
-        const demoProfile = {
-          uid: userCredential.user.uid,
-          email: userCredential.user.email,
-          name: `Demo ${role.charAt(0).toUpperCase() + role.slice(1)}`,
-          role: role,
-          createdAt: new Date(),
-          isActive: true
-        };
-
-        await setDoc(doc(db, 'users', userCredential.user.uid), demoProfile);
-        setUserProfile(demoProfile);
-
-        return userCredential.user;
-      } catch (signInError) {
-        console.log('Demo account does not exist, creating new one...', signInError.code);
-
-        // Create demo account if it doesn't exist
-        const userCredential = await createUserWithEmailAndPassword(auth, demoEmail, demoPassword);
-        console.log('Created new demo account:', userCredential.user.uid);
-
-        const demoProfile = {
-          uid: userCredential.user.uid,
-          email: userCredential.user.email,
-          name: `Demo ${role.charAt(0).toUpperCase() + role.slice(1)}`,
-          role: role,
-          createdAt: new Date(),
-          isActive: true
-        };
-
-        await setDoc(doc(db, 'users', userCredential.user.uid), demoProfile);
-        setUserProfile(demoProfile);
-
-        return userCredential.user;
-      }
-    } catch (error) {
-      console.error('Demo login failed completely:', error);
-      alert(`Demo login failed: ${error.message}. Please check your internet connection and try again.`);
-      throw error;
-    }
-  };
-
-  // Listen for auth state changes
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        const profile = await getUserProfile(user.uid);
-        setUserProfile(profile);
-      } else {
-        setCurrentUser(null);
-        setUserProfile(null);
-      }
-      setLoading(false);
-    });
-
-    return unsubscribe;
-  }, []);
+  const isAdmin = () => userProfile?.role === USER_ROLES.ADMIN;
+  const isManager = () => userProfile?.role === USER_ROLES.MANAGER;
 
   const value = {
     currentUser,
@@ -208,7 +94,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

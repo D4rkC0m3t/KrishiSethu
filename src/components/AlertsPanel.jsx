@@ -160,12 +160,12 @@ const AlertsPanel = ({ onNavigate }) => {
   const recentAlerts = alerts.slice(0, 5);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-background text-foreground min-h-screen p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Alerts & Notifications</h1>
-          <p className="text-gray-600">
+          <h1 className="text-3xl font-bold text-foreground">Alerts & Notifications</h1>
+          <p className="text-muted-foreground">
             {unreadAlerts.length} unread alerts • {alerts.length} total alerts
           </p>
         </div>
@@ -305,14 +305,14 @@ const AlertItem = ({
           <div className="text-2xl">{getAlertIcon(alert.type)}</div>
           <div className="flex-1">
             <div className="flex items-center space-x-2 mb-1">
-              <h4 className="font-medium">{alert.title}</h4>
+              <h4 className="font-medium text-foreground">{alert.title}</h4>
               {getSeverityBadge(alert.severity)}
               {!alert.isRead && (
-                <Badge className="bg-blue-100 text-blue-800">NEW</Badge>
+                <Badge className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">NEW</Badge>
               )}
             </div>
-            <p className="text-sm text-gray-600 mb-2">{alert.message}</p>
-            <div className="flex items-center space-x-4 text-xs text-gray-500">
+            <p className="text-sm text-muted-foreground mb-2">{alert.message}</p>
+            <div className="flex items-center space-x-4 text-xs text-muted-foreground">
               <span>{alert.createdAt.toLocaleDateString()} {alert.createdAt.toLocaleTimeString()}</span>
               {alert.productName && <span>Product: {alert.productName}</span>}
               {alert.amount && <span>Amount: ₹{alert.amount.toLocaleString()}</span>}

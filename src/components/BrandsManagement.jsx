@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { brandsService } from '../lib/firestore';
+import { brandsService } from '../lib/supabaseDb';
 import {
   Plus,
   Edit,

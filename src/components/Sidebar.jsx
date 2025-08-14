@@ -20,14 +20,8 @@ import {
   ChevronDown,
   ChevronRight,
   ShoppingCart,
-  AlertTriangle,
-  Calendar,
-  BarChart3,
   Menu,
-  ExternalLink,
-  Plus,
   BarChart,
-  TrendingUp,
   HardDrive,
   Database
 } from 'lucide-react';
@@ -48,23 +42,21 @@ export default function Sidebar({
   const [eInvoiceOpen, setEInvoiceOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
 
-  const baseStyle = theme === 'dark'
-    ? 'bg-[#1a1d29] text-white border-zinc-700'
-    : 'bg-white text-gray-900 border-gray-200';
+  const baseStyle = 'bg-background text-foreground border-border';
 
   const unreadAlerts = alerts.filter(a => !a.isRead).length;
 
   return (
     <aside className={cn(
-      `h-screen flex flex-col border-r transition-all duration-300 ease-in-out`,
-      isCollapsed ? 'w-16' : 'w-64',
+      `h-screen flex flex-col border-r transition-all duration-300 ease-in-out relative z-20`,
+      isCollapsed ? 'w-16 min-w-16' : 'w-64 min-w-64',
       baseStyle
     )}>
-      {/* Top Section */}
-      <div className="flex flex-col flex-1">
+      {/* Fixed Header */}
+      <div className="flex-shrink-0 border-b border-border">
         {/* Logo & Toggle */}
         <div className={cn(
-          "flex items-center border-b border-border transition-all duration-300",
+          "flex items-center transition-all duration-300",
           isCollapsed ? "justify-center px-4 py-4" : "justify-between px-6 py-4"
         )}>
           <div className="flex items-center gap-2 w-full">
@@ -82,7 +74,7 @@ export default function Sidebar({
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(true)}
-              className="h-8 w-8 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="h-8 w-8 hover:bg-accent"
             >
               <Menu size={16} />
             </Button>
@@ -96,15 +88,18 @@ export default function Sidebar({
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(false)}
-              className="w-full h-10 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="w-full h-10 hover:bg-accent"
             >
               <ChevronRight size={16} />
             </Button>
           </div>
         )}
 
-        {/* Main Navigation */}
-        <nav className={cn("flex flex-col gap-1 flex-1", isCollapsed ? "px-2 py-2" : "px-3 py-4")}>
+      </div>
+
+      {/* Scrollable Navigation Area */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden sidebar-scroll min-h-0">
+        <nav className={cn("flex flex-col gap-1 p-2 pb-8", isCollapsed ? "px-2" : "px-3")}>
           <SidebarItem
             icon={<LayoutDashboard size={18} />}
             label="Dashboard"
@@ -345,73 +340,72 @@ export default function Sidebar({
             badge={unreadAlerts > 0 ? unreadAlerts.toString() : undefined}
             isCollapsed={isCollapsed}
           />
-        </nav>
-
-        {/* Secondary Navigation */}
-        <div className={cn("border-t border-border pt-3 pb-3", isCollapsed ? "px-2" : "px-3")}>
-          <div className="flex flex-col gap-1">
-            {/* User Management - Admin Only */}
-            {isAdmin() && (
+          {/* Secondary Navigation */}
+          <div className={cn("border-t border-border pt-3 pb-3 mt-3")}>
+            <div className="flex flex-col gap-1">
+              {/* User Management - Admin Only */}
+              {isAdmin() && (
+                <SidebarItem
+                  icon={<Users size={18} />}
+                  label="User Management"
+                  active={currentPage === 'user-management'}
+                  onClick={() => onNavigate('user-management')}
+                  isCollapsed={isCollapsed}
+                />
+              )}
               <SidebarItem
-                icon={<Users size={18} />}
-                label="User Management"
-                active={currentPage === 'user-management'}
-                onClick={() => onNavigate('user-management')}
+                icon={<Database size={18} />}
+                label="Import/Export"
+                active={currentPage === 'data-import-export'}
+                onClick={() => onNavigate('data-import-export')}
                 isCollapsed={isCollapsed}
               />
-            )}
-            <SidebarItem
-              icon={<Database size={18} />}
-              label="Import/Export"
-              active={currentPage === 'data-import-export'}
-              onClick={() => onNavigate('data-import-export')}
-              isCollapsed={isCollapsed}
-            />
-            {/* Backup & Data Management - Admin Only */}
-            {isAdmin() && (
+              {/* Backup & Data Management - Admin Only */}
+              {isAdmin() && (
+                <SidebarItem
+                  icon={<HardDrive size={18} />}
+                  label="Backup & Data"
+                  active={currentPage === 'backup-data-management'}
+                  onClick={() => onNavigate('backup-data-management')}
+                  isCollapsed={isCollapsed}
+                />
+              )}
               <SidebarItem
-                icon={<HardDrive size={18} />}
-                label="Backup & Data"
-                active={currentPage === 'backup-data-management'}
-                onClick={() => onNavigate('backup-data-management')}
+                icon={<BookText size={18} />}
+                label="Documentation"
+                active={currentPage === 'documentation'}
+                onClick={() => onNavigate('documentation')}
                 isCollapsed={isCollapsed}
               />
-            )}
-            <SidebarItem
-              icon={<BookText size={18} />}
-              label="Documentation"
-              active={currentPage === 'documentation'}
-              onClick={() => onNavigate('documentation')}
-              isCollapsed={isCollapsed}
-            />
+            </div>
           </div>
-        </div>
+
+          {/* Support & Settings */}
+          <div className={cn("border-t border-border pt-3 pb-4 mt-3")}>
+            <div className="flex flex-col gap-1">
+              <SidebarItem
+                icon={<LifeBuoy size={18} />}
+                label="Support"
+                active={currentPage === 'support'}
+                onClick={() => onNavigate('support')}
+                isCollapsed={isCollapsed}
+              />
+              <SidebarItem
+                icon={<Settings size={18} />}
+                label="Settings"
+                active={currentPage === 'settings'}
+                onClick={() => onNavigate('settings')}
+                isCollapsed={isCollapsed}
+              />
+            </div>
+          </div>
+        </nav>
       </div>
 
-      {/* Bottom Section - Support & Settings */}
-      <div className={cn("border-t border-border", isCollapsed ? "px-2 py-2" : "px-3 py-2")}>
-        <div className="space-y-1">
-          <SidebarItem
-            icon={<LifeBuoy size={18} />}
-            label="Support"
-            active={currentPage === 'support'}
-            onClick={() => onNavigate('support')}
-            isCollapsed={isCollapsed}
-          />
-          <SidebarItem
-            icon={<Settings size={18} />}
-            label="Settings"
-            active={currentPage === 'settings'}
-            onClick={() => onNavigate('settings')}
-            isCollapsed={isCollapsed}
-          />
-        </div>
-      </div>
-
-      {/* User Footer */}
+      {/* Fixed User Footer */}
       <div className={cn(
-        "border-t border-border flex items-center transition-all duration-300",
-        isCollapsed ? "p-2 justify-center" : "p-4 justify-between"
+        "flex-shrink-0 border-t border-border flex items-center transition-all duration-300 min-h-[60px]",
+        isCollapsed ? "p-2 justify-center" : "px-4 py-3 justify-between"
       )}>
         <div className="flex items-center gap-2">
           <Avatar className="h-8 w-8 flex-shrink-0">
@@ -437,7 +431,7 @@ export default function Sidebar({
             variant="ghost"
             size="icon"
             onClick={logout}
-            className="h-8 w-8 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/20 flex-shrink-0"
+            className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
           >
             <LogOut size={16} />
           </Button>
@@ -465,8 +459,8 @@ function SidebarItem({
           className={cn(
             'flex items-center justify-center w-full h-10 rounded-lg transition-all duration-200 relative',
             active
-              ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-              : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+              ? 'bg-primary text-primary-foreground'
+              : 'hover:bg-accent text-muted-foreground hover:text-accent-foreground'
           )}
         >
           {icon && <span className="flex-shrink-0">{icon}</span>}
@@ -478,9 +472,9 @@ function SidebarItem({
         </button>
 
         {/* Tooltip */}
-        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 top-1/2 transform -translate-y-1/2">
+        <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap z-50 top-1/2 transform -translate-y-1/2 border border-border shadow-md">
           {label}
-          <div className="absolute right-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-r-gray-900"></div>
+          <div className="absolute right-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-r-popover"></div>
         </div>
       </div>
     );
@@ -493,8 +487,8 @@ function SidebarItem({
         'flex items-center justify-between w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-left text-sm group',
         isSubItem && 'text-xs py-2',
         active
-          ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-          : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+          ? 'bg-primary text-primary-foreground'
+          : 'hover:bg-accent text-muted-foreground hover:text-accent-foreground'
       )}
     >
       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -508,7 +502,7 @@ function SidebarItem({
           </Badge>
         )}
         {trailingIcon && (
-          <span className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300">
+          <span className="text-muted-foreground group-hover:text-foreground">
             {trailingIcon}
           </span>
         )}
@@ -518,8 +512,8 @@ function SidebarItem({
 }
 
 function SidebarSubItem({ label, active, onClick, theme, isFirst, isMiddle, isLast }) {
-  const borderColor = theme === 'dark' ? "border-gray-500" : "border-gray-400";
-  const bgColor = theme === 'dark' ? "bg-gray-500" : "bg-gray-400";
+  const borderColor = "border-muted-foreground";
+  const bgColor = "bg-muted-foreground";
 
   return (
     <div className="relative pl-4 py-0.5">
@@ -547,8 +541,8 @@ function SidebarSubItem({ label, active, onClick, theme, isFirst, isMiddle, isLa
         className={cn(
           'w-full text-left text-sm py-1.5 px-2 rounded-md transition-all duration-200',
           active
-            ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-            : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100'
+            ? 'bg-primary text-primary-foreground'
+            : 'hover:bg-accent text-muted-foreground hover:text-accent-foreground'
         )}
       >
         {label}
