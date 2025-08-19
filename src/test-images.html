@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test SerpAPI Image Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-container {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .product-card {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .product-image {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: #d32f2f;
+        }
+        .success {
+            color: #2e7d32;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>SerpAPI Image Search Test</h1>
+    
+    <div class="test-container">
+        <h2>Test Products</h2>
+        <button onclick="testSerpAPI()">Test SerpAPI Search</button>
+        <button onclick="testCuratedImages()">Test Curated Images</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="log" class="log"></div>
+        
+        <div id="results" class="product-grid"></div>
+    </div>
+
+    <script>
+        const testProducts = [
+            { name: 'Urea', brand: 'IFFCO', category: 'fertilizer' },
+            { name: 'DAP', brand: 'Coromandel', category: 'fertilizer' },
+            { name: 'NPK', brand: 'Tata Chemicals', category: 'fertilizer' },
+            { name: 'Potash', brand: 'ICL', category: 'fertilizer' },
+            { name: 'Zinc Sulphate', brand: 'Tata Chemicals', category: 'fertilizer' }
+        ];
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function testSerpAPI() {
+            log('🔍 Starting SerpAPI test...');
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            for (const product of testProducts) {
+                const productCard = document.createElement('div');
+                productCard.className = 'product-card';
+                productCard.innerHTML = `
+                    <h3>${product.name}</h3>
+                    <p>Brand: ${product.brand}</p>
+                    <div class="loading">Loading image...</div>
+                `;
+                resultsDiv.appendChild(productCard);
+
+                try {
+                    log(`🔍 Searching for: ${product.name} by ${product.brand}`);
+                    
+                    // Build search query
+                    const query = `${product.name} ${product.brand} fertilizer agriculture India`;
+                    log(`📝 Query: ${query}`);
+                    
+                    const params = new URLSearchParams({
+                        engine: 'google_shopping',
+                        q: query,
+                        location: 'India',
+                        hl: 'en',
+                        gl: 'in',
+                        api_key: 'e4b1a95bd46976556e574611eadb956051517e390dd63a4ca6adcb46de251d80'
+                    });
+
+                    const response = await fetch(`https://serpapi.com/search.json?${params}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    log(`📦 Found ${data.shopping_results?.length || 0} results for ${product.name}`);
+
+                    if (data.shopping_results && data.shopping_results.length > 0) {
+                        const firstResult = data.shopping_results[0];
+                        const imageUrl = firstResult.thumbnail || firstResult.image || firstResult.product_image;
+                        
+                        if (imageUrl) {
+                            productCard.innerHTML = `
+                                <h3>${product.name}</h3>
+                                <p>Brand: ${product.brand}</p>
+                                <img src="${imageUrl}" alt="${product.name}" class="product-image" 
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                <div style="display:none;" class="error">Image failed to load</div>
+                                <p class="success">✅ Found: ${firstResult.title}</p>
+                                <p style="font-size: 12px;">Source: ${firstResult.source}</p>
+                            `;
+                            log(`✅ Image found for ${product.name}: ${firstResult.title}`);
+                        } else {
+                            productCard.innerHTML = `
+                                <h3>${product.name}</h3>
+                                <p>Brand: ${product.brand}</p>
+                                <div class="error">❌ No image URL found</div>
+                            `;
+                            log(`❌ No image URL for ${product.name}`);
+                        }
+                    } else {
+                        productCard.innerHTML = `
+                            <h3>${product.name}</h3>
+                            <p>Brand: ${product.brand}</p>
+                            <div class="error">❌ No search results</div>
+                        `;
+                        log(`❌ No results for ${product.name}`);
+                    }
+                } catch (error) {
+                    log(`❌ Error for ${product.name}: ${error.message}`);
+                    productCard.innerHTML = `
+                        <h3>${product.name}</h3>
+                        <p>Brand: ${product.brand}</p>
+                        <div class="error">❌ Error: ${error.message}</div>
+                    `;
+                }
+            }
+            log('🏁 SerpAPI test completed');
+        }
+
+        async function testCuratedImages() {
+            log('🎨 Testing curated images...');
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+
+            const curatedImages = {
+                'urea': 'https://5.imimg.com/data5/SELLER/Default/2023/8/334094139/YF/YH/QI/3770029/iffco-urea-fertilizer-50-kg-bag.jpg',
+                'dap': 'https://5.imimg.com/data5/SELLER/Default/2022/11/HL/HL/HL/159159159/coromandel-dap-fertilizer.jpg',
+                'npk': 'https://5.imimg.com/data5/SELLER/Default/2023/5/306094139/YF/YH/QI/3770029/tata-npk-fertilizer.jpg',
+                'potash': 'https://5.imimg.com/data5/SELLER/Default/2023/3/294094139/YF/YH/QI/3770029/icl-potash-fertilizer.jpg',
+                'zinc sulphate': 'https://5.imimg.com/data5/SELLER/Default/2023/2/274094139/YF/YH/QI/3770029/zinc-sulphate-fertilizer.jpg'
+            };
+
+            for (const product of testProducts) {
+                const productKey = product.name.toLowerCase();
+                const imageUrl = curatedImages[productKey];
+                
+                const productCard = document.createElement('div');
+                productCard.className = 'product-card';
+                
+                if (imageUrl) {
+                    productCard.innerHTML = `
+                        <h3>${product.name}</h3>
+                        <p>Brand: ${product.brand}</p>
+                        <img src="${imageUrl}" alt="${product.name}" class="product-image" 
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <div style="display:none;" class="error">Image failed to load</div>
+                        <p class="success">✅ Curated image</p>
+                    `;
+                    log(`✅ Curated image for ${product.name}`);
+                } else {
+                    productCard.innerHTML = `
+                        <h3>${product.name}</h3>
+                        <p>Brand: ${product.brand}</p>
+                        <div class="error">❌ No curated image</div>
+                    `;
+                    log(`❌ No curated image for ${product.name}`);
+                }
+                
+                resultsDiv.appendChild(productCard);
+            }
+            log('🏁 Curated images test completed');
+        }
+
+        // Auto-run curated images test on page load
+        window.onload = function() {
+            log('🚀 Page loaded, ready for testing');
+        };
+    </script>
+</body>
+</html>

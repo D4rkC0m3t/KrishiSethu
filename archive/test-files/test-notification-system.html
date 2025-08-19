@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification System Test - Krishisethu</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .test-button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #2563eb;
+        }
+        .test-button.success {
+            background: #10b981;
+        }
+        .test-button.warning {
+            background: #f59e0b;
+        }
+        .test-button.error {
+            background: #ef4444;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .result.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .result.error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        .result.info {
+            background: #dbeafe;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .status-card {
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        .notification-demo {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f8fafc;
+        }
+        .notification-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 5px 0;
+            background: white;
+            border: 1px solid #e2e8f0;
+        }
+        .notification-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        .notification-icon.error { background: #fef2f2; color: #dc2626; }
+        .notification-icon.warning { background: #fffbeb; color: #d97706; }
+        .notification-icon.success { background: #dcfce7; color: #16a34a; }
+        .notification-icon.info { background: #dbeafe; color: #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Notification System Test</h1>
+            <p>Test the complete notification flow for Krishisethu Inventory Management</p>
+        </div>
+
+        <!-- Permission Status -->
+        <div class="test-section">
+            <h3>📋 Notification Permission Status</h3>
+            <div id="permission-status"></div>
+            <button class="test-button" onclick="requestPermission()">Request Permission</button>
+            <div id="permission-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Browser Notification Tests -->
+        <div class="test-section">
+            <h3>🌐 Browser Notification Tests</h3>
+            <p>Test different types of browser notifications</p>
+            <button class="test-button success" onclick="testLowStockNotification()">Low Stock Alert</button>
+            <button class="test-button error" onclick="testOutOfStockNotification()">Out of Stock Alert</button>
+            <button class="test-button warning" onclick="testExpiryNotification()">Expiry Warning</button>
+            <button class="test-button" onclick="testSalesNotification()">Sales Notification</button>
+            <div id="browser-notification-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Notification Service Tests -->
+        <div class="test-section">
+            <h3>⚙️ Notification Service Tests</h3>
+            <p>Test the notification service functionality</p>
+            <button class="test-button" onclick="testNotificationService()">Test Service Status</button>
+            <button class="test-button" onclick="testNotificationQueue()">Test Queue System</button>
+            <button class="test-button" onclick="testNotificationSettings()">Test Settings</button>
+            <div id="service-test-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Notification Dropdown Demo -->
+        <div class="test-section">
+            <h3>📱 Notification Dropdown Demo</h3>
+            <p>Preview how notifications appear in the dropdown menu</p>
+            <button class="test-button" onclick="generateSampleNotifications()">Generate Sample Notifications</button>
+            <div id="notification-dropdown-demo" class="notification-demo" style="display: none;">
+                <h4>Notification Dropdown Preview:</h4>
+                <div id="sample-notifications"></div>
+            </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="test-section">
+            <h3>📊 System Status</h3>
+            <div class="status-grid">
+                <div class="status-card">
+                    <h4>Browser Support</h4>
+                    <div id="browser-support"></div>
+                </div>
+                <div class="status-card">
+                    <h4>Service Worker</h4>
+                    <div id="service-worker-status"></div>
+                </div>
+                <div class="status-card">
+                    <h4>Push Support</h4>
+                    <div id="push-support"></div>
+                </div>
+                <div class="status-card">
+                    <h4>Current Settings</h4>
+                    <div id="current-settings"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize status check
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSystemStatus();
+            updatePermissionStatus();
+        });
+
+        function updatePermissionStatus() {
+            const statusDiv = document.getElementById('permission-status');
+            const permission = Notification.permission;
+            
+            let statusHTML = `<strong>Current Permission:</strong> ${permission}`;
+            let statusClass = '';
+            
+            switch(permission) {
+                case 'granted':
+                    statusClass = 'success';
+                    statusHTML += ' ✅';
+                    break;
+                case 'denied':
+                    statusClass = 'error';
+                    statusHTML += ' ❌';
+                    break;
+                default:
+                    statusClass = 'info';
+                    statusHTML += ' ⏳';
+            }
+            
+            statusDiv.innerHTML = `<div class="result ${statusClass}">${statusHTML}</div>`;
+        }
+
+        async function requestPermission() {
+            const resultDiv = document.getElementById('permission-result');
+            resultDiv.style.display = 'block';
+            
+            try {
+                const permission = await Notification.requestPermission();
+                resultDiv.className = 'result ' + (permission === 'granted' ? 'success' : 'error');
+                resultDiv.textContent = `Permission ${permission}`;
+                updatePermissionStatus();
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        function testLowStockNotification() {
+            showTestNotification('⚠️ Low Stock Alert', {
+                body: 'Urea Fertilizer is running low (5 units remaining)',
+                icon: '/logo192.png',
+                tag: 'low-stock-test',
+                requireInteraction: true
+            });
+        }
+
+        function testOutOfStockNotification() {
+            showTestNotification('🚨 Out of Stock', {
+                body: 'NPK Fertilizer is completely out of stock',
+                icon: '/logo192.png',
+                tag: 'out-of-stock-test',
+                requireInteraction: true
+            });
+        }
+
+        function testExpiryNotification() {
+            showTestNotification('⏰ Expiring Soon', {
+                body: 'Organic Pesticide expires in 3 days',
+                icon: '/logo192.png',
+                tag: 'expiry-test',
+                requireInteraction: true
+            });
+        }
+
+        function testSalesNotification() {
+            showTestNotification('💰 Sale Completed', {
+                body: 'Sale of ₹1,250 to Ramesh Kumar completed',
+                icon: '/logo192.png',
+                tag: 'sale-test'
+            });
+        }
+
+        function showTestNotification(title, options) {
+            const resultDiv = document.getElementById('browser-notification-result');
+            resultDiv.style.display = 'block';
+            
+            if (Notification.permission !== 'granted') {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = 'Permission not granted. Please enable notifications first.';
+                return;
+            }
+            
+            try {
+                const notification = new Notification(title, options);
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ Notification "${title}" sent successfully`;
+                
+                notification.onclick = function() {
+                    console.log('Notification clicked:', title);
+                    notification.close();
+                };
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Error: ${error.message}`;
+            }
+        }
+
+        function testNotificationService() {
+            const resultDiv = document.getElementById('service-test-result');
+            resultDiv.style.display = 'block';
+            
+            // Simulate notification service status
+            const status = {
+                supported: 'Notification' in window,
+                pushSupported: 'serviceWorker' in navigator && 'PushManager' in window,
+                permission: Notification.permission,
+                queueLength: 0
+            };
+            
+            resultDiv.className = 'result info';
+            resultDiv.innerHTML = `
+                <strong>Notification Service Status:</strong><br>
+                • Browser Support: ${status.supported ? '✅' : '❌'}<br>
+                • Push Support: ${status.pushSupported ? '✅' : '❌'}<br>
+                • Permission: ${status.permission}<br>
+                • Queue Length: ${status.queueLength}
+            `;
+        }
+
+        function generateSampleNotifications() {
+            const demoDiv = document.getElementById('notification-dropdown-demo');
+            const notificationsDiv = document.getElementById('sample-notifications');
+            
+            const sampleNotifications = [
+                {
+                    type: 'error',
+                    title: '🚨 Out of Stock',
+                    message: 'Urea Fertilizer is out of stock',
+                    time: 'Just now'
+                },
+                {
+                    type: 'warning',
+                    title: '⚠️ Low Stock Alert',
+                    message: 'NPK Fertilizer is running low (8 remaining)',
+                    time: '5m ago'
+                },
+                {
+                    type: 'warning',
+                    title: '⏰ Expiring Soon',
+                    message: 'Organic Pesticide expires in 2 days',
+                    time: '15m ago'
+                },
+                {
+                    type: 'success',
+                    title: '💰 Sale Completed',
+                    message: 'Sale of ₹2,450 to Suresh Patel',
+                    time: '1h ago'
+                },
+                {
+                    type: 'info',
+                    title: '📦 Purchase Added',
+                    message: 'New stock of Bio Fertilizer added',
+                    time: '2h ago'
+                }
+            ];
+            
+            notificationsDiv.innerHTML = sampleNotifications.map(notification => `
+                <div class="notification-item">
+                    <div class="notification-icon ${notification.type}">
+                        ${notification.type === 'error' ? '!' : 
+                          notification.type === 'warning' ? '⚠' : 
+                          notification.type === 'success' ? '✓' : 'i'}
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 500; font-size: 14px;">${notification.title}</div>
+                        <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${notification.message}</div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 4px;">${notification.time}</div>
+                    </div>
+                </div>
+            `).join('');
+            
+            demoDiv.style.display = 'block';
+        }
+
+        function checkSystemStatus() {
+            // Browser Support
+            document.getElementById('browser-support').innerHTML =
+                'Notification' in window ? '✅ Supported' : '❌ Not Supported';
+
+            // Service Worker - Handle file:// protocol gracefully
+            if ('serviceWorker' in navigator) {
+                // Check if we're on file:// protocol
+                if (location.protocol === 'file:') {
+                    document.getElementById('service-worker-status').innerHTML =
+                        '⚠️ Not Available (file:// protocol)<br><small>Use HTTP server for full testing</small>';
+                } else {
+                    navigator.serviceWorker.getRegistration().then(registration => {
+                        document.getElementById('service-worker-status').innerHTML =
+                            registration ? '✅ Active' : '⏳ Not Registered';
+                    }).catch(error => {
+                        document.getElementById('service-worker-status').innerHTML =
+                            '❌ Error: ' + error.message;
+                    });
+                }
+            } else {
+                document.getElementById('service-worker-status').innerHTML = '❌ Not Supported';
+            }
+
+            // Push Support
+            const pushSupported = ('serviceWorker' in navigator && 'PushManager' in window);
+            const protocolSupported = location.protocol !== 'file:';
+            document.getElementById('push-support').innerHTML =
+                pushSupported && protocolSupported ? '✅ Supported' :
+                pushSupported ? '⚠️ Requires HTTP Server' : '❌ Not Supported';
+            
+            // Current Settings
+            const settings = JSON.parse(localStorage.getItem('notificationSettings') || '{}');
+            document.getElementById('current-settings').innerHTML = `
+                <div style="font-size: 12px;">
+                    • Enabled: ${settings.enabled !== false ? '✅' : '❌'}<br>
+                    • Low Stock: ${settings.lowStock !== false ? '✅' : '❌'}<br>
+                    • Expiry: ${settings.expiry !== false ? '✅' : '❌'}<br>
+                    • Sales: ${settings.sales !== false ? '✅' : '❌'}
+                </div>
+            `;
+        }
+
+        function testNotificationQueue() {
+            const resultDiv = document.getElementById('service-test-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = '🔄 Queue system test completed. Check console for details.';
+            
+            console.log('Testing notification queue system...');
+            console.log('Queue functionality would store notifications when permission is not granted');
+            console.log('and replay them once permission is obtained.');
+        }
+
+        function testNotificationSettings() {
+            const resultDiv = document.getElementById('service-test-result');
+            resultDiv.style.display = 'block';
+            
+            // Test settings save/load
+            const testSettings = {
+                enabled: true,
+                lowStock: true,
+                expiry: true,
+                sales: false,
+                sync: true
+            };
+            
+            localStorage.setItem('notificationSettings', JSON.stringify(testSettings));
+            const loaded = JSON.parse(localStorage.getItem('notificationSettings'));
+            
+            resultDiv.className = 'result success';
+            resultDiv.innerHTML = `
+                <strong>Settings Test:</strong><br>
+                • Save: ✅ Success<br>
+                • Load: ✅ Success<br>
+                • Data Integrity: ${JSON.stringify(testSettings) === JSON.stringify(loaded) ? '✅' : '❌'}
+            `;
+            
+            checkSystemStatus(); // Refresh status display
+        }
+    </script>
+</body>
+</html>

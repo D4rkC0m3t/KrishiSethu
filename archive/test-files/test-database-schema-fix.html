@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Schema Fix - Krishisethu</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #2c3e50;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover { background: #2980b9; }
+        .button.success { background: #27ae60; }
+        .button.danger { background: #e74c3c; }
+        .button.warning { background: #f39c12; }
+        .log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .status.good { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .status.bad { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .status.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Database Schema Fix Tool</h1>
+            <p>Diagnose and fix the "Database error querying schema" issue</p>
+        </div>
+
+        <div class="test-section">
+            <h3>🔍 Step 1: Database Connection Test</h3>
+            <button class="button" onclick="testConnection()">Test Connection</button>
+            <div id="connectionStatus" class="status warning">Status: Not tested</div>
+            <div id="connectionLog" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📋 Step 2: Check Required Tables</h3>
+            <button class="button" onclick="checkTables()">Check Tables</button>
+            <div id="tablesStatus" class="status warning">Status: Not tested</div>
+            <div id="tablesLog" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>👤 Step 3: Check Profiles Table</h3>
+            <button class="button" onclick="checkProfiles()">Check Profiles</button>
+            <div id="profilesStatus" class="status warning">Status: Not tested</div>
+            <div id="profilesLog" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔧 Step 4: Fix Schema Issues</h3>
+            <button class="button warning" onclick="createMissingTables()">Create Missing Tables</button>
+            <button class="button success" onclick="runFullFix()">Run Complete Fix</button>
+            <div id="fixStatus" class="status warning">Status: Ready to fix</div>
+            <div id="fixLog" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>✅ Step 5: Verify Fix</h3>
+            <button class="button success" onclick="verifyFix()">Verify Everything</button>
+            <div id="verifyStatus" class="status warning">Status: Not verified</div>
+            <div id="verifyLog" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        // Supabase configuration
+        const supabaseUrl = 'https://srhfccodjurgnuvuqynp.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyaGZjY29kanVyZ251dnVxeW5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDU0NzksImV4cCI6MjA3MDkyMTQ3OX0.emNVb99D7c6K8CKYqkdDTzKr3Ly6mErKEFMEGbIDN8A';
+        
+        const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        function log(message, elementId = 'connectionLog') {
+            const logElement = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+
+        async function testConnection() {
+            log('🔍 Testing database connection...', 'connectionLog');
+            
+            try {
+                // Test basic connection with a simple query
+                const { data, error } = await supabase
+                    .from('information_schema.tables')
+                    .select('table_name')
+                    .eq('table_schema', 'public')
+                    .limit(1);
+
+                if (error) {
+                    throw error;
+                }
+
+                log('✅ Database connection successful!', 'connectionLog');
+                document.getElementById('connectionStatus').textContent = 'Status: Connected';
+                document.getElementById('connectionStatus').className = 'status good';
+                
+                return true;
+            } catch (error) {
+                log(`❌ Connection failed: ${error.message}`, 'connectionLog');
+                document.getElementById('connectionStatus').textContent = `Status: Failed - ${error.message}`;
+                document.getElementById('connectionStatus').className = 'status bad';
+                
+                return false;
+            }
+        }
+
+        async function checkTables() {
+            log('📋 Checking required tables...', 'tablesLog');
+            
+            const requiredTables = [
+                'profiles', 'subscription_plans', 'user_subscriptions', 
+                'notification_logs', 'admin_actions', 'users',
+                'categories', 'brands', 'suppliers', 'customers', 'products'
+            ];
+
+            let allTablesExist = true;
+            const missingTables = [];
+
+            for (const table of requiredTables) {
+                try {
+                    const { data, error } = await supabase
+                        .from(table)
+                        .select('*')
+                        .limit(1);
+
+                    if (error) {
+                        if (error.message.includes('does not exist')) {
+                            log(`❌ Table '${table}' does not exist`, 'tablesLog');
+                            missingTables.push(table);
+                            allTablesExist = false;
+                        } else {
+                            log(`⚠️ Table '${table}' exists but has access issues: ${error.message}`, 'tablesLog');
+                        }
+                    } else {
+                        log(`✅ Table '${table}' exists and accessible`, 'tablesLog');
+                    }
+                } catch (err) {
+                    log(`❌ Error checking table '${table}': ${err.message}`, 'tablesLog');
+                    missingTables.push(table);
+                    allTablesExist = false;
+                }
+            }
+
+            if (allTablesExist) {
+                document.getElementById('tablesStatus').textContent = 'Status: All tables exist';
+                document.getElementById('tablesStatus').className = 'status good';
+            } else {
+                document.getElementById('tablesStatus').textContent = `Status: ${missingTables.length} tables missing`;
+                document.getElementById('tablesStatus').className = 'status bad';
+                log(`\n📝 Missing tables: ${missingTables.join(', ')}`, 'tablesLog');
+            }
+
+            return { allTablesExist, missingTables };
+        }
+
+        async function checkProfiles() {
+            log('👤 Checking profiles table specifically...', 'profilesLog');
+            
+            try {
+                // Check if profiles table exists and has correct structure
+                const { data, error } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .limit(1);
+
+                if (error) {
+                    if (error.message.includes('does not exist')) {
+                        log('❌ Profiles table does not exist - this is the main issue!', 'profilesLog');
+                        document.getElementById('profilesStatus').textContent = 'Status: Profiles table missing';
+                        document.getElementById('profilesStatus').className = 'status bad';
+                        return false;
+                    } else {
+                        log(`⚠️ Profiles table exists but has issues: ${error.message}`, 'profilesLog');
+                        document.getElementById('profilesStatus').textContent = `Status: Access issues - ${error.message}`;
+                        document.getElementById('profilesStatus').className = 'status warning';
+                        return false;
+                    }
+                } else {
+                    log('✅ Profiles table exists and accessible', 'profilesLog');
+                    log(`📊 Found ${data?.length || 0} profile records`, 'profilesLog');
+                    document.getElementById('profilesStatus').textContent = 'Status: Profiles table OK';
+                    document.getElementById('profilesStatus').className = 'status good';
+                    return true;
+                }
+            } catch (err) {
+                log(`❌ Error checking profiles: ${err.message}`, 'profilesLog');
+                document.getElementById('profilesStatus').textContent = `Status: Error - ${err.message}`;
+                document.getElementById('profilesStatus').className = 'status bad';
+                return false;
+            }
+        }
+
+        async function createMissingTables() {
+            log('🔧 Creating missing tables...', 'fixLog');
+            
+            // This would need to be done via SQL in Supabase dashboard
+            log('⚠️ Table creation must be done in Supabase SQL Editor', 'fixLog');
+            log('📋 Copy and run the customer-trial-system.sql script', 'fixLog');
+            
+            document.getElementById('fixStatus').textContent = 'Status: Manual SQL execution required';
+            document.getElementById('fixStatus').className = 'status warning';
+        }
+
+        async function runFullFix() {
+            log('🚀 Running complete database fix...', 'fixLog');
+            
+            // Step 1: Test connection
+            const connected = await testConnection();
+            if (!connected) {
+                log('❌ Cannot proceed - connection failed', 'fixLog');
+                return;
+            }
+
+            // Step 2: Check tables
+            const { allTablesExist, missingTables } = await checkTables();
+            
+            if (!allTablesExist) {
+                log('\n🔧 SOLUTION REQUIRED:', 'fixLog');
+                log('1. Open Supabase Dashboard > SQL Editor', 'fixLog');
+                log('2. Run the customer-trial-system.sql script', 'fixLog');
+                log('3. This will create all missing tables', 'fixLog');
+                
+                document.getElementById('fixStatus').textContent = 'Status: Manual intervention required';
+                document.getElementById('fixStatus').className = 'status warning';
+            } else {
+                log('✅ All tables exist - checking profiles specifically...', 'fixLog');
+                await checkProfiles();
+            }
+        }
+
+        async function verifyFix() {
+            log('✅ Verifying complete fix...', 'verifyLog');
+            
+            // Run all checks
+            const connected = await testConnection();
+            const { allTablesExist } = await checkTables();
+            const profilesOK = await checkProfiles();
+            
+            if (connected && allTablesExist && profilesOK) {
+                log('\n🎉 SUCCESS! All database issues are resolved!', 'verifyLog');
+                log('✅ You can now try logging in again', 'verifyLog');
+                document.getElementById('verifyStatus').textContent = 'Status: All checks passed!';
+                document.getElementById('verifyStatus').className = 'status good';
+            } else {
+                log('\n❌ Some issues still remain:', 'verifyLog');
+                if (!connected) log('  - Database connection failed', 'verifyLog');
+                if (!allTablesExist) log('  - Some tables are missing', 'verifyLog');
+                if (!profilesOK) log('  - Profiles table has issues', 'verifyLog');
+                
+                document.getElementById('verifyStatus').textContent = 'Status: Issues remain';
+                document.getElementById('verifyStatus').className = 'status bad';
+            }
+        }
+
+        // Auto-run connection test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testConnection, 1000);
+        });
+    </script>
+</body>
+</html>

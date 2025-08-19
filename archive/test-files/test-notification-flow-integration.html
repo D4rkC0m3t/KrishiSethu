@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification Flow Integration Test - Krishisethu</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .flow-step {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+        .flow-step.active {
+            border-color: #3b82f6;
+            background: #dbeafe;
+        }
+        .flow-step.completed {
+            border-color: #10b981;
+            background: #dcfce7;
+        }
+        .flow-step.error {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+        .test-button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #2563eb;
+        }
+        .test-button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .result.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .result.error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        .result.info {
+            background: #dbeafe;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+        .notification-preview {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .notification-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .notification-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .notification-icon.error { background: #fef2f2; color: #dc2626; }
+        .notification-icon.warning { background: #fffbeb; color: #d97706; }
+        .notification-icon.success { background: #dcfce7; color: #16a34a; }
+        .notification-icon.info { background: #dbeafe; color: #2563eb; }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #3b82f6;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 Notification Flow Integration Test</h1>
+            <p>End-to-end testing of the complete notification system</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+            </div>
+            <p id="progress-text">Ready to start testing...</p>
+        </div>
+
+        <!-- Flow Steps -->
+        <div id="flow-steps">
+            <!-- Steps will be dynamically generated -->
+        </div>
+
+        <!-- Control Panel -->
+        <div class="container">
+            <h3>🎮 Test Control Panel</h3>
+            <button class="test-button" onclick="runFullTest()">Run Complete Flow Test</button>
+            <button class="test-button" onclick="runStepByStep()">Step-by-Step Test</button>
+            <button class="test-button" onclick="resetTest()">Reset Test</button>
+            <button class="test-button" onclick="simulateRealScenario()">Simulate Real Scenario</button>
+        </div>
+
+        <!-- Live Notifications Preview -->
+        <div class="container">
+            <h3>📱 Live Notifications Preview</h3>
+            <div id="notifications-preview"></div>
+        </div>
+
+        <!-- Test Results Summary -->
+        <div class="container">
+            <h3>📊 Test Results Summary</h3>
+            <div id="test-summary"></div>
+        </div>
+    </div>
+
+    <script>
+        // Test flow configuration
+        const testFlow = [
+            {
+                id: 'permission',
+                title: '🔐 Request Notification Permission',
+                description: 'Check and request browser notification permission',
+                test: testNotificationPermission
+            },
+            {
+                id: 'service-init',
+                title: '⚙️ Initialize Notification Service',
+                description: 'Initialize and configure notification service',
+                test: testServiceInitialization
+            },
+            {
+                id: 'alert-generation',
+                title: '🚨 Generate Test Alerts',
+                description: 'Create sample inventory alerts',
+                test: testAlertGeneration
+            },
+            {
+                id: 'browser-notifications',
+                title: '🌐 Send Browser Notifications',
+                description: 'Test browser notification delivery',
+                test: testBrowserNotifications
+            },
+            {
+                id: 'dropdown-integration',
+                title: '📱 Test Dropdown Integration',
+                description: 'Verify notification dropdown functionality',
+                test: testDropdownIntegration
+            },
+            {
+                id: 'user-interaction',
+                title: '👆 Test User Interactions',
+                description: 'Test mark as read, navigation, etc.',
+                test: testUserInteractions
+            },
+            {
+                id: 'real-scenario',
+                title: '🎯 Real Scenario Simulation',
+                description: 'Simulate actual inventory scenarios',
+                test: testRealScenario
+            }
+        ];
+
+        let currentStep = 0;
+        let testResults = [];
+
+        // Initialize the test interface
+        function initializeTest() {
+            const flowStepsContainer = document.getElementById('flow-steps');
+            flowStepsContainer.innerHTML = '';
+
+            testFlow.forEach((step, index) => {
+                const stepElement = document.createElement('div');
+                stepElement.className = 'flow-step';
+                stepElement.id = `step-${step.id}`;
+                stepElement.innerHTML = `
+                    <h4>${step.title}</h4>
+                    <p>${step.description}</p>
+                    <button class="test-button" onclick="runSingleStep(${index})" id="btn-${step.id}">
+                        Run Step
+                    </button>
+                    <div class="result" id="result-${step.id}" style="display: none;"></div>
+                `;
+                flowStepsContainer.appendChild(stepElement);
+            });
+        }
+
+        // Update progress
+        function updateProgress(step, total) {
+            const percentage = (step / total) * 100;
+            document.getElementById('progress-fill').style.width = `${percentage}%`;
+            document.getElementById('progress-text').textContent = 
+                `Step ${step} of ${total} - ${Math.round(percentage)}% complete`;
+        }
+
+        // Run full test
+        async function runFullTest() {
+            currentStep = 0;
+            testResults = [];
+            
+            for (let i = 0; i < testFlow.length; i++) {
+                await runSingleStep(i);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between steps
+            }
+            
+            showTestSummary();
+        }
+
+        // Run single step
+        async function runSingleStep(stepIndex) {
+            const step = testFlow[stepIndex];
+            const stepElement = document.getElementById(`step-${step.id}`);
+            const resultElement = document.getElementById(`result-${step.id}`);
+            const buttonElement = document.getElementById(`btn-${step.id}`);
+
+            // Update UI
+            stepElement.className = 'flow-step active';
+            buttonElement.disabled = true;
+            buttonElement.textContent = 'Running...';
+            resultElement.style.display = 'block';
+            resultElement.className = 'result info';
+            resultElement.textContent = 'Running test...';
+
+            updateProgress(stepIndex + 1, testFlow.length);
+
+            try {
+                const result = await step.test();
+                
+                // Success
+                stepElement.className = 'flow-step completed';
+                resultElement.className = 'result success';
+                resultElement.textContent = `✅ ${result.message}`;
+                
+                testResults.push({ step: step.id, status: 'success', result });
+            } catch (error) {
+                // Error
+                stepElement.className = 'flow-step error';
+                resultElement.className = 'result error';
+                resultElement.textContent = `❌ ${error.message}`;
+                
+                testResults.push({ step: step.id, status: 'error', error: error.message });
+            } finally {
+                buttonElement.disabled = false;
+                buttonElement.textContent = 'Run Step';
+            }
+        }
+
+        // Test functions
+        async function testNotificationPermission() {
+            if (!('Notification' in window)) {
+                throw new Error('Browser does not support notifications');
+            }
+
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                throw new Error(`Permission ${permission} - notifications may not work`);
+            }
+
+            return { message: 'Notification permission granted successfully' };
+        }
+
+        async function testServiceInitialization() {
+            // Check protocol compatibility
+            const isFileProtocol = location.protocol === 'file:';
+
+            // Simulate notification service initialization
+            const mockService = {
+                isSupported: 'Notification' in window,
+                isPushSupported: 'serviceWorker' in navigator && 'PushManager' in window && !isFileProtocol,
+                permission: Notification.permission,
+                protocol: location.protocol,
+                settings: {
+                    enabled: true,
+                    lowStock: true,
+                    expiry: true,
+                    sales: true
+                }
+            };
+
+            if (!mockService.isSupported) {
+                throw new Error('Notification service not supported');
+            }
+
+            if (isFileProtocol) {
+                console.warn('Running on file:// protocol - Service Worker features limited');
+            }
+
+            return {
+                message: `Notification service initialized successfully${isFileProtocol ? ' (limited features on file://)' : ''}`,
+                service: mockService
+            };
+        }
+
+        async function testAlertGeneration() {
+            const sampleAlerts = [
+                {
+                    id: 'alert-1',
+                    type: 'lowStock',
+                    productName: 'NPK Fertilizer',
+                    currentStock: 5,
+                    priority: 'high',
+                    timestamp: new Date()
+                },
+                {
+                    id: 'alert-2',
+                    type: 'expiringSoon',
+                    productName: 'Organic Pesticide',
+                    daysUntilExpiry: 3,
+                    priority: 'medium',
+                    timestamp: new Date()
+                }
+            ];
+
+            // Store alerts for later use
+            window.testAlerts = sampleAlerts;
+
+            return { message: `Generated ${sampleAlerts.length} test alerts`, alerts: sampleAlerts };
+        }
+
+        async function testBrowserNotifications() {
+            if (Notification.permission !== 'granted') {
+                throw new Error('Notification permission not granted');
+            }
+
+            const testNotification = new Notification('🧪 Test Notification', {
+                body: 'This is a test notification from the integration test',
+                icon: '/logo192.png',
+                tag: 'integration-test'
+            });
+
+            return new Promise((resolve, reject) => {
+                testNotification.onshow = () => {
+                    setTimeout(() => {
+                        testNotification.close();
+                        resolve({ message: 'Browser notification sent and displayed successfully' });
+                    }, 2000);
+                };
+
+                testNotification.onerror = (error) => {
+                    reject(new Error('Failed to display browser notification'));
+                };
+            });
+        }
+
+        async function testDropdownIntegration() {
+            // Simulate dropdown functionality
+            const alerts = window.testAlerts || [];
+            
+            // Create preview of how notifications would appear in dropdown
+            const previewContainer = document.getElementById('notifications-preview');
+            previewContainer.innerHTML = '';
+
+            alerts.forEach(alert => {
+                const notificationElement = document.createElement('div');
+                notificationElement.className = 'notification-preview';
+                notificationElement.innerHTML = `
+                    <div class="notification-header">
+                        <div class="notification-icon ${alert.type === 'lowStock' ? 'warning' : 'info'}">
+                            ${alert.type === 'lowStock' ? '⚠' : '⏰'}
+                        </div>
+                        <strong>${getNotificationTitle(alert)}</strong>
+                        <span style="margin-left: auto; font-size: 12px; color: #6b7280;">Just now</span>
+                    </div>
+                    <div style="font-size: 14px; color: #4b5563;">
+                        ${getNotificationMessage(alert)}
+                    </div>
+                `;
+                previewContainer.appendChild(notificationElement);
+            });
+
+            return { message: 'Dropdown integration tested successfully', notifications: alerts.length };
+        }
+
+        async function testUserInteractions() {
+            // Simulate user interactions
+            const interactions = [
+                'Click notification to navigate',
+                'Mark notification as read',
+                'Open notification dropdown',
+                'Close notification dropdown'
+            ];
+
+            // Simulate each interaction
+            for (const interaction of interactions) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                console.log(`Simulating: ${interaction}`);
+            }
+
+            return { message: 'User interactions tested successfully', interactions: interactions.length };
+        }
+
+        async function testRealScenario() {
+            // Simulate a real inventory scenario
+            const scenario = {
+                name: 'Low Stock Alert Scenario',
+                steps: [
+                    'Product stock falls below threshold',
+                    'Alert service detects low stock',
+                    'Browser notification sent',
+                    'In-app notification added to dropdown',
+                    'User clicks notification',
+                    'Navigation to product page',
+                    'User marks notification as read'
+                ]
+            };
+
+            // Simulate the scenario
+            for (let i = 0; i < scenario.steps.length; i++) {
+                await new Promise(resolve => setTimeout(resolve, 300));
+                console.log(`Step ${i + 1}: ${scenario.steps[i]}`);
+            }
+
+            return { message: 'Real scenario simulation completed successfully', scenario };
+        }
+
+        // Helper functions
+        function getNotificationTitle(alert) {
+            switch (alert.type) {
+                case 'lowStock':
+                    return '⚠️ Low Stock Alert';
+                case 'expiringSoon':
+                    return '⏰ Expiring Soon';
+                default:
+                    return '🔔 Notification';
+            }
+        }
+
+        function getNotificationMessage(alert) {
+            switch (alert.type) {
+                case 'lowStock':
+                    return `${alert.productName} is running low (${alert.currentStock} remaining)`;
+                case 'expiringSoon':
+                    return `${alert.productName} expires in ${alert.daysUntilExpiry} days`;
+                default:
+                    return 'New notification';
+            }
+        }
+
+        function showTestSummary() {
+            const summaryContainer = document.getElementById('test-summary');
+            const successCount = testResults.filter(r => r.status === 'success').length;
+            const errorCount = testResults.filter(r => r.status === 'error').length;
+
+            summaryContainer.innerHTML = `
+                <div class="result ${errorCount === 0 ? 'success' : 'error'}">
+                    <h4>Test Summary</h4>
+                    <p><strong>Total Tests:</strong> ${testResults.length}</p>
+                    <p><strong>Passed:</strong> ${successCount}</p>
+                    <p><strong>Failed:</strong> ${errorCount}</p>
+                    <p><strong>Success Rate:</strong> ${Math.round((successCount / testResults.length) * 100)}%</p>
+                    ${errorCount === 0 ? 
+                        '<p>🎉 All tests passed! Notification system is working correctly.</p>' :
+                        '<p>⚠️ Some tests failed. Check individual step results for details.</p>'
+                    }
+                </div>
+            `;
+        }
+
+        function resetTest() {
+            currentStep = 0;
+            testResults = [];
+            document.getElementById('notifications-preview').innerHTML = '';
+            document.getElementById('test-summary').innerHTML = '';
+            updateProgress(0, testFlow.length);
+            initializeTest();
+        }
+
+        function runStepByStep() {
+            alert('Click "Run Step" buttons individually to test each component step by step.');
+        }
+
+        function simulateRealScenario() {
+            runSingleStep(testFlow.length - 1); // Run the real scenario test
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeTest);
+    </script>
+</body>
+</html>

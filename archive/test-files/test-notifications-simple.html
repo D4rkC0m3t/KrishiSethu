@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Notification Test - No Service Worker Required</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8fafc;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .test-button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #2563eb;
+        }
+        .test-button.success {
+            background: #10b981;
+        }
+        .test-button.warning {
+            background: #f59e0b;
+        }
+        .test-button.error {
+            background: #ef4444;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .result.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .result.error {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+        }
+        .result.info {
+            background: #dbeafe;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+        }
+        .status-card {
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin: 10px 0;
+        }
+        .notification-demo {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            background: #f8fafc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Simple Notification Test</h1>
+            <p>Basic notification testing without Service Worker dependencies</p>
+            <p><strong>✅ Works with file:// protocol</strong></p>
+        </div>
+
+        <!-- Browser Support Check -->
+        <div class="container">
+            <h3>📋 Browser Support Check</h3>
+            <div id="browser-support-status"></div>
+        </div>
+
+        <!-- Permission Testing -->
+        <div class="container">
+            <h3>🔐 Permission Testing</h3>
+            <button class="test-button" onclick="checkPermission()">Check Current Permission</button>
+            <button class="test-button" onclick="requestPermission()">Request Permission</button>
+            <div id="permission-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Basic Notification Tests -->
+        <div class="container">
+            <h3>🌐 Basic Notification Tests</h3>
+            <p>Test basic browser notifications (no Service Worker required)</p>
+            <button class="test-button success" onclick="testBasicNotification()">Test Basic Notification</button>
+            <button class="test-button warning" onclick="testLowStockAlert()">Low Stock Alert</button>
+            <button class="test-button error" onclick="testCriticalAlert()">Critical Alert</button>
+            <button class="test-button" onclick="testSalesNotification()">Sales Notification</button>
+            <div id="notification-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Notification Features Test -->
+        <div class="container">
+            <h3>⚙️ Notification Features Test</h3>
+            <button class="test-button" onclick="testNotificationFeatures()">Test All Features</button>
+            <button class="test-button" onclick="testNotificationEvents()">Test Events</button>
+            <div id="features-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Dropdown Simulation -->
+        <div class="container">
+            <h3>📱 Notification Dropdown Simulation</h3>
+            <p>Preview how notifications would appear in the app dropdown</p>
+            <button class="test-button" onclick="simulateDropdown()">Simulate Dropdown</button>
+            <div id="dropdown-simulation" class="notification-demo" style="display: none;"></div>
+        </div>
+
+        <!-- Test Summary -->
+        <div class="container">
+            <h3>📊 Test Summary</h3>
+            <div id="test-summary"></div>
+        </div>
+    </div>
+
+    <script>
+        let testResults = [];
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkBrowserSupport();
+            updateTestSummary();
+        });
+
+        function checkBrowserSupport() {
+            const supportDiv = document.getElementById('browser-support-status');
+            
+            const support = {
+                notifications: 'Notification' in window,
+                serviceWorker: 'serviceWorker' in navigator,
+                pushManager: 'PushManager' in window,
+                protocol: location.protocol
+            };
+
+            supportDiv.innerHTML = `
+                <div class="status-card">
+                    <h4>Browser Capabilities</h4>
+                    <p><strong>Notifications:</strong> ${support.notifications ? '✅ Supported' : '❌ Not Supported'}</p>
+                    <p><strong>Service Worker:</strong> ${support.serviceWorker ? '✅ Supported' : '❌ Not Supported'}</p>
+                    <p><strong>Push Manager:</strong> ${support.pushManager ? '✅ Supported' : '❌ Not Supported'}</p>
+                    <p><strong>Protocol:</strong> ${support.protocol} ${support.protocol === 'file:' ? '⚠️ (Limited features)' : '✅'}</p>
+                    <p><strong>Current Permission:</strong> ${Notification.permission}</p>
+                </div>
+            `;
+
+            return support;
+        }
+
+        function checkPermission() {
+            const resultDiv = document.getElementById('permission-result');
+            resultDiv.style.display = 'block';
+            
+            const permission = Notification.permission;
+            let message = `Current permission: ${permission}`;
+            let className = 'info';
+
+            switch(permission) {
+                case 'granted':
+                    message += ' ✅ - Notifications will work';
+                    className = 'success';
+                    break;
+                case 'denied':
+                    message += ' ❌ - Notifications are blocked';
+                    className = 'error';
+                    break;
+                default:
+                    message += ' ⏳ - Permission not yet requested';
+                    className = 'info';
+            }
+
+            resultDiv.className = `result ${className}`;
+            resultDiv.textContent = message;
+
+            addTestResult('permission-check', permission === 'granted' ? 'success' : 'warning', message);
+        }
+
+        async function requestPermission() {
+            const resultDiv = document.getElementById('permission-result');
+            resultDiv.style.display = 'block';
+            
+            if (!('Notification' in window)) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ Browser does not support notifications';
+                addTestResult('permission-request', 'error', 'Browser not supported');
+                return;
+            }
+
+            try {
+                const permission = await Notification.requestPermission();
+                let message = `Permission ${permission}`;
+                let className = permission === 'granted' ? 'success' : 'error';
+
+                if (permission === 'granted') {
+                    message += ' ✅ - You can now receive notifications';
+                } else {
+                    message += ' ❌ - Notifications will not work';
+                }
+
+                resultDiv.className = `result ${className}`;
+                resultDiv.textContent = message;
+
+                addTestResult('permission-request', className, message);
+                checkBrowserSupport(); // Update status
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Error: ${error.message}`;
+                addTestResult('permission-request', 'error', error.message);
+            }
+        }
+
+        function testBasicNotification() {
+            showNotification('🧪 Test Notification', {
+                body: 'This is a basic test notification',
+                icon: '/logo192.png',
+                tag: 'basic-test'
+            }, 'basic-notification');
+        }
+
+        function testLowStockAlert() {
+            showNotification('⚠️ Low Stock Alert', {
+                body: 'NPK Fertilizer is running low (5 units remaining)',
+                icon: '/logo192.png',
+                tag: 'low-stock-test',
+                requireInteraction: true
+            }, 'low-stock-alert');
+        }
+
+        function testCriticalAlert() {
+            showNotification('🚨 Critical Alert', {
+                body: 'Urea Fertilizer is out of stock!',
+                icon: '/logo192.png',
+                tag: 'critical-test',
+                requireInteraction: true
+            }, 'critical-alert');
+        }
+
+        function testSalesNotification() {
+            showNotification('💰 Sale Completed', {
+                body: 'Sale of ₹1,250 to Ramesh Kumar completed',
+                icon: '/logo192.png',
+                tag: 'sale-test'
+            }, 'sales-notification');
+        }
+
+        function showNotification(title, options, testType) {
+            const resultDiv = document.getElementById('notification-result');
+            resultDiv.style.display = 'block';
+
+            if (Notification.permission !== 'granted') {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ Permission not granted. Please enable notifications first.';
+                addTestResult(testType, 'error', 'Permission not granted');
+                return;
+            }
+
+            try {
+                const notification = new Notification(title, options);
+                
+                notification.onclick = function() {
+                    console.log(`Notification clicked: ${title}`);
+                    notification.close();
+                };
+
+                notification.onshow = function() {
+                    console.log(`Notification shown: ${title}`);
+                };
+
+                notification.onclose = function() {
+                    console.log(`Notification closed: ${title}`);
+                };
+
+                resultDiv.className = 'result success';
+                resultDiv.textContent = `✅ Notification "${title}" sent successfully`;
+                addTestResult(testType, 'success', `Notification sent: ${title}`);
+
+                // Auto-close after 5 seconds
+                setTimeout(() => {
+                    notification.close();
+                }, 5000);
+
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Error: ${error.message}`;
+                addTestResult(testType, 'error', error.message);
+            }
+        }
+
+        function testNotificationFeatures() {
+            const resultDiv = document.getElementById('features-result');
+            resultDiv.style.display = 'block';
+
+            const features = {
+                basicNotifications: 'Notification' in window,
+                permission: Notification.permission === 'granted',
+                icons: true,
+                actions: false, // Basic notifications don't support actions
+                vibration: 'vibrate' in navigator,
+                silent: true
+            };
+
+            const featureList = Object.entries(features)
+                .map(([key, value]) => `${key}: ${value ? '✅' : '❌'}`)
+                .join('<br>');
+
+            resultDiv.className = 'result info';
+            resultDiv.innerHTML = `<strong>Notification Features:</strong><br>${featureList}`;
+
+            addTestResult('features-test', 'success', 'Features checked');
+        }
+
+        function testNotificationEvents() {
+            if (Notification.permission !== 'granted') {
+                const resultDiv = document.getElementById('features-result');
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ Permission required for event testing';
+                return;
+            }
+
+            const notification = new Notification('🎯 Event Test', {
+                body: 'Testing notification events - click me!',
+                icon: '/logo192.png',
+                tag: 'event-test'
+            });
+
+            let events = [];
+
+            notification.onshow = () => events.push('shown');
+            notification.onclick = () => {
+                events.push('clicked');
+                notification.close();
+                showEventResults(events);
+            };
+            notification.onclose = () => {
+                events.push('closed');
+                showEventResults(events);
+            };
+
+            // Auto-close if not clicked
+            setTimeout(() => {
+                if (!events.includes('clicked')) {
+                    notification.close();
+                }
+            }, 5000);
+        }
+
+        function showEventResults(events) {
+            const resultDiv = document.getElementById('features-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result success';
+            resultDiv.innerHTML = `✅ Events fired: ${events.join(', ')}`;
+            addTestResult('events-test', 'success', `Events: ${events.join(', ')}`);
+        }
+
+        function simulateDropdown() {
+            const simulationDiv = document.getElementById('dropdown-simulation');
+            
+            const sampleNotifications = [
+                { type: 'error', title: '🚨 Out of Stock', message: 'Urea Fertilizer is out of stock', time: 'Just now' },
+                { type: 'warning', title: '⚠️ Low Stock', message: 'NPK Fertilizer (8 remaining)', time: '5m ago' },
+                { type: 'info', title: '⏰ Expiring Soon', message: 'Organic Pesticide expires in 2 days', time: '15m ago' },
+                { type: 'success', title: '💰 Sale Completed', message: 'Sale of ₹2,450 completed', time: '1h ago' }
+            ];
+
+            simulationDiv.innerHTML = `
+                <h4>Notification Dropdown Preview:</h4>
+                ${sampleNotifications.map(notif => `
+                    <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 6px; margin: 5px 0; background: white;">
+                        <div style="width: 20px; height: 20px; border-radius: 50%; background: ${getNotificationColor(notif.type)}; display: flex; align-items: center; justify-content: center; font-size: 12px;">
+                            ${getNotificationIcon(notif.type)}
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500; font-size: 14px;">${notif.title}</div>
+                            <div style="font-size: 12px; color: #6b7280;">${notif.message}</div>
+                            <div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">${notif.time}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            `;
+
+            simulationDiv.style.display = 'block';
+            addTestResult('dropdown-simulation', 'success', 'Dropdown simulated');
+        }
+
+        function getNotificationColor(type) {
+            switch(type) {
+                case 'error': return '#fef2f2';
+                case 'warning': return '#fffbeb';
+                case 'success': return '#dcfce7';
+                default: return '#dbeafe';
+            }
+        }
+
+        function getNotificationIcon(type) {
+            switch(type) {
+                case 'error': return '!';
+                case 'warning': return '⚠';
+                case 'success': return '✓';
+                default: return 'i';
+            }
+        }
+
+        function addTestResult(testType, status, message) {
+            testResults.push({ testType, status, message, timestamp: new Date() });
+            updateTestSummary();
+        }
+
+        function updateTestSummary() {
+            const summaryDiv = document.getElementById('test-summary');
+            
+            if (testResults.length === 0) {
+                summaryDiv.innerHTML = '<div class="result info">No tests run yet. Click the test buttons above to start testing.</div>';
+                return;
+            }
+
+            const successCount = testResults.filter(r => r.status === 'success').length;
+            const errorCount = testResults.filter(r => r.status === 'error').length;
+            const warningCount = testResults.filter(r => r.status === 'warning').length;
+
+            summaryDiv.innerHTML = `
+                <div class="result ${errorCount === 0 ? 'success' : 'info'}">
+                    <h4>Test Results Summary</h4>
+                    <p><strong>Total Tests:</strong> ${testResults.length}</p>
+                    <p><strong>Passed:</strong> ${successCount}</p>
+                    <p><strong>Warnings:</strong> ${warningCount}</p>
+                    <p><strong>Failed:</strong> ${errorCount}</p>
+                    <p><strong>Success Rate:</strong> ${Math.round((successCount / testResults.length) * 100)}%</p>
+                    ${errorCount === 0 ? 
+                        '<p>🎉 All tests passed! Basic notifications are working.</p>' :
+                        '<p>⚠️ Some tests failed. Check browser support and permissions.</p>'
+                    }
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

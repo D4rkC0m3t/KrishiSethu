@@ -1,0 +1,50 @@
+name: Deploy App
+
+on:
+  push:
+    branches:
+      - main   # Deploy when pushing to main
+      - develop  # Deploy to staging when pushing to develop
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: 
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+      url: ${{ steps.deploy-frontend.outputs.vercel-url }}
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      # --- Setup Node.js ---
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # --- Install Supabase CLI ---
+      - name: Install Supabase CLI
+        run: npm install -g supabase@latest
+
+      # --- Deploy to Supabase ---
+      - name: Deploy Supabase
+        if: github.ref == 'refs/heads/main'  # Only run for production
+        run: |
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          supabase db push --db-url ${{ secrets.SUPABASE_DB_URL }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # --- Deploy Frontend to Vercel ---
+      - name: Deploy to Vercel
+        id: deploy-frontend
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: .
+          vercel-args: '--prod ${{ github.ref == 'refs/heads/main' && '--prod' || '--target staging' }}'
