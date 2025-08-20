@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useInventory } from '../hooks/useInventory';
 import { useSettingsContext } from '../contexts/SettingsContext';
-import { 
-  Package, 
-  ShoppingCart, 
-  TrendingUp, 
-  AlertTriangle, 
-  Users, 
+import {
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  AlertTriangle,
+  Users,
   BarChart3,
   Plus,
   Search,
@@ -17,6 +17,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
+import PigLatinTranslator from './PigLatinTranslator';
 
 // Dashboard Components
 import DashboardStats from './dashboard/DashboardStats';
@@ -122,6 +123,8 @@ const Dashboard = ({
         return <SettingsPage onNavigate={onNavigate} />;
       case 'alerts-system':
         return <AlertsPage onNavigate={onNavigate} />;
+      case 'pig-latin':
+        return <PigLatinPage onNavigate={onNavigate} />;
       default:
         return renderDashboardHome();
     }
@@ -311,6 +314,18 @@ const AlertsPage = ({ onNavigate }) => (
         <p className="text-gray-600">Alerts management interface will be implemented here.</p>
       </CardContent>
     </Card>
+  </div>
+);
+
+const PigLatinPage = ({ onNavigate }) => (
+  <div className="animate-fade-in">
+    <div className="flex justify-between items-center mb-6">
+      <h1 className="text-2xl font-bold text-gray-900 font-display">Pig Latin Translator</h1>
+      <Button variant="outline" onClick={() => onNavigate('dashboard')}>
+        Back to Dashboard
+      </Button>
+    </div>
+    <PigLatinTranslator />
   </div>
 );
 

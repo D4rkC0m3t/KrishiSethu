@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, ShoppingCart, Package, BarChart3, Settings, Users } from 'lucide-react';
+import { Plus, ShoppingCart, Package, BarChart3, Settings, Users, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 
@@ -36,6 +36,14 @@ const QuickActions = ({ onNavigate }) => {
       color: 'text-orange-600',
       bgColor: 'bg-orange-100',
       onClick: () => onNavigate('reports')
+    },
+    {
+      title: 'Pig Latin Translator',
+      description: 'Translate text to Pig Latin',
+      icon: Zap,
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-100',
+      onClick: () => onNavigate('pig-latin')
     }
   ];
 
