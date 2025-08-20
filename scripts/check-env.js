@@ -2,11 +2,38 @@
 
 /**
  * Environment Variables Check Script
- * 
+ *
  * This script validates that all required environment variables are set
  * before building the application. It prevents deployment with missing
  * or invalid configuration.
  */
+
+// Load environment variables from .env files
+const fs = require('fs');
+const path = require('path');
+
+function loadEnvFile(filePath) {
+  if (fs.existsSync(filePath)) {
+    const content = fs.readFileSync(filePath, 'utf8');
+    content.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=');
+        if (key && valueParts.length > 0) {
+          const value = valueParts.join('=');
+          if (!process.env[key]) {
+            process.env[key] = value;
+          }
+        }
+      }
+    });
+  }
+}
+
+// Load .env files in order of precedence
+loadEnvFile(path.join(process.cwd(), '.env.local'));
+loadEnvFile(path.join(process.cwd(), '.env'));
+loadEnvFile(path.join(process.cwd(), '.env.production'));
 
 const required = [
   "REACT_APP_SUPABASE_URL", 
