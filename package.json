@@ -1,6 +1,6 @@
 {
-  "name": "inventory-management",
-  "version": "0.1.0",
+  "name": "krishisethu-inventory-management",
+  "version": "1.0.0",
   "private": true,
   "dependencies": {
     "@prisma/client": "^5.19.1",
@@ -40,7 +40,8 @@
   "scripts": {
     "start": "craco start",
     "prebuild": "node scripts/check-env.js",
-    "build": "craco build",
+    "build": "react-scripts build",
+    "build:craco": "craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
     "prisma:generate": "prisma generate",
