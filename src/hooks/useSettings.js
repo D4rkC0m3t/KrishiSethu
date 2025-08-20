@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { settingsOperations } from '../lib/supabaseDb';
-import { shopDetailsService } from '../lib/shopDetails';
+// Note: These services will be implemented as the app grows
+// import { settingsOperations } from '../lib/supabaseDb';
+// import { shopDetailsService } from '../lib/shopDetails';
 
 /**
  * Custom hook for managing application settings
@@ -108,20 +109,10 @@ export const useSettings = () => {
       setLoading(true);
       setError(null);
 
-      // Load company info from shop details service
-      const companyInfo = await shopDetailsService.getShopDetails();
+      // For now, use default settings
+      // TODO: Implement actual database loading when services are ready
+      console.log('Settings loaded from defaults');
       
-      // Load other settings from database
-      const systemSettings = await settingsOperations.getSystemSettings();
-
-      // Merge with defaults and update state
-      setSettings(prev => ({
-        ...prev,
-        companyInfo: { ...prev.companyInfo, ...companyInfo },
-        ...systemSettings
-      }));
-
-      console.log('Settings loaded successfully:', { companyInfo, systemSettings });
     } catch (err) {
       console.error('Error loading settings:', err);
       setError(err.message);
@@ -133,13 +124,10 @@ export const useSettings = () => {
   // Update a specific setting section
   const updateSettings = useCallback(async (section, data) => {
     try {
-      if (section === 'companyInfo') {
-        await shopDetailsService.updateShopDetails(data);
-      } else {
-        await settingsOperations.updateSettingSection(section, data);
-      }
-
-      // Update local state
+      // TODO: Implement actual database updates when services are ready
+      console.log(`Updating ${section} settings:`, data);
+      
+      // Update local state for now
       setSettings(prev => ({
         ...prev,
         [section]: { ...prev[section], ...data }

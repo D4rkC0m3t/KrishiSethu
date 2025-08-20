@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase-auth-fix';
+import { supabase } from '../../lib/supabase';
 import LoginForm from './LoginForm';
 import RegistrationForm from './RegistrationForm';
-import { TrialStatusBanner } from '../admin/AdminControlPanel';
 
 const AuthPage = ({ onAuthSuccess }) => {
   const [currentView, setCurrentView] = useState('login');

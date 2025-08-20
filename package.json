@@ -1,54 +1,53 @@
 {
-  "name": "krishisethu-inventory-management",
-  "version": "1.0.0",
-  "description": "Modern inventory management system for fertilizer shops with enhanced database integration",
-  "main": "src/index.js",
+  "name": "301ac5ccf928989d93ac829fa229bfdf8ad1e64c89b87cfb725a72d05c0c96ac",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "dev": "react-scripts start",
-    "test:db": "node src/utils/testDatabaseIntegration.js",
-    "setup:db": "node src/lib/database-setup.js"
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
   },
-  "keywords": [
-    "inventory",
-    "management",
-    "fertilizer",
-    "agriculture",
-    "supabase",
-    "react"
-  ],
-  "author": "Krishisethu Team",
-  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.7.0",
+    "comment-json": "^4.2.5",
+    "env-cmd": "^10.1.0",
+    "eslint": "^9.21.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^15.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "rollup": "^4.44.1",
+    "vite": "^6.2.0",
+    "vite-plugin-static-copy": "^3.1.1"
+  },
   "dependencies": {
+    "@kombai/react-error-boundary": "^1.1.0",
+    "date-fns": "^2.30.0",
+    "lucide-react": "^0.263.1",
+    "postcss": "^8.5.6",
+    "postcss-import": "^16.1.1",
+    "postcss-preset-env": "^10.2.4",
+    "tailwindcss": "^3.4.17"
+  },
+  "strictDependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
     "@supabase/supabase-js": "^2.39.0",
     "lucide-react": "^0.263.1",
     "recharts": "^2.8.0",
-    "date-fns": "^2.30.0"
-  },
-  "devDependencies": {
+    "date-fns": "^2.30.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.0"
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
-  },
-  "proxy": "http://localhost:3001"
+  }
 }
