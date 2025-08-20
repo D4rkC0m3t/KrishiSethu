@@ -28,6 +28,7 @@ import {
   ChevronRight,
   FileText
 } from 'lucide-react';
+import { shopDetailsService } from '../lib/shopDetails';
 import { useAuth } from '../contexts/AuthContext';
 import Sidebar from './Sidebar';
 import Inventory from './Inventory';
@@ -77,12 +78,13 @@ const Dashboard = () => {
   const { isOnline, retryConnection } = useNetworkStatus();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [darkMode, setDarkMode] = useState(() => {
-    // Check localStorage first, then system preference
+    // Check localStorage first, then default to light mode
     const saved = localStorage.getItem('darkMode');
     if (saved !== null) {
       return JSON.parse(saved);
     }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // Default to light mode instead of system preference
+    return false;
   });
   const [stats, setStats] = useState({
     totalProducts: 156,
@@ -106,6 +108,7 @@ const Dashboard = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [productToEdit, setProductToEdit] = useState(null);
+  const [companyDetails, setCompanyDetails] = useState(null);
 
   // Enhanced chart data
   const salesData = [
@@ -277,6 +280,33 @@ const Dashboard = () => {
     // Also apply on next tick to ensure it takes effect
     setTimeout(applyTheme, 0);
   }, [darkMode]);
+
+  // Load company details
+  const loadCompanyDetails = async () => {
+    try {
+      console.log('🔄 Loading company details for dashboard...');
+      const details = await shopDetailsService.getShopDetails();
+      console.log('✅ Company details loaded:', details);
+      console.log('🏢 Company name:', details?.name);
+      setCompanyDetails(details);
+    } catch (error) {
+      console.error('❌ Failed to load company details:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadCompanyDetails();
+  }, []);
+
+  // Expose refresh function globally so Settings can call it
+  useEffect(() => {
+    window.refreshDashboardCompanyDetails = loadCompanyDetails;
+
+    // Cleanup on unmount
+    return () => {
+      delete window.refreshDashboardCompanyDetails;
+    };
+  }, []);
 
   const handleNavigation = (page, product = null) => {
     console.log('🧭 Dashboard handleNavigation called with:', page);
@@ -931,21 +961,30 @@ const Dashboard = () => {
 
                 <div className="relative z-10">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <h1 className="text-3xl font-bold mb-2">
-                        Welcome to <span className="text-yellow-300">Krishisethu</span>
-                      </h1>
-                      <p className="text-lg text-white/90 mb-1">
-                        Your Complete Inventory Management Solution
-                      </p>
-                      <p className="text-sm text-white/80">
-                        {new Date().toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <h1 className="text-3xl font-bold mb-2">
+                          Welcome to <span className="text-yellow-300">{companyDetails?.name || 'Krishisethu'}</span>
+                        </h1>
+                        <p className="text-lg text-white/90 mb-1">
+                          Your Complete Inventory Management Solution
+                        </p>
+                        <p className="text-sm text-white/80">
+                          {new Date().toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
                           day: 'numeric'
                         })}
-                      </p>
+                        </p>
+                      </div>
+                      <button
+                        onClick={loadCompanyDetails}
+                        className="p-1 hover:bg-white/10 rounded-full transition-colors opacity-60 hover:opacity-100"
+                        title="Refresh company name"
+                      >
+                        <RefreshCw className="h-4 w-4 text-white" />
+                      </button>
                     </div>
 
                     <div className="hidden md:flex items-center gap-4">

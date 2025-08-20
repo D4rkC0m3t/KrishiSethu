@@ -242,12 +242,12 @@ GSTIN: ${settings?.companyInfo?.gstNumber || ''}`;
                 <tr>
                   <td className="border border-black p-1 align-top w-1/2">
                     <div className="font-semibold">Buyer (if other than consignee)</div>
-                    <div className="mt-[2px]">NAME ——————————————————————</div>
-                    <div>ADDRESS —————————————————————————————————————————————</div>
-                    <div>GSTIN/UIN : ——————————————</div>
-                    <div>State Name : ————————— Code : ——</div>
-                    <div>Contact person : ————————————</div>
-                    <div>Contact Details : ————————————</div>
+                    <div className="mt-[2px]">NAME: {fmt(sale?.consigneeName) || '——————————————————————'}</div>
+                    <div>ADDRESS: {fmt(sale?.consigneeAddress) || '—————————————————————————————————————————————'}</div>
+                    <div>GSTIN/UIN: {fmt(sale?.consigneeGSTIN) || '——————————————'}</div>
+                    <div>State Name: {fmt(sale?.consigneeState) || '—————————'} Code: {fmt(sale?.consigneeStateCode) || '——'}</div>
+                    <div>Contact person: {fmt(sale?.consigneeContactPerson) || '————————————'}</div>
+                    <div>Contact Details: {fmt(sale?.consigneePhone) || '————————————'}</div>
                   </td>
                   <td className="border border-black p-1 align-top w-1/2">
                     <div className="font-semibold">Buyer</div>

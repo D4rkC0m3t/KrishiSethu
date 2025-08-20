@@ -89,7 +89,50 @@ export const AuthProvider = ({ children }) => {
           if (session?.user) {
             console.log('👤 Setting current user:', session.user.email);
             setCurrentUser(session.user);
-            await loadUserProfile(session.user);
+
+            // Set a timeout for profile loading to prevent hanging
+            const profileLoadTimeout = setTimeout(() => {
+              console.warn('⚠️ Profile loading timeout, using default profile');
+              const userName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
+              const defaultProfile = {
+                id: session.user.id,
+                email: session.user.email,
+                name: userName,
+                role: 'trial',
+                account_type: 'trial',
+                is_active: true,
+                is_paid: false,
+                trial_start_date: new Date().toISOString(),
+                trial_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+              };
+              setUserProfile(defaultProfile);
+              if (mounted) {
+                setLoading(false);
+              }
+            }, 3000); // 3 second timeout
+
+            try {
+              await loadUserProfile(session.user);
+              clearTimeout(profileLoadTimeout);
+              console.log('✅ Profile loaded successfully');
+            } catch (profileError) {
+              clearTimeout(profileLoadTimeout);
+              console.error('❌ Profile loading failed:', profileError);
+              // Set default profile on error
+              const userName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
+              const defaultProfile = {
+                id: session.user.id,
+                email: session.user.email,
+                name: userName,
+                role: 'trial',
+                account_type: 'trial',
+                is_active: true,
+                is_paid: false,
+                trial_start_date: new Date().toISOString(),
+                trial_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+              };
+              setUserProfile(defaultProfile);
+            }
           } else {
             console.log('❌ No session found, user not logged in');
             setCurrentUser(null);
@@ -122,6 +165,14 @@ export const AuthProvider = ({ children }) => {
 
     getInitialSession();
 
+    // Fallback timeout to ensure loading never gets stuck indefinitely
+    const fallbackTimeout = setTimeout(() => {
+      if (mounted) {
+        console.warn('⚠️ Fallback timeout triggered - forcing loading to false');
+        setLoading(false);
+      }
+    }, 10000); // 10 second absolute maximum
+
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
@@ -134,7 +185,25 @@ export const AuthProvider = ({ children }) => {
             if (session?.user) {
               console.log('✅ User signed in:', session.user.email);
               setCurrentUser(session.user);
-              await loadUserProfile(session.user);
+              try {
+                await loadUserProfile(session.user);
+              } catch (profileError) {
+                console.error('❌ Profile loading failed in auth state change:', profileError);
+                // Set default profile on error
+                const userName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
+                const defaultProfile = {
+                  id: session.user.id,
+                  email: session.user.email,
+                  name: userName,
+                  role: 'trial',
+                  account_type: 'trial',
+                  is_active: true,
+                  is_paid: false,
+                  trial_start_date: new Date().toISOString(),
+                  trial_end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+                };
+                setUserProfile(defaultProfile);
+              }
             }
             break;
             
@@ -184,70 +253,61 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    // Fallback timeout to prevent infinite loading
-    const timeout = setTimeout(async () => {
-      if (mounted && loading) {
-        console.log('🕐 Auth initialization timeout (10s) - forcing auth resolution');
-        // Clear any cached session that might be causing issues
-        try {
-          const projectRef = supabase.supabaseUrl.split('//')[1].split('.')[0];
-          localStorage.removeItem(`sb-${projectRef}-auth-token`);
-          localStorage.removeItem('supabase.auth.token');
-          sessionStorage.clear();
-          await supabase.auth.signOut();
-        } catch (error) {
-          console.log('Error clearing session:', error);
-        }
-        setCurrentUser(null);
-        setUserProfile(null);
-        setLoading(false);
-        console.log('✅ Auth timeout resolved - app should be accessible now');
-      }
-    }, 10000); // 10 second timeout
-
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      clearTimeout(timeout);
+      clearTimeout(fallbackTimeout);
     };
   }, []);
 
   const loadUserProfile = async (user) => {
     try {
       console.log('👤 Loading profile for user:', user.email);
-      
-      // Try users table first (the one that actually exists)
-      let { data: profile, error } = await supabase
-        .from('users')
+
+      // Create a promise with timeout to prevent hanging
+      const profilePromise = supabase
+        .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      // If users table doesn't work, try other table names as fallback
-      if (error && (error.code === '42P01' || error.message.includes('users'))) {
-        console.log('🔄 users table access failed, trying user_profiles table...');
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile loading timeout')), 2000);
+      });
+
+      // Try profiles table first (the correct table name)
+      let { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]);
+
+      // If profiles table doesn't work, try creating a default profile
+      if (error && (error.code === '42P01' || error.message.includes('relation') || error.message.includes('does not exist'))) {
+        console.log('🔄 profiles table access failed, will create default profile...');
         try {
-          const fallbackResult = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', user.id)
+          // Try to create a default profile for the user
+          const defaultProfile = {
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+            role: 'user',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .upsert(defaultProfile, { onConflict: 'id' })
+            .select()
             .single();
-          profile = fallbackResult.data;
-          error = fallbackResult.error;
-        } catch (fallbackErr) {
-          console.log('🔄 user_profiles table also failed, trying profiles table...');
-          try {
-            const profilesResult = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', user.id)
-              .single();
-            profile = profilesResult.data;
-            error = profilesResult.error;
-          } catch (profilesErr) {
-            console.warn('⚠️ All profile tables failed, will use default profile');
-            error = profilesErr;
+
+          if (!createError && newProfile) {
+            profile = newProfile;
+            error = null;
+            console.log('✅ Created default profile for user');
+          } else {
+            console.warn('⚠️ Could not create profile, will use minimal default');
           }
+        } catch (createErr) {
+          console.warn('⚠️ Error creating default profile:', createErr);
         }
       }
 

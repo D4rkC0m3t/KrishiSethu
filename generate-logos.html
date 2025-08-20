@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KS Logo Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .logo-container { margin: 20px 0; }
+        canvas { border: 1px solid #ccc; margin: 10px; }
+        button { padding: 10px 20px; margin: 5px; background: #16a34a; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #15803d; }
+    </style>
+</head>
+<body>
+    <h1>KrishiSethu Logo Generator</h1>
+    <p>This page generates PNG versions of the KS logo for different sizes.</p>
+    
+    <div class="logo-container">
+        <h3>16x16 Favicon</h3>
+        <canvas id="favicon16" width="16" height="16"></canvas>
+        <button onclick="downloadCanvas('favicon16', 'favicon-16x16.png')">Download 16x16</button>
+    </div>
+    
+    <div class="logo-container">
+        <h3>32x32 Favicon</h3>
+        <canvas id="favicon32" width="32" height="32"></canvas>
+        <button onclick="downloadCanvas('favicon32', 'favicon-32x32.png')">Download 32x32</button>
+    </div>
+    
+    <div class="logo-container">
+        <h3>192x192 Logo</h3>
+        <canvas id="logo192" width="192" height="192"></canvas>
+        <button onclick="downloadCanvas('logo192', 'logo192.png')">Download 192x192</button>
+    </div>
+    
+    <div class="logo-container">
+        <h3>512x512 Logo</h3>
+        <canvas id="logo512" width="512" height="512"></canvas>
+        <button onclick="downloadCanvas('logo512', 'logo512.png')">Download 512x512</button>
+    </div>
+
+    <script>
+        function drawLogo(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const radius = size * 0.45;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Draw background circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#16a34a';
+            ctx.fill();
+            
+            // Draw inner circle for depth
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius * 0.85, 0, 2 * Math.PI);
+            ctx.fillStyle = '#22c55e';
+            ctx.globalAlpha = 0.8;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            
+            // Draw KS text
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${size * 0.35}px Arial, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('KS', centerX, centerY);
+            
+            // Add small wheat decoration if size is large enough
+            if (size >= 64) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.globalAlpha = 0.6;
+                
+                // Top wheat
+                ctx.beginPath();
+                ctx.moveTo(centerX, radius * 0.3);
+                ctx.lineTo(centerX - 6, radius * 0.5);
+                ctx.lineTo(centerX + 6, radius * 0.5);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Bottom wheat
+                ctx.beginPath();
+                ctx.moveTo(centerX, size - radius * 0.3);
+                ctx.lineTo(centerX - 6, size - radius * 0.5);
+                ctx.lineTo(centerX + 6, size - radius * 0.5);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Left wheat
+                ctx.beginPath();
+                ctx.moveTo(radius * 0.3, centerY);
+                ctx.lineTo(radius * 0.5, centerY - 6);
+                ctx.lineTo(radius * 0.5, centerY + 6);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Right wheat
+                ctx.beginPath();
+                ctx.moveTo(size - radius * 0.3, centerY);
+                ctx.lineTo(size - radius * 0.5, centerY - 6);
+                ctx.lineTo(size - radius * 0.5, centerY + 6);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        function downloadCanvas(canvasId, filename) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        // Generate all logos on page load
+        window.onload = function() {
+            drawLogo(document.getElementById('favicon16'), 16);
+            drawLogo(document.getElementById('favicon32'), 32);
+            drawLogo(document.getElementById('logo192'), 192);
+            drawLogo(document.getElementById('logo512'), 512);
+        };
+    </script>
+</body>
+</html>

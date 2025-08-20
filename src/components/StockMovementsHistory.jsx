@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { stockOperations as stockMovementsService } from '../lib/supabaseDb';
+import { stockOperations } from '../lib/supabaseDb';
 import {
   Search,
   Filter,
@@ -34,11 +34,33 @@ const StockMovementsHistory = ({ onNavigate }) => {
   const loadMovements = async () => {
     try {
       setIsLoading(true);
-      const data = await stockMovementsService.getAll();
-      setMovements(data || []);
-      setFilteredMovements(data || []);
+      console.log('📊 Loading stock movements...');
+
+      const data = await stockOperations.getAll();
+      console.log('📈 Raw stock movements data:', data);
+
+      // Transform and validate data (only use columns that exist in database)
+      const validatedMovements = (data || []).map(movement => ({
+        id: movement.id || `temp-${Date.now()}-${Math.random()}`,
+        productId: movement.product_id || movement.productId || 'unknown',
+        productName: movement.product_name || movement.productName || movement.products?.name || 'Unknown Product',
+        movementType: movement.movement_type || movement.movementType || 'unknown',
+        quantity: movement.quantity || 0,
+        // Note: previous_stock and new_stock don't exist in database schema
+        previousStock: 0, // Not tracked in current schema
+        newStock: 0, // Not tracked in current schema
+        referenceId: movement.reference_id || movement.referenceId || null,
+        referenceType: movement.reference_type || movement.referenceType || null,
+        reason: movement.reason || movement.notes || 'No reason provided',
+        createdAt: movement.created_at || movement.createdAt || new Date(),
+        createdBy: movement.created_by || movement.createdBy || 'System'
+      }));
+
+      console.log('✅ Validated movements:', validatedMovements.length);
+      setMovements(validatedMovements);
+      setFilteredMovements(validatedMovements);
     } catch (error) {
-      console.error('Error loading stock movements:', error);
+      console.error('❌ Error loading stock movements:', error);
       // Fallback to mock data for demo
       const mockMovements = [
         {
@@ -130,7 +152,12 @@ const StockMovementsHistory = ({ onNavigate }) => {
   }, [movements, searchTerm, filterType, filterDate]);
 
   const getMovementIcon = (type) => {
-    switch (type) {
+    // Handle undefined/null type
+    if (!type || typeof type !== 'string') {
+      return <Package className="h-4 w-4 text-gray-500" />;
+    }
+
+    switch (type.toLowerCase()) {
       case 'sale':
         return <ArrowDownCircle className="h-4 w-4 text-red-500" />;
       case 'purchase':
@@ -143,11 +170,21 @@ const StockMovementsHistory = ({ onNavigate }) => {
   };
 
   const getMovementBadge = (type) => {
+    // Handle undefined/null type
+    if (!type || typeof type !== 'string') {
+      return (
+        <Badge variant="outline">
+          Unknown
+        </Badge>
+      );
+    }
+
     const variants = {
       sale: 'destructive',
       purchase: 'default',
       adjustment: 'secondary'
     };
+
     return (
       <Badge variant={variants[type] || 'outline'}>
         {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -156,8 +193,31 @@ const StockMovementsHistory = ({ onNavigate }) => {
   };
 
   const formatDate = (date) => {
-    const d = date?.toDate ? date.toDate() : new Date(date);
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    try {
+      if (!date) return 'Unknown Date';
+
+      let d;
+      if (date?.toDate && typeof date.toDate === 'function') {
+        // Firestore timestamp
+        d = date.toDate();
+      } else if (date instanceof Date) {
+        d = date;
+      } else if (typeof date === 'string' || typeof date === 'number') {
+        d = new Date(date);
+      } else {
+        return 'Invalid Date';
+      }
+
+      // Check if date is valid
+      if (isNaN(d.getTime())) {
+        return 'Invalid Date';
+      }
+
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    } catch (error) {
+      console.error('Error formatting date:', error, date);
+      return 'Date Error';
+    }
   };
 
   return (

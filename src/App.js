@@ -3,9 +3,40 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import LandingPage from './components/LandingPage';
 import ProtectedRoute from './components/ProtectedRoute';
+import ConfigurationError from './components/ConfigurationError';
+import KSLogo from './components/KSLogo';
 import './App.css';
 import './styles/print.css';
+
+// Configuration Error Boundary
+class ConfigurationErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    // Check if this is a configuration error
+    if (error.message && error.message.includes('Supabase configuration')) {
+      return { hasError: true, error };
+    }
+    return null;
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Configuration Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ConfigurationError error={this.state.error} />;
+    }
+
+    return this.props.children;
+  }
+}
 
 // Main App Component with Authentication
 function AppContent() {
@@ -22,8 +53,12 @@ function AppContent() {
   if (loading) {
     console.log('⏳ App is in loading state');
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-green-50 to-green-100">
+        <div className="animate-pulse mb-4">
+          <KSLogo size={128} />
+        </div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mb-4"></div>
+        <p className="text-green-700 font-medium">Loading KrishiSethu...</p>
       </div>
     );
   }
@@ -38,14 +73,13 @@ function AppContent() {
       <Routes>
         {/* Public Routes */}
         <Route
-          path="/login"
-          element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />}
+          path="/"
+          element={<LandingPage />}
         />
 
-        {/* Root redirect to login if not authenticated, dashboard if authenticated */}
         <Route
-          path="/"
-          element={isAuthenticated ? <Navigate to="/dashboard" /> : <Navigate to="/login" />}
+          path="/login"
+          element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />}
         />
 
         {/* Protected Routes - Dashboard handles all internal routing */}
@@ -57,7 +91,7 @@ function AppContent() {
 
         {/* Catch all other routes and redirect appropriately */}
         <Route path="*" element={
-          isAuthenticated ? <Navigate to="/dashboard" /> : <Navigate to="/login" />
+          isAuthenticated ? <Navigate to="/dashboard" /> : <Navigate to="/" />
         } />
       </Routes>
     </Router>
@@ -66,9 +100,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ConfigurationErrorBoundary>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ConfigurationErrorBoundary>
   );
 }
 

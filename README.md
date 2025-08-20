@@ -45,11 +45,18 @@ A modern, comprehensive inventory management system designed specifically for fe
    npm install
    ```
 
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env.local
-   # Edit .env.local with your Supabase credentials
+3. **Set up Supabase Cloud Configuration** ⚠️ **REQUIRED**
+
+   Create a `.env.local` file in the project root:
+   ```env
+   REACT_APP_SUPABASE_URL=https://your-project-id.supabase.co
+   REACT_APP_SUPABASE_ANON_KEY=your-anon-public-key
    ```
+
+   **Get your Supabase Cloud credentials:**
+   - Go to [Supabase Dashboard](https://supabase.com/dashboard)
+   - Select your project → Settings → API
+   - Copy the **Project URL** and **anon public key** (NOT service_role)
 
 4. **Start the development server**
    ```bash
@@ -59,17 +66,34 @@ A modern, comprehensive inventory management system designed specifically for fe
 5. **Open your browser**
    Navigate to `http://localhost:3000`
 
+⚠️ **Important:** Restart the dev server after creating `.env.local`
+
 ## 🔧 Environment Variables
 
-Create a `.env.local` file with the following variables:
+⚠️ **CRITICAL:** The app will not start without proper Supabase Cloud configuration.
+
+Create a `.env.local` file in your project root:
 
 ```env
-REACT_APP_SUPABASE_URL=your-supabase-url
-REACT_APP_SUPABASE_ANON_KEY=your-supabase-anon-key
+# Supabase Cloud Configuration (Required)
+REACT_APP_SUPABASE_URL=https://your-project-id.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=your-anon-public-key
+
+# App Configuration (Optional)
 REACT_APP_ENVIRONMENT=development
 REACT_APP_APP_NAME=KrishiSethu Inventory Management
 REACT_APP_VERSION=1.0.0
 ```
+
+### 🔒 Production Deployment
+
+For production deployments, set environment variables in your hosting provider:
+
+- **Vercel**: Project Settings → Environment Variables
+- **Netlify**: Site Settings → Environment Variables
+- **Other platforms**: Check your hosting provider's documentation
+
+The build process will automatically validate your environment variables and fail if they're missing or invalid.
 
 ## 🗄️ Database Setup
 

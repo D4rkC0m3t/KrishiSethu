@@ -2,12 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNSIgZmlsbD0iIzE2YTM0YSIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjEyIiBmaWxsPSIjMjJjNTVlIiBvcGFjaXR5PSIwLjgiLz4KICA8dGV4dCB4PSIxNiIgeT0iMjAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5LUzwvdGV4dD4KPC9zdmc+" type="image/svg+xml" />
+    <link rel="shortcut icon" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNSIgZmlsbD0iIzE2YTM0YSIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjEyIiBmaWxsPSIjMjJjNTVlIiBvcGFjaXR5PSIwLjgiLz4KICA8dGV4dCB4PSIxNiIgeT0iMjAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5LUzwvdGV4dD4KPC9zdmc+" type="image/svg+xml" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#16a34a" />
     <meta
       name="description"
-      content="Web site created using create-react-app"
+      content="KrishiSethu - Complete inventory management system for fertilizer shops. Manage products, sales, customers, and suppliers with real-time POS system."
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <!--
@@ -24,7 +25,48 @@
       work correctly both with client-side routing and a non-root public URL.
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
-    <title>React App</title>
+    <title>Welcome to KrishiSethu</title>
+
+    <!-- Suppress WebSocket Errors in Development -->
+    <script src="%PUBLIC_URL%/suppress-websocket-errors.js"></script>
+
+    <!-- Animated Tab Title Script -->
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Force favicon update
+        const faviconSVG = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNSIgZmlsbD0iIzE2YTM0YSIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjEyIiBmaWxsPSIjMjJjNTVlIiBvcGFjaXR5PSIwLjgiLz4KICA8dGV4dCB4PSIxNiIgeT0iMjAiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5LUzwvdGV4dD4KPC9zdmc+';
+
+        // Remove old favicon links
+        const oldLinks = document.querySelectorAll('link[rel*="icon"]');
+        oldLinks.forEach(link => link.remove());
+
+        // Add new favicon
+        const newFavicon = document.createElement('link');
+        newFavicon.rel = 'icon';
+        newFavicon.type = 'image/svg+xml';
+        newFavicon.href = faviconSVG;
+        document.head.appendChild(newFavicon);
+
+        // Also add shortcut icon for older browsers
+        const shortcutIcon = document.createElement('link');
+        shortcutIcon.rel = 'shortcut icon';
+        shortcutIcon.type = 'image/svg+xml';
+        shortcutIcon.href = faviconSVG;
+        document.head.appendChild(shortcutIcon);
+
+        let message = " 🌾 Welcome to KrishiSethu - Inventory Management System ";
+        let scrollSpeed = 300; // milliseconds
+        let i = 0;
+
+        // Start animation after a short delay
+        setTimeout(() => {
+          setInterval(() => {
+            document.title = message.substring(i) + message.substring(0, i);
+            i = (i + 1) % message.length;
+          }, scrollSpeed);
+        }, 2000); // Wait 2 seconds before starting animation
+      });
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

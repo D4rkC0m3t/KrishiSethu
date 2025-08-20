@@ -43,10 +43,12 @@ const GSTReports = ({ onNavigate }) => {
   // Load company details - defined before useEffect to avoid hoisting issues
   const loadCompanyDetails = async () => {
     try {
+      console.log('🏢 Loading company details for GST reports...');
       const details = await shopDetailsService.getShopDetails();
+      console.log('✅ Company details loaded:', details);
       setCompanyDetails(details);
     } catch (error) {
-      console.error('Failed to load company details:', error);
+      console.error('❌ Failed to load company details:', error);
     }
   };
 
@@ -54,43 +56,64 @@ const GSTReports = ({ onNavigate }) => {
   const generateGSTReport = async () => {
     setLoading(true);
     try {
+      console.log('🔄 Generating GST report...');
       const startDate = new Date(selectedYear, selectedMonth - 1, 1);
       const endDate = new Date(selectedYear, selectedMonth, 0);
 
-      // Use GST service to generate comprehensive report
-      const [gstr3bData, gstr1Data, complianceReport] = await Promise.all([
-        gstService.generateGSTR3B(startDate, endDate),
-        gstService.generateGSTR1(startDate, endDate),
-        gstService.generateComplianceReport()
-      ]);
+      console.log('📅 GST report date range:', { startDate, endDate });
 
-      // Combine data for display
-      const gstReport = {
-        period: `${getMonthName(selectedMonth)} ${selectedYear}`,
-        sales: {
-          totalSales: gstr3bData.outwardSupplies.taxableValue,
-          totalOutputGST: gstr3bData.outwardSupplies.igst + gstr3bData.outwardSupplies.cgst + gstr3bData.outwardSupplies.sgst,
-          salesByGSTRate: this.groupSalesByGSTRate(gstr1Data.b2b.concat(gstr1Data.b2c))
-        },
-        purchases: {
-          totalPurchases: gstr3bData.inputTaxCredit.taxableValue,
-          totalInputGST: gstr3bData.inputTaxCredit.igst + gstr3bData.inputTaxCredit.cgst + gstr3bData.inputTaxCredit.sgst,
-          purchasesByGSTRate: {}
-        },
-        netGSTLiability: gstr3bData.totalLiability,
-        totalTransactions: gstr1Data.summary.totalInvoices,
-        salesTransactions: gstr1Data.b2b.length + gstr1Data.b2c.length,
-        purchaseTransactions: 0,
-        gstr1Data,
-        gstr3bData,
-        complianceReport
-      };
+      // Try to use GST service first, but fallback immediately if it fails
+      try {
+        console.log('🔧 Attempting to use GST service...');
+        const [gstr3bData, gstr1Data, complianceReport] = await Promise.all([
+          gstService.generateGSTR3B(startDate, endDate),
+          gstService.generateGSTR1(startDate, endDate),
+          gstService.generateComplianceReport()
+        ]);
 
-      setGstData(gstReport);
+        // Combine data for display
+        const gstReport = {
+          period: `${getMonthName(selectedMonth)} ${selectedYear}`,
+          sales: {
+            totalSales: gstr3bData?.outwardSupplies?.taxableValue || 0,
+            totalOutputGST: (gstr3bData?.outwardSupplies?.igst || 0) + (gstr3bData?.outwardSupplies?.cgst || 0) + (gstr3bData?.outwardSupplies?.sgst || 0),
+            salesByGSTRate: {}
+          },
+          purchases: {
+            totalPurchases: gstr3bData?.inputTaxCredit?.taxableValue || 0,
+            totalInputGST: (gstr3bData?.inputTaxCredit?.igst || 0) + (gstr3bData?.inputTaxCredit?.cgst || 0) + (gstr3bData?.inputTaxCredit?.sgst || 0),
+            purchasesByGSTRate: {}
+          },
+          netGSTLiability: gstr3bData?.totalLiability || 0,
+          totalTransactions: gstr1Data?.summary?.totalInvoices || 0,
+          salesTransactions: (gstr1Data?.b2b?.length || 0) + (gstr1Data?.b2c?.length || 0),
+          purchaseTransactions: 0,
+          gstr1Data,
+          gstr3bData,
+          complianceReport
+        };
+
+        console.log('✅ GST service data generated successfully');
+        setGstData(gstReport);
+      } catch (gstServiceError) {
+        console.warn('⚠️ GST service failed, using fallback method:', gstServiceError.message);
+        await generateGSTReportFallback();
+      }
     } catch (error) {
-      console.error('Error generating GST report:', error);
-      // Fallback to old calculation method
-      await generateGSTReportFallback();
+      console.error('❌ Error generating GST report:', error);
+      // Create empty GST data structure to prevent crashes
+      const emptyGstReport = {
+        period: `${getMonthName(selectedMonth)} ${selectedYear}`,
+        sales: { totalSales: 0, totalOutputGST: 0, salesByGSTRate: {} },
+        purchases: { totalPurchases: 0, totalInputGST: 0, purchasesByGSTRate: {} },
+        netGSTLiability: 0,
+        totalTransactions: 0,
+        salesTransactions: 0,
+        purchaseTransactions: 0,
+        error: true,
+        errorMessage: error.message
+      };
+      setGstData(emptyGstReport);
     } finally {
       setLoading(false);
     }
@@ -98,33 +121,60 @@ const GSTReports = ({ onNavigate }) => {
 
   const generateGSTReportFallback = async () => {
     try {
+      console.log('🔄 Using GST report fallback method...');
       const startDate = new Date(selectedYear, selectedMonth - 1, 1);
       const endDate = new Date(selectedYear, selectedMonth, 0);
 
-      // Fetch sales and purchase data
+      // Fetch sales and purchase data with timeout
       const [salesData, purchaseData] = await Promise.all([
-        salesService.getAll(),
-        purchasesService.getAll()
+        Promise.race([
+          salesService.getAll(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Sales data timeout')), 8000))
+        ]),
+        Promise.race([
+          purchasesService.getAll(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Purchase data timeout')), 8000))
+        ])
       ]);
 
-      // Filter data for selected month
-      const filteredSales = salesData.filter(sale => {
-        const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate);
-        return saleDate >= startDate && saleDate <= endDate;
+      console.log('📊 Fetched data:', { salesCount: salesData?.length || 0, purchaseCount: purchaseData?.length || 0 });
+
+      // Filter data for selected month with safe date handling
+      const filteredSales = (salesData || []).filter(sale => {
+        try {
+          const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() :
+                          sale.sale_date ? new Date(sale.sale_date) :
+                          sale.created_at ? new Date(sale.created_at) :
+                          new Date(sale.saleDate || sale.date);
+          return saleDate >= startDate && saleDate <= endDate;
+        } catch (dateError) {
+          console.warn('Invalid sale date:', sale);
+          return false;
+        }
       });
 
-      const filteredPurchases = purchaseData.filter(purchase => {
-        const purchaseDate = purchase.purchaseDate?.toDate ? purchase.purchaseDate.toDate() : new Date(purchase.purchaseDate);
-        return purchaseDate >= startDate && purchaseDate <= endDate;
+      const filteredPurchases = (purchaseData || []).filter(purchase => {
+        try {
+          const purchaseDate = purchase.purchaseDate?.toDate ? purchase.purchaseDate.toDate() :
+                              purchase.purchase_date ? new Date(purchase.purchase_date) :
+                              purchase.created_at ? new Date(purchase.created_at) :
+                              new Date(purchase.purchaseDate || purchase.date);
+          return purchaseDate >= startDate && purchaseDate <= endDate;
+        } catch (dateError) {
+          console.warn('Invalid purchase date:', purchase);
+          return false;
+        }
       });
 
-      // Calculate GST data using old method
+      console.log('📅 Filtered data:', { filteredSalesCount: filteredSales.length, filteredPurchasesCount: filteredPurchases.length });
+
+      // Calculate GST data using fallback method
       const gstReport = calculateGSTData(filteredSales, filteredPurchases);
 
       // Generate compliance report
       const complianceReport = {
         gstinConfigured: !!(companyDetails?.gstNumber),
-        gstinValid: companyDetails?.gstNumber ? gstService.validateGSTIN(companyDetails.gstNumber) : false,
+        gstinValid: companyDetails?.gstNumber ? (companyDetails.gstNumber.length === 15) : false,
         hsnCodesConfigured: true, // Assuming HSN codes are configured
         taxRatesConfigured: true, // Assuming tax rates are configured
         invoiceCompliance: true   // Assuming invoices are GST compliant
@@ -148,25 +198,55 @@ const GSTReports = ({ onNavigate }) => {
   };
 
   const calculateGSTData = (sales, purchases) => {
+    console.log('🧮 Calculating GST data from raw data...');
+
     // Sales GST Calculations
-    const salesGST = sales.reduce((acc, sale) => {
-      const items = sale.items || [];
-      items.forEach(item => {
-        const taxableValue = item.quantity * item.price;
-        const gstRate = item.gstRate || 5; // Default 5% for fertilizers
-        const gstAmount = (taxableValue * gstRate) / 100;
-        
-        acc.totalSales += taxableValue;
-        acc.totalOutputGST += gstAmount;
-        
-        // Categorize by GST rate
-        if (!acc.salesByGSTRate[gstRate]) {
-          acc.salesByGSTRate[gstRate] = { taxableValue: 0, gstAmount: 0, transactions: 0 };
+    const salesGST = (sales || []).reduce((acc, sale) => {
+      try {
+        // Handle different data structures
+        const items = sale.items || [];
+
+        if (items.length > 0) {
+          // New structure with items array
+          items.forEach(item => {
+            const quantity = parseFloat(item.quantity || 0);
+            const price = parseFloat(item.price || item.unitPrice || 0);
+            const taxableValue = quantity * price;
+            const gstRate = parseFloat(item.gstRate || 5); // Default 5% for fertilizers
+            const gstAmount = (taxableValue * gstRate) / 100;
+
+            acc.totalSales += taxableValue;
+            acc.totalOutputGST += gstAmount;
+
+            // Categorize by GST rate
+            if (!acc.salesByGSTRate[gstRate]) {
+              acc.salesByGSTRate[gstRate] = { taxableValue: 0, gstAmount: 0, transactions: 0 };
+            }
+            acc.salesByGSTRate[gstRate].taxableValue += taxableValue;
+            acc.salesByGSTRate[gstRate].gstAmount += gstAmount;
+            acc.salesByGSTRate[gstRate].transactions += 1;
+          });
+        } else {
+          // Old structure - direct sale properties
+          const quantity = parseFloat(sale.quantity || sale.quantitySold || 0);
+          const price = parseFloat(sale.price || sale.unitPrice || sale.totalSales || 0);
+          const taxableValue = quantity > 0 && price > 0 ? quantity * price : price;
+          const gstRate = parseFloat(sale.gstRate || 5);
+          const gstAmount = (taxableValue * gstRate) / 100;
+
+          acc.totalSales += taxableValue;
+          acc.totalOutputGST += gstAmount;
+
+          if (!acc.salesByGSTRate[gstRate]) {
+            acc.salesByGSTRate[gstRate] = { taxableValue: 0, gstAmount: 0, transactions: 0 };
+          }
+          acc.salesByGSTRate[gstRate].taxableValue += taxableValue;
+          acc.salesByGSTRate[gstRate].gstAmount += gstAmount;
+          acc.salesByGSTRate[gstRate].transactions += 1;
         }
-        acc.salesByGSTRate[gstRate].taxableValue += taxableValue;
-        acc.salesByGSTRate[gstRate].gstAmount += gstAmount;
-        acc.salesByGSTRate[gstRate].transactions += 1;
-      });
+      } catch (error) {
+        console.warn('Error processing sale for GST:', sale, error);
+      }
       return acc;
     }, {
       totalSales: 0,
@@ -175,24 +255,51 @@ const GSTReports = ({ onNavigate }) => {
     });
 
     // Purchase GST Calculations
-    const purchaseGST = purchases.reduce((acc, purchase) => {
-      const items = purchase.items || [];
-      items.forEach(item => {
-        const taxableValue = item.quantity * item.price;
-        const gstRate = item.gstRate || 5;
-        const gstAmount = (taxableValue * gstRate) / 100;
-        
-        acc.totalPurchases += taxableValue;
-        acc.totalInputGST += gstAmount;
-        
-        // Categorize by GST rate
-        if (!acc.purchasesByGSTRate[gstRate]) {
-          acc.purchasesByGSTRate[gstRate] = { taxableValue: 0, gstAmount: 0, transactions: 0 };
+    const purchaseGST = (purchases || []).reduce((acc, purchase) => {
+      try {
+        const items = purchase.items || [];
+
+        if (items.length > 0) {
+          // New structure with items array
+          items.forEach(item => {
+            const quantity = parseFloat(item.quantity || 0);
+            const price = parseFloat(item.price || item.unitPrice || 0);
+            const taxableValue = quantity * price;
+            const gstRate = parseFloat(item.gstRate || 5);
+            const gstAmount = (taxableValue * gstRate) / 100;
+
+            acc.totalPurchases += taxableValue;
+            acc.totalInputGST += gstAmount;
+
+            // Categorize by GST rate
+            if (!acc.purchasesByGSTRate[gstRate]) {
+              acc.purchasesByGSTRate[gstRate] = { taxableValue: 0, gstAmount: 0, transactions: 0 };
+            }
+            acc.purchasesByGSTRate[gstRate].taxableValue += taxableValue;
+            acc.purchasesByGSTRate[gstRate].gstAmount += gstAmount;
+            acc.purchasesByGSTRate[gstRate].transactions += 1;
+          });
+        } else {
+          // Old structure - direct purchase properties
+          const quantity = parseFloat(purchase.quantity || 0);
+          const price = parseFloat(purchase.price || purchase.unitPrice || purchase.totalAmount || 0);
+          const taxableValue = quantity > 0 && price > 0 ? quantity * price : price;
+          const gstRate = parseFloat(purchase.gstRate || 5);
+          const gstAmount = (taxableValue * gstRate) / 100;
+
+          acc.totalPurchases += taxableValue;
+          acc.totalInputGST += gstAmount;
+
+          if (!acc.purchasesByGSTRate[gstRate]) {
+            acc.purchasesByGSTRate[gstRate] = { taxableValue: 0, gstAmount: 0, transactions: 0 };
+          }
+          acc.purchasesByGSTRate[gstRate].taxableValue += taxableValue;
+          acc.purchasesByGSTRate[gstRate].gstAmount += gstAmount;
+          acc.purchasesByGSTRate[gstRate].transactions += 1;
         }
-        acc.purchasesByGSTRate[gstRate].taxableValue += taxableValue;
-        acc.purchasesByGSTRate[gstRate].gstAmount += gstAmount;
-        acc.purchasesByGSTRate[gstRate].transactions += 1;
-      });
+      } catch (error) {
+        console.warn('Error processing purchase for GST:', purchase, error);
+      }
       return acc;
     }, {
       totalPurchases: 0,
@@ -604,13 +711,13 @@ const GSTReports = ({ onNavigate }) => {
         ${type === 'sales' ? `<td>${item.customerType}</td>` : ''}
         <td>${item.productName}</td>
         <td>${item.hsnCode}</td>
-        <td style="text-align: right">${item.quantity}</td>
-        <td style="text-align: right">₹${item.unitPrice.toFixed(2)}</td>
-        <td style="text-align: right">₹${item.taxableValue.toFixed(2)}</td>
-        <td style="text-align: center">${item.gstRate}%</td>
-        <td style="text-align: right">₹${item.cgstAmount.toFixed(2)}</td>
-        <td style="text-align: right">₹${item.sgstAmount.toFixed(2)}</td>
-        <td style="text-align: right"><strong>₹${item.totalAmount.toFixed(2)}</strong></td>
+        <td style="text-align: right">${item.quantity || 0}</td>
+        <td style="text-align: right">₹${(item.unitPrice || 0).toFixed(2)}</td>
+        <td style="text-align: right">₹${(item.taxableValue || 0).toFixed(2)}</td>
+        <td style="text-align: center">${item.gstRate || 0}%</td>
+        <td style="text-align: right">₹${(item.cgstAmount || 0).toFixed(2)}</td>
+        <td style="text-align: right">₹${(item.sgstAmount || 0).toFixed(2)}</td>
+        <td style="text-align: right"><strong>₹${(item.totalAmount || 0).toFixed(2)}</strong></td>
       </tr>
     `).join('');
 
@@ -691,10 +798,10 @@ const GSTReports = ({ onNavigate }) => {
 
           <div class="summary">
             <strong>Summary:</strong>
-            Total Transactions: ${data.length} |
-            Total Taxable Value: ₹${data.reduce((sum, item) => sum + item.taxableValue, 0).toFixed(2)} |
-            Total GST: ₹${data.reduce((sum, item) => sum + item.cgstAmount + item.sgstAmount, 0).toFixed(2)} |
-            Grand Total: ₹${data.reduce((sum, item) => sum + item.totalAmount, 0).toFixed(2)}
+            Total Transactions: ${data?.length || 0} |
+            Total Taxable Value: ₹${(data || []).reduce((sum, item) => sum + (item.taxableValue || 0), 0).toFixed(2)} |
+            Total GST: ₹${(data || []).reduce((sum, item) => sum + (item.cgstAmount || 0) + (item.sgstAmount || 0), 0).toFixed(2)} |
+            Grand Total: ₹${(data || []).reduce((sum, item) => sum + (item.totalAmount || 0), 0).toFixed(2)}
           </div>
 
           <p style="text-align: center; margin-top: 30px; font-size: 10px;">
@@ -715,6 +822,7 @@ const GSTReports = ({ onNavigate }) => {
 
   // Load data on component mount - useEffect placed after function definitions
   useEffect(() => {
+    console.log('🔄 GST Reports useEffect triggered for:', { selectedMonth, selectedYear });
     loadCompanyDetails();
     generateGSTReport();
   }, [selectedMonth, selectedYear]);
@@ -791,7 +899,79 @@ const GSTReports = ({ onNavigate }) => {
         </div>
       </div>
 
-      {gstData && (
+      {/* Error Display */}
+      {gstData?.error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 text-red-700">
+              <AlertTriangle className="h-5 w-5" />
+              <div>
+                <h3 className="font-semibold">Error Loading GST Data</h3>
+                <p className="text-sm">{gstData.errorMessage}</p>
+                <Button
+                  onClick={generateGSTReport}
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  disabled={loading}
+                >
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error Display */}
+      {gstData?.error && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 text-red-700">
+              <AlertTriangle className="h-5 w-5" />
+              <div>
+                <h3 className="font-semibold">Error Loading GST Data</h3>
+                <p className="text-sm">{gstData.errorMessage}</p>
+                <Button
+                  onClick={generateGSTReport}
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  disabled={loading}
+                >
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Try Again
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No Data Display */}
+      {!loading && !gstData && (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <div className="flex flex-col items-center gap-3 text-gray-500">
+              <Calculator className="h-12 w-12" />
+              <div>
+                <h3 className="font-semibold">No GST Data Available</h3>
+                <p className="text-sm">Click "Generate Report" to load GST data for the selected period.</p>
+                <Button
+                  onClick={generateGSTReport}
+                  className="mt-3"
+                  disabled={loading}
+                >
+                  Generate GST Report
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {gstData && !gstData.error && (
         <Tabs defaultValue="summary" className="space-y-6">
           <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="summary">GST Summary</TabsTrigger>

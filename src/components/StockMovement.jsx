@@ -5,11 +5,15 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { productsService } from '../lib/supabaseDb';
+import { productsService, stockOperations } from '../lib/supabaseDb';
+import { useAuth } from '../contexts/AuthContext';
 
 const StockMovement = ({ onNavigate }) => {
+  const { currentUser } = useAuth();
   const [products, setProducts] = useState([]);
   const [movements, setMovements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showAdjustmentDialog, setShowAdjustmentDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [adjustmentData, setAdjustmentData] = useState({
@@ -18,75 +22,66 @@ const StockMovement = ({ onNavigate }) => {
     reason: '',
     notes: ''
   });
+  const [adjustmentLoading, setAdjustmentLoading] = useState(false);
 
-  // Mock data for demonstration
+  // Load real data from database
   useEffect(() => {
-    const mockProducts = [
-      {
-        id: '1',
-        name: 'NPK 20-20-20',
-        currentStock: 45,
-        minStockLevel: 10,
-        unit: 'bags'
-      },
-      {
-        id: '2',
-        name: 'Urea',
-        currentStock: 8,
-        minStockLevel: 15,
-        unit: 'bags'
-      },
-      {
-        id: '3',
-        name: 'DAP',
-        currentStock: 25,
-        minStockLevel: 10,
-        unit: 'bags'
-      }
-    ];
-
-    const mockMovements = [
-      {
-        id: '1',
-        productId: '1',
-        productName: 'NPK 20-20-20',
-        type: 'sale',
-        quantity: -5,
-        previousStock: 50,
-        newStock: 45,
-        reason: 'Sale to customer',
-        date: new Date('2025-01-06'),
-        user: 'Demo User'
-      },
-      {
-        id: '2',
-        productId: '2',
-        productName: 'Urea',
-        type: 'purchase',
-        quantity: +20,
-        previousStock: 5,
-        newStock: 25,
-        reason: 'New stock received',
-        date: new Date('2025-01-05'),
-        user: 'Demo User'
-      },
-      {
-        id: '3',
-        productId: '1',
-        productName: 'NPK 20-20-20',
-        type: 'adjustment',
-        quantity: -2,
-        previousStock: 52,
-        newStock: 50,
-        reason: 'Damaged goods',
-        date: new Date('2025-01-04'),
-        user: 'Demo User'
-      }
-    ];
-
-    setProducts(mockProducts);
-    setMovements(mockMovements);
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('📊 Loading stock movement data...');
+
+      // Load products with current stock levels
+      const productsData = await productsService.getAll();
+      console.log('📦 Products loaded:', productsData?.length || 0);
+
+      // Transform products data for stock movement display
+      const transformedProducts = (productsData || []).map(product => ({
+        id: product.id,
+        name: product.name,
+        currentStock: product.quantity || 0,
+        minStockLevel: product.min_stock_level || product.minStockLevel || 0,
+        unit: product.unit || 'units'
+      }));
+
+      // Load recent stock movements
+      const movementsData = await stockOperations.getAll();
+      console.log('📈 Stock movements loaded:', movementsData?.length || 0);
+
+      // Transform movements data
+      const transformedMovements = (movementsData || []).map(movement => ({
+        id: movement.id,
+        productId: movement.product_id,
+        productName: movement.product_name || 'Unknown Product',
+        type: movement.movement_type || movement.type,
+        quantity: movement.quantity,
+        previousStock: movement.previous_stock,
+        newStock: movement.new_stock,
+        reason: movement.reason || movement.notes || 'No reason provided',
+        date: movement.created_at ? new Date(movement.created_at) : new Date(),
+        user: movement.created_by || 'System'
+      }));
+
+      setProducts(transformedProducts);
+      setMovements(transformedMovements);
+
+      console.log('✅ Stock movement data loaded successfully');
+    } catch (error) {
+      console.error('❌ Error loading stock movement data:', error);
+      setError(error.message);
+
+      // Fallback to empty arrays instead of mock data
+      setProducts([]);
+      setMovements([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStockStatus = (currentStock, minStockLevel) => {
     if (currentStock <= 0) return { status: 'Out of Stock', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
@@ -119,50 +114,106 @@ const StockMovement = ({ onNavigate }) => {
   };
 
   const submitAdjustment = async () => {
-    if (!selectedProduct || !adjustmentData.quantity || !adjustmentData.reason) {
-      alert('Please fill all required fields');
+    alert('Function called! Check console for details.');
+    console.log('🚀 Starting stock adjustment process...');
+    console.log('📋 Form data:', adjustmentData);
+    console.log('📦 Selected product:', selectedProduct);
+    console.log('👤 Current user:', currentUser);
+    console.log('🔧 Products service:', productsService);
+    console.log('📊 Stock operations:', stockOperations);
+
+    // Validation
+    if (!selectedProduct) {
+      console.error('❌ No product selected');
+      alert('No product selected');
       return;
     }
 
+    if (!adjustmentData.quantity || adjustmentData.quantity === '') {
+      console.error('❌ No quantity entered');
+      alert('Please enter a quantity');
+      return;
+    }
+
+    if (!adjustmentData.reason || adjustmentData.reason === '') {
+      console.error('❌ No reason selected');
+      alert('Please select a reason');
+      return;
+    }
+
+    setAdjustmentLoading(true);
+
     try {
       const quantity = parseInt(adjustmentData.quantity);
+      console.log('🔢 Parsed quantity:', quantity);
+
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error('Invalid quantity. Please enter a positive number.');
+      }
+
       const adjustedQuantity = adjustmentData.type === 'remove' ? -quantity : quantity;
-      
-      // Here you would update the product stock in Firebase
-      console.log('Stock adjustment:', {
-        productId: selectedProduct.id,
-        adjustment: adjustedQuantity,
-        reason: adjustmentData.reason,
-        notes: adjustmentData.notes
+      const currentStock = selectedProduct.currentStock || selectedProduct.quantity || 0;
+      const newStock = currentStock + adjustedQuantity;
+
+      console.log('📊 Stock calculation:', {
+        currentStock,
+        adjustedQuantity,
+        newStock,
+        type: adjustmentData.type
       });
 
-      // Update local state for demo
-      setProducts(prev => prev.map(product => 
-        product.id === selectedProduct.id 
-          ? { ...product, currentStock: product.currentStock + adjustedQuantity }
-          : product
-      ));
+      if (newStock < 0) {
+        throw new Error('Cannot reduce stock below zero');
+      }
 
-      // Add movement record
-      const newMovement = {
-        id: Date.now().toString(),
-        productId: selectedProduct.id,
-        productName: selectedProduct.name,
-        type: 'adjustment',
+      console.log('💾 Updating product stock in database...');
+
+      // Update product stock in database
+      const updateResult = await productsService.update(selectedProduct.id, {
+        quantity: newStock
+      });
+
+      console.log('✅ Product stock updated:', updateResult);
+
+      console.log('📝 Recording stock movement...');
+
+      // Record stock movement (only use columns that exist in database)
+      const movementData = {
+        product_id: selectedProduct.id,
+        movement_type: 'adjustment',
         quantity: adjustedQuantity,
-        previousStock: selectedProduct.currentStock,
-        newStock: selectedProduct.currentStock + adjustedQuantity,
-        reason: adjustmentData.reason,
-        date: new Date(),
-        user: 'Demo User'
+        reference_type: 'adjustment',
+        notes: `${adjustmentData.reason}${adjustmentData.notes ? ` - ${adjustmentData.notes}` : ''}`,
+        created_by: currentUser?.id || 'system'
       };
 
-      setMovements(prev => [newMovement, ...prev]);
+      console.log('📝 Movement data to record:', movementData);
+
+      const movementResult = await stockOperations.recordStockMovement(movementData);
+      console.log('✅ Stock movement recorded:', movementResult);
+
+      console.log('🔄 Refreshing data...');
+
+      // Refresh data to show updated values
+      await loadData();
+
+      // Close dialog and reset form
       setShowAdjustmentDialog(false);
+      setAdjustmentData({ type: 'add', quantity: '', reason: '', notes: '' });
+
+      console.log('🎉 Stock adjustment completed successfully!');
       alert('Stock adjustment completed successfully!');
+
     } catch (error) {
-      console.error('Error adjusting stock:', error);
-      alert('Error adjusting stock. Please try again.');
+      console.error('❌ Error adjusting stock:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      alert(`Error adjusting stock: ${error.message}`);
+    } finally {
+      setAdjustmentLoading(false);
     }
   };
 
@@ -174,12 +225,46 @@ const StockMovement = ({ onNavigate }) => {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Stock Movement</h1>
           <p className="text-gray-600 dark:text-gray-400">Track inventory changes and adjust stock levels</p>
         </div>
-        <Button variant="outline" onClick={() => onNavigate('dashboard')}>
-          ← Back to Dashboard
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadData} disabled={loading}>
+            {loading ? '🔄 Refreshing...' : '🔄 Refresh'}
+          </Button>
+          <Button variant="outline" onClick={() => onNavigate('dashboard')}>
+            ← Back to Dashboard
+          </Button>
+        </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <Card>
+          <CardContent className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-4"></div>
+              <p className="text-gray-600 dark:text-gray-400">Loading stock data...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error State */}
+      {error && (
+        <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <span>⚠️</span>
+              <span>Error loading stock data: {error}</span>
+              <Button variant="outline" size="sm" onClick={loadData} className="ml-auto">
+                Try Again
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Current Stock Overview */}
+      {!loading && !error && (
+      <>
       <Card>
         <CardHeader>
           <CardTitle>Current Stock Levels</CardTitle>
@@ -268,6 +353,23 @@ const StockMovement = ({ onNavigate }) => {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
+
+      {/* DEBUG: Test button outside dialog */}
+      <div className="mb-4 p-4 bg-red-100 border border-red-300 rounded">
+        <p className="text-red-700 mb-2">DEBUG MODE: Test the function directly</p>
+        <Button
+          onClick={() => {
+            alert('Test button clicked!');
+            console.log('Test button - calling submitAdjustment directly');
+            submitAdjustment();
+          }}
+          className="bg-red-600 hover:bg-red-700 text-white"
+        >
+          TEST: Call submitAdjustment
+        </Button>
+      </div>
 
       {/* Stock Adjustment Dialog */}
       <Dialog open={showAdjustmentDialog} onOpenChange={setShowAdjustmentDialog}>
@@ -359,8 +461,24 @@ const StockMovement = ({ onNavigate }) => {
             <Button variant="outline" onClick={() => setShowAdjustmentDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={submitAdjustment} className="bg-green-600 hover:bg-green-700">
-              Apply Adjustment
+            <Button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🔘 Apply Adjustment button clicked!');
+                alert('Button clicked! About to call submitAdjustment...');
+                try {
+                  submitAdjustment();
+                } catch (error) {
+                  console.error('Error calling submitAdjustment:', error);
+                  alert('Error calling function: ' + error.message);
+                }
+              }}
+              disabled={adjustmentLoading}
+              className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+              type="button"
+            >
+              {adjustmentLoading ? 'Processing...' : 'Apply Adjustment'}
             </Button>
           </div>
         </DialogContent>

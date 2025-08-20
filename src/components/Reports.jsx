@@ -209,9 +209,29 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
         throw new Error('Sales service is not available or not properly imported');
       }
 
-      // Fetch sales data
-      const salesData = await salesService.getAll();
-      console.log('📊 Raw sales data fetched:', salesData.length, 'records');
+      // Test database connection first
+      console.log('🔍 Testing database connection...');
+      try {
+        await salesService.getAll();
+        console.log('✅ Database connection test successful');
+      } catch (testError) {
+        console.error('❌ Database connection test failed:', testError);
+        throw new Error(`Database connection failed: ${testError.message}`);
+      }
+
+      // Fetch sales data with timeout
+      console.log('🔄 Fetching sales data from database...');
+      const salesData = await Promise.race([
+        salesService.getAll(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Sales data fetch timeout')), 8000)
+        )
+      ]);
+
+      console.log('📊 Raw sales data fetched:', salesData?.length || 0, 'records');
+      if (salesData && salesData.length > 0) {
+        console.log('📋 Sample sales data:', salesData.slice(0, 2)); // Log first 2 records to see structure
+      }
 
       if (!salesData || salesData.length === 0) {
         console.warn('No sales data found, returning empty structure');
@@ -222,7 +242,10 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
       let filteredSales = salesData;
       if (dateFilter && dateFilter.start && dateFilter.end) {
         filteredSales = salesData.filter(sale => {
-          const saleDate = new Date(sale.created_at || sale.date);
+          // Try multiple date field names
+          const saleDate = new Date(
+            sale.created_at || sale.sale_date || sale.date || sale.createdAt || sale.timestamp
+          );
           const startDate = new Date(dateFilter.start);
           const endDate = new Date(dateFilter.end);
           return saleDate >= startDate && saleDate <= endDate;
@@ -230,21 +253,35 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
         console.log('📅 Filtered sales data:', filteredSales.length, 'records');
       }
 
-      // Calculate summary metrics
-      const totalSales = filteredSales.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0);
+      // Calculate summary metrics with flexible field mapping
+      const totalSales = filteredSales.reduce((sum, sale) => {
+        const amount = sale.totalAmount || sale.total_amount || sale.amount || sale.total || 0;
+        return sum + parseFloat(amount);
+      }, 0);
+
       const totalTransactions = filteredSales.length;
       const averageOrderValue = totalTransactions > 0 ? totalSales / totalTransactions : 0;
-      const totalQuantity = filteredSales.reduce((sum, sale) => sum + (sale.quantity || 0), 0);
+
+      const totalQuantity = filteredSales.reduce((sum, sale) => {
+        const qty = sale.quantity || sale.total_quantity || sale.qty || 0;
+        return sum + parseFloat(qty);
+      }, 0);
+
       const avgQuantityPerSale = totalTransactions > 0 ? totalQuantity / totalTransactions : 0;
 
-      // Get unique customers
-      const uniqueCustomers = new Set(filteredSales.map(sale => sale.customerName || sale.customer_name || 'Unknown')).size;
+      // Get unique customers with flexible field mapping
+      const uniqueCustomers = new Set(
+        filteredSales.map(sale =>
+          sale.customerName || sale.customer_name || sale.customer || sale.buyer_name || 'Walk-in Customer'
+        )
+      ).size;
 
-      // Find top product
+      // Find top product with flexible field mapping
       const productSales = {};
       filteredSales.forEach(sale => {
-        const productName = sale.productName || sale.product_name || 'Unknown Product';
-        productSales[productName] = (productSales[productName] || 0) + (sale.quantity || 0);
+        const productName = sale.productName || sale.product_name || sale.product || sale.item_name || 'Unknown Product';
+        const qty = sale.quantity || sale.total_quantity || sale.qty || 1;
+        productSales[productName] = (productSales[productName] || 0) + parseFloat(qty);
       });
       const topProduct = Object.keys(productSales).length > 0
         ? Object.keys(productSales).reduce((a, b) => productSales[a] > productSales[b] ? a : b)
@@ -860,24 +897,29 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
       let data = null;
       const dateFilter = getDateFilter(dateRange);
 
-      console.log(`Generating ${reportType} report for date range: ${dateRange}`);
+      console.log(`🔄 Generating ${reportType} report for date range: ${dateRange}`);
 
-      switch (reportType) {
-        case 'sales':
-          data = await generateSalesReport(dateFilter);
-          break;
-        case 'inventory':
-          data = await generateInventoryReport();
-          break;
-        case 'financial':
-          data = await generateFinancialReport(dateFilter);
-          break;
-        case 'profit':
-          data = await generateProfitReport(dateFilter);
-          break;
-        default:
-          data = await generateEmptyReportStructure(reportType);
-      }
+      // Add timeout to prevent hanging
+      const reportPromise = (async () => {
+        switch (reportType) {
+          case 'sales':
+            return await generateSalesReport(dateFilter);
+          case 'inventory':
+            return await generateInventoryReport();
+          case 'financial':
+            return await generateFinancialReport(dateFilter);
+          case 'profit':
+            return await generateProfitReport(dateFilter);
+          default:
+            return await generateEmptyReportStructure(reportType);
+        }
+      })();
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Report generation timeout - database may be slow')), 10000)
+      );
+
+      data = await Promise.race([reportPromise, timeoutPromise]);
 
       if (!data || Object.keys(data).length === 0) {
         console.warn('No data returned, generating empty report structure');
@@ -920,8 +962,19 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
   }, [reportType, dateRange, autoDetectOrientation, detectOptimalOrientation, getDateFilter, generateEmptyReportStructure, generateSalesReport, generateInventoryReport, generateFinancialReport, generateProfitReport]);
 
   useEffect(() => {
+    console.log('🔄 Report useEffect triggered - generating report...');
     generateReport();
   }, [reportType, dateRange, generateReport]);
+
+  // Add real-time data refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing report data...');
+      generateReport();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [generateReport]);
 
 
 
@@ -1552,6 +1605,23 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
       );
     }
 
+    // Ensure all required fields have default values
+    const safeReportData = {
+      ...reportData,
+      summary: {
+        totalSales: 0,
+        totalTransactions: 0,
+        totalQuantity: 0,
+        averageOrderValue: 0,
+        uniqueCustomers: 0,
+        topProduct: 'No data',
+        ...reportData.summary
+      },
+      salesData: reportData.salesData || [],
+      paymentMethods: reportData.paymentMethods || [],
+      topProducts: reportData.topProducts || []
+    };
+
     return (
       <div id="report-content" className={`space-y-6 ${reportOrientation === 'landscape' ? 'print-landscape' : 'print-portrait'}`}>
         {/* Report Header with Company Logo and Details */}
@@ -1561,22 +1631,22 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 print-summary-grid print-avoid-break">
           <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
             <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Total Sales</div>
-            <div className="text-xl font-bold">₹{reportData.summary.totalSales.toLocaleString()}</div>
+            <div className="text-xl font-bold">₹{safeReportData.summary.totalSales.toLocaleString()}</div>
           </div>
 
           <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
             <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Total Transactions</div>
-            <div className="text-xl font-bold">{reportData.summary.totalTransactions}</div>
+            <div className="text-xl font-bold">{safeReportData.summary.totalTransactions}</div>
           </div>
 
           <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
             <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Total Quantity</div>
-            <div className="text-xl font-bold">{reportData.summary.totalQuantity.toLocaleString()}</div>
+            <div className="text-xl font-bold">{safeReportData.summary.totalQuantity.toLocaleString()}</div>
           </div>
 
           <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
             <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Average Order Value</div>
-            <div className="text-xl font-bold">₹{reportData.summary.averageOrderValue.toLocaleString()}</div>
+            <div className="text-xl font-bold">₹{safeReportData.summary.averageOrderValue.toLocaleString()}</div>
           </div>
 
           <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
@@ -1625,12 +1695,12 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                       <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.invoiceNo}</td>
                       <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.productName}</td>
                       <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.batchNo}</td>
-                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.unit}</td>
-                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.quantitySold}</td>
-                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>₹{sale.unitPrice.toLocaleString()}</td>
-                      <td className="border px-2 py-2 text-sm text-center font-medium" style={{ borderColor: 'var(--border)' }}>₹{sale.totalSales.toLocaleString()}</td>
-                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.customerName}</td>
-                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.paymentMode}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.unit || 'N/A'}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.quantitySold || 0}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>₹{(sale.unitPrice || 0).toLocaleString()}</td>
+                      <td className="border px-2 py-2 text-sm text-center font-medium" style={{ borderColor: 'var(--border)' }}>₹{(sale.totalSales || 0).toLocaleString()}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.customerName || 'N/A'}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.paymentMode || 'N/A'}</td>
                       <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.remarks}</td>
                     </tr>
                   ))}
@@ -1661,10 +1731,10 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <tbody>
                 {reportData.paymentMethods && reportData.paymentMethods.map((method, index) => (
                   <tr key={index} style={{ backgroundColor: 'var(--background)' }}>
-                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.method}</td>
-                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.transactions}</td>
-                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>₹{method.amount.toLocaleString()}</td>
-                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.percentage}%</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.method || 'N/A'}</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.transactions || 0}</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>₹{(method.amount || 0).toLocaleString()}</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.percentage || 0}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -1692,8 +1762,8 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-lg font-bold">₹{product.totalRevenue.toLocaleString()}</div>
-                    <div className="text-sm" style={{ color: 'var(--success)' }}>₹{product.avgPrice.toFixed(2)}/unit avg</div>
+                    <div className="text-lg font-bold">₹{(product.totalRevenue || 0).toLocaleString()}</div>
+                    <div className="text-sm" style={{ color: 'var(--success)' }}>₹{(product.avgPrice || 0).toFixed(2)}/unit avg</div>
                   </div>
                 </div>
               ))}

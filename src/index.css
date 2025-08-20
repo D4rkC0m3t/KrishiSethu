@@ -2,6 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Original bee demo title reflection effect */
+.title::before {
+  content: attr(data-before);
+  position: absolute;
+  z-index: -1;
+  color: rgba(209, 255, 72, 0.19);
+  mask: linear-gradient(
+    to bottom,
+    #000 -80%,
+    transparent,
+    #000,
+    transparent 200%
+  );
+  transform: scaleY(-1) translateY(-44%);
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Decorative images z-index */
+.decorate {
+  position: fixed;
+  z-index: -100;
+  pointer-events: none;
+}
+
 /* Global focus ring removal */
 @layer base {
   :focus {
@@ -341,4 +368,282 @@ aside {
 .min-h-screen {
   min-height: 100vh;
   min-height: 100dvh;
+}
+
+/* Landing Page Specific Animations */
+@keyframes parallaxFloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(34, 197, 94, 0.6); }
+}
+
+.parallax-float {
+  animation: parallaxFloat 6s ease-in-out infinite;
+}
+
+.gradient-shift {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+
+.pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom backdrop blur for better browser support */
+.backdrop-blur-md {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Enhanced hover effects for landing page cards */
+.landing-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+}
+
+.landing-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+.stagger-3 { animation-delay: 0.3s; }
+.stagger-4 { animation-delay: 0.4s; }
+.stagger-5 { animation-delay: 0.5s; }
+
+/* Responsive text scaling */
+@media (max-width: 640px) {
+  .hero-title {
+    font-size: 2.5rem;
+    line-height: 1.1;
+  }
+
+  .hero-subtitle {
+    font-size: 1.125rem;
+    line-height: 1.5;
+  }
+}
+
+/* Loading animation for images */
+.image-loading {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Enhanced button hover effects */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-primary:hover::before {
+  left: 100%;
+}
+
+/* Improved card shadows */
+.card-shadow {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.3s ease;
+}
+
+.card-shadow:hover {
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Text gradient effects */
+.text-gradient {
+  background: linear-gradient(135deg, #059669, #10b981, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Flip animations for scroll effects */
+@keyframes flipInLeft {
+  0% {
+    transform: perspective(400px) rotateY(-90deg);
+    opacity: 0;
+  }
+  40% {
+    transform: perspective(400px) rotateY(-20deg);
+    opacity: 0.4;
+  }
+  60% {
+    transform: perspective(400px) rotateY(10deg);
+    opacity: 0.6;
+  }
+  80% {
+    transform: perspective(400px) rotateY(-5deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: perspective(400px) rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes flipInRight {
+  0% {
+    transform: perspective(400px) rotateY(90deg);
+    opacity: 0;
+  }
+  40% {
+    transform: perspective(400px) rotateY(20deg);
+    opacity: 0.4;
+  }
+  60% {
+    transform: perspective(400px) rotateY(-10deg);
+    opacity: 0.6;
+  }
+  80% {
+    transform: perspective(400px) rotateY(5deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: perspective(400px) rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+.flip-in-left {
+  animation: flipInLeft 0.8s ease-out forwards;
+}
+
+.flip-in-right {
+  animation: flipInRight 0.8s ease-out forwards;
+}
+
+/* Enhanced card hover effects with flip */
+.feature-card {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.feature-card:hover {
+  transform: translateY(-8px) rotateY(5deg) rotateX(5deg);
+}
+
+.testimonial-card {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+}
+
+.testimonial-card:hover {
+  transform: translateY(-8px) rotateY(-3deg) rotateX(3deg);
+}
+
+/* Image hover effects */
+.image-flip-hover {
+  transition: transform 0.6s ease;
+}
+
+.image-flip-hover:hover {
+  transform: rotateY(180deg);
+}
+
+/* Staggered flip animations */
+.flip-delay-1 { animation-delay: 0.1s; }
+.flip-delay-2 { animation-delay: 0.3s; }
+.flip-delay-3 { animation-delay: 0.5s; }
+.flip-delay-4 { animation-delay: 0.7s; }
+
+/* 3D card effects */
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.6s;
+}
+
+.card-3d:hover {
+  transform: rotateX(10deg) rotateY(10deg) translateZ(20px);
+}
+
+/* Hero background cycling animations */
+@keyframes heroBackgroundFade {
+  0% { opacity: 0; transform: scale(1.1); }
+  10% { opacity: 1; transform: scale(1); }
+  90% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+
+.hero-bg-cycle {
+  animation: heroBackgroundFade 15s infinite;
+}
+
+.hero-bg-cycle:nth-child(1) { animation-delay: 0s; }
+.hero-bg-cycle:nth-child(2) { animation-delay: 5s; }
+.hero-bg-cycle:nth-child(3) { animation-delay: 10s; }
+
+/* Enhanced hero text animations */
+@keyframes heroTextGlow {
+  0%, 100% { text-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+  50% { text-shadow: 0 0 40px rgba(34, 197, 94, 0.6), 0 0 60px rgba(34, 197, 94, 0.4); }
+}
+
+.hero-title {
+  animation: heroTextGlow 4s ease-in-out infinite;
+}
+
+/* Background indicator animations */
+@keyframes indicatorPulse {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+.bg-indicator-active {
+  animation: indicatorPulse 2s ease-in-out infinite;
+}
+
+/* Parallax depth layers */
+.parallax-layer-1 { transform: translateZ(0px) scale(1); }
+.parallax-layer-2 { transform: translateZ(-1px) scale(2); }
+.parallax-layer-3 { transform: translateZ(-2px) scale(3); }
+
+/* Hero content fade-in animation */
+@keyframes heroContentFadeIn {
+  0% { opacity: 0; transform: translateY(30px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.hero-content {
+  animation: heroContentFadeIn 1.5s ease-out;
 }

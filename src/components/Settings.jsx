@@ -35,6 +35,8 @@ const Settings = ({ onNavigate }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState(null);
   
   // Company Information
   const [companyInfo, setCompanyInfo] = useState({
@@ -196,51 +198,224 @@ const Settings = ({ onNavigate }) => {
     try {
       if (section === 'company') {
         // Save company info using shop details service
-        console.log('Saving company info:', companyInfo);
-        await shopDetailsService.updateShopDetails(companyInfo);
-        console.log('Company information saved to shop details service');
+        console.log('🔄 Saving company info:', companyInfo);
+        console.log('🔄 Company name being saved:', companyInfo.name);
+
+        // Test database connection first
+        const { settingsOperations } = await import('../lib/supabaseDb');
+        console.log('✅ Database connection imported successfully');
+
+        // Test if we can access the settings table
+        try {
+          const testSettings = await settingsOperations.getAllSettings();
+          console.log('✅ Settings table accessible, found', testSettings.length, 'settings');
+        } catch (dbError) {
+          console.error('❌ Settings table access failed:', dbError);
+          throw new Error(`Database connection failed: ${dbError.message}`);
+        }
+
+        // Try to save using shop details service
+        const result = await shopDetailsService.updateShopDetails(companyInfo);
+        console.log('✅ Company information saved to shop details service:', result);
+
+        // Verify the save by reading it back
+        const savedDetails = await shopDetailsService.getShopDetails();
+        console.log('🔍 Verification - saved details:', savedDetails);
+        console.log('🔍 Verification - company name:', savedDetails?.name);
       } else {
         // Save other settings to database using settings service
+        console.log(`🔄 Saving ${section} settings...`);
+
+        // Test database connection first
         const { settingsOperations } = await import('../lib/supabaseDb');
+        console.log('✅ Database connection imported successfully for', section);
+
+        // Test if we can access the settings table
+        try {
+          const testSettings = await settingsOperations.getAllSettings();
+          console.log(`✅ Settings table accessible for ${section}, found`, testSettings.length, 'settings');
+        } catch (dbError) {
+          console.error(`❌ Settings table access failed for ${section}:`, dbError);
+          throw new Error(`Database connection failed for ${section}: ${dbError.message}`);
+        }
 
         let settingsData;
         switch (section) {
           case 'tax':
             settingsData = taxSettings;
+            console.log('🔄 Tax settings data:', settingsData);
             break;
           case 'inventory':
             settingsData = inventorySettings;
+            console.log('🔄 Inventory settings data:', settingsData);
             break;
           case 'sales':
             settingsData = salesSettings;
+            console.log('🔄 Sales settings data:', settingsData);
             break;
           case 'purchase':
             settingsData = purchaseSettings;
+            console.log('🔄 Purchase settings data:', settingsData);
             break;
           case 'notifications':
             settingsData = notificationSettings;
+            console.log('🔄 Notification settings data:', settingsData);
             break;
           case 'user':
             settingsData = userPreferences;
+            console.log('🔄 User preferences data:', settingsData);
             break;
           case 'security':
             settingsData = securitySettings;
+            console.log('🔄 Security settings data:', settingsData);
             break;
+          case 'all':
+            // Save all sections
+            console.log('🔄 Saving ALL settings sections...');
+
+            // Save company info first
+            console.log('🔄 Step 1/8: Saving company info...');
+            await shopDetailsService.updateShopDetails(companyInfo);
+            console.log('✅ Step 1/8: Company info saved');
+
+            // Save all other settings sections
+            const sections = [
+              { name: 'tax', data: taxSettings },
+              { name: 'inventory', data: inventorySettings },
+              { name: 'sales', data: salesSettings },
+              { name: 'purchase', data: purchaseSettings },
+              { name: 'notifications', data: notificationSettings },
+              { name: 'user', data: userPreferences },
+              { name: 'security', data: securitySettings }
+            ];
+
+            for (let i = 0; i < sections.length; i++) {
+              const { name, data } = sections[i];
+              console.log(`🔄 Step ${i + 2}/8: Saving ${name} settings...`);
+              console.log(`🔄 ${name} data:`, data);
+
+              await settingsOperations.updateSettingSection(`${name}Settings`, data);
+              console.log(`✅ Step ${i + 2}/8: ${name} settings saved`);
+            }
+
+            console.log('✅ All settings saved to database successfully');
+
+            // Refresh the dashboard company details since we saved company info
+            if (window.refreshDashboardCompanyDetails) {
+              console.log('🔄 Refreshing dashboard company details after Save All...');
+              await window.refreshDashboardCompanyDetails();
+              console.log('✅ Dashboard company details refreshed after Save All');
+            }
+
+            alert('All settings saved successfully!');
+            return;
           default:
             throw new Error(`Unknown settings section: ${section}`);
         }
 
-        console.log(`Saving ${section} settings to database:`, settingsData);
-        await settingsOperations.updateSettingSection(`${section}Settings`, settingsData);
-        console.log(`${section} settings saved to database successfully`);
+        console.log(`🔄 Saving ${section} settings to database:`, settingsData);
+        console.log(`🔄 Section key will be: ${section}Settings`);
+
+        // Save the settings
+        const result = await settingsOperations.updateSettingSection(`${section}Settings`, settingsData);
+        console.log(`✅ ${section} settings saved to database successfully:`, result);
+
+        // Verify the save by reading back some settings
+        try {
+          const savedSettings = await settingsOperations.getSettingsByCategory(`${section}Settings`);
+          console.log(`🔍 Verification - ${section} settings count:`, savedSettings.length);
+          console.log(`🔍 Verification - ${section} settings sample:`, savedSettings.slice(0, 3));
+        } catch (verifyError) {
+          console.warn(`⚠️ Could not verify ${section} settings save:`, verifyError);
+        }
+      }
+
+      // If we saved company settings, refresh the dashboard
+      if (section === 'company') {
+        if (window.refreshDashboardCompanyDetails) {
+          console.log('🔄 Refreshing dashboard company details...');
+          await window.refreshDashboardCompanyDetails();
+          console.log('✅ Dashboard company details refreshed');
+        }
       }
 
       alert(`${section} settings saved successfully!`);
     } catch (error) {
-      console.error('Error saving settings:', error);
-      alert('Error saving settings. Please try again.');
+      console.error('❌ Error saving settings:', error);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Error details:', error.details);
+      console.error('❌ Error hint:', error.hint);
+      console.error('❌ Full error object:', error);
+
+      let errorMessage = 'Error saving settings. ';
+      if (error.message) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += 'Please try again.';
+      }
+
+      alert(errorMessage);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Test database connection
+  const testDatabaseConnection = async () => {
+    setTestingConnection(true);
+    setConnectionTestResult(null);
+
+    try {
+      console.log('🔄 Starting database connection test...');
+
+      const { settingsOperations } = await import('../lib/supabaseDb');
+      const result = await settingsOperations.testConnection();
+
+      setConnectionTestResult(result);
+
+      if (result.success) {
+        alert(`✅ Database Connection Successful!\n\nSettings table is working properly with ${result.settingsCount} existing settings.`);
+      } else {
+        alert(`❌ Database Connection Failed!\n\nError: ${result.error}\n\nPlease check the console for more details.`);
+      }
+    } catch (error) {
+      console.error('❌ Database test error:', error);
+      setConnectionTestResult({
+        success: false,
+        error: error.message,
+        message: 'Failed to test database connection'
+      });
+      alert(`❌ Database Test Failed!\n\nError: ${error.message}`);
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  // Clean up duplicate settings
+  const cleanupDuplicates = async () => {
+    setTestingConnection(true);
+
+    try {
+      console.log('🔄 Starting duplicate cleanup...');
+
+      const { settingsOperations } = await import('../lib/supabaseDb');
+      const result = await settingsOperations.cleanupDuplicateSettings();
+
+      if (result.success) {
+        if (result.duplicatesRemoved > 0) {
+          alert(`✅ Cleanup Successful!\n\nRemoved ${result.duplicatesRemoved} duplicate settings.\n\nDuplicate keys cleaned: ${result.duplicateKeys.join(', ')}`);
+        } else {
+          alert('✅ No duplicate settings found. Database is clean!');
+        }
+      } else {
+        alert(`❌ Cleanup Failed!\n\nError: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Cleanup error:', error);
+      alert(`❌ Cleanup Failed!\n\nError: ${error.message}`);
+    } finally {
+      setTestingConnection(false);
     }
   };
 
@@ -529,9 +704,29 @@ const Settings = ({ onNavigate }) => {
               className="hidden"
             />
           </label>
-          <Button 
-            onClick={() => handleSave('all')} 
-            disabled={isSaving}
+          <Button
+            onClick={testDatabaseConnection}
+            disabled={testingConnection || isSaving}
+            variant="outline"
+            className="border-blue-600 text-blue-600 hover:bg-blue-50"
+          >
+            <Database className="h-4 w-4 mr-2" />
+            {testingConnection ? 'Testing...' : 'Test Database'}
+          </Button>
+
+          <Button
+            onClick={cleanupDuplicates}
+            disabled={testingConnection || isSaving}
+            variant="outline"
+            className="border-orange-600 text-orange-600 hover:bg-orange-50"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            {testingConnection ? 'Cleaning...' : 'Clean Duplicates'}
+          </Button>
+
+          <Button
+            onClick={() => handleSave('all')}
+            disabled={isSaving || testingConnection}
             className="bg-green-600 hover:bg-green-700"
           >
             <Save className="h-4 w-4 mr-2" />
@@ -539,6 +734,46 @@ const Settings = ({ onNavigate }) => {
           </Button>
         </div>
       </div>
+
+      {/* Database Connection Status */}
+      {connectionTestResult && (
+        <Card className={`border-2 ${connectionTestResult.success ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <CardContent className="py-4">
+            <div className="flex items-start space-x-3">
+              {connectionTestResult.success ? (
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+              )}
+              <div className="flex-1">
+                <h4 className={`font-medium ${connectionTestResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                  Database Connection {connectionTestResult.success ? 'Successful' : 'Failed'}
+                </h4>
+                <p className={`text-sm mt-1 ${connectionTestResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                  {connectionTestResult.message}
+                </p>
+                {connectionTestResult.success && (
+                  <p className="text-sm text-green-600 mt-1">
+                    Settings table is accessible with {connectionTestResult.settingsCount} existing settings.
+                  </p>
+                )}
+                {!connectionTestResult.success && connectionTestResult.error && (
+                  <p className="text-sm text-red-600 mt-1 font-mono">
+                    Error: {connectionTestResult.error}
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConnectionTestResult(null)}
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Settings Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

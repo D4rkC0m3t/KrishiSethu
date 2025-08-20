@@ -1737,21 +1737,6 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
               </Button>
               <Button
                 type="button"
-                variant="secondary"
-                onClick={() => {
-                  console.log('=== DEBUG INFO ===');
-                  console.log('Current User:', currentUser);
-                  console.log('User Profile:', userProfile);
-                  console.log('Form Data:', formData);
-                  console.log('Suppliers:', suppliers);
-                  console.log('Validation Result:', validateForm());
-                  console.log('==================');
-                }}
-              >
-                Debug Info
-              </Button>
-              <Button
-                type="button"
                 variant="outline"
                 onClick={() => onNavigate('inventory')}
               >

@@ -1,0 +1,54 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="240" fill="#16a34a" stroke="#15803d" stroke-width="8"/>
+  
+  <!-- Inner Circle for depth -->
+  <circle cx="256" cy="256" r="200" fill="#22c55e" opacity="0.8"/>
+  
+  <!-- Wheat/Grain decoration around the circle -->
+  <g stroke="#fbbf24" stroke-width="3" fill="#fbbf24" opacity="0.6">
+    <!-- Top wheat -->
+    <path d="M256 50 L250 70 L262 70 Z"/>
+    <path d="M256 70 L250 90 L262 90 Z"/>
+    <path d="M256 90 L250 110 L262 110 Z"/>
+    
+    <!-- Right wheat -->
+    <path d="M462 256 L442 250 L442 262 Z"/>
+    <path d="M442 256 L422 250 L422 262 Z"/>
+    <path d="M422 256 L402 250 L402 262 Z"/>
+    
+    <!-- Bottom wheat -->
+    <path d="M256 462 L250 442 L262 442 Z"/>
+    <path d="M256 442 L250 422 L262 422 Z"/>
+    <path d="M256 422 L250 402 L262 402 Z"/>
+    
+    <!-- Left wheat -->
+    <path d="M50 256 L70 250 L70 262 Z"/>
+    <path d="M70 256 L90 250 L90 262 Z"/>
+    <path d="M90 256 L110 250 L110 262 Z"/>
+  </g>
+  
+  <!-- Letter K -->
+  <g fill="white" font-family="Arial, sans-serif" font-weight="bold">
+    <!-- K vertical line -->
+    <rect x="180" y="180" width="20" height="152" rx="4"/>
+    
+    <!-- K upper diagonal -->
+    <rect x="200" y="180" width="80" height="18" rx="4" transform="rotate(25 200 180)"/>
+    
+    <!-- K lower diagonal -->
+    <rect x="200" y="314" width="80" height="18" rx="4" transform="rotate(-25 200 314)"/>
+  </g>
+  
+  <!-- Letter S -->
+  <g fill="white" font-family="Arial, sans-serif" font-weight="bold">
+    <!-- S top curve -->
+    <path d="M280 180 Q320 180 320 210 Q320 240 280 240 L300 240 Q340 240 340 270 Q340 300 300 300 L280 300 Q320 300 320 332 L340 332 Q340 300 340 270 Q340 240 300 240 Q280 240 280 210 Q280 180 320 180 L340 180 Q340 210 320 210 Q300 210 300 240 Q300 270 320 270 Q340 270 340 300 Q340 332 300 332 L280 332" stroke="white" stroke-width="2" fill="none"/>
+    
+    <!-- Simplified S shape -->
+    <path d="M290 190 Q330 190 330 215 Q330 240 290 240 Q330 240 330 265 Q330 290 290 290 Q330 290 330 315 L320 315 Q320 300 300 300 Q280 300 280 285 Q280 270 300 270 Q280 270 280 245 Q280 220 300 220 Q280 220 280 205 Q280 190 300 190 L290 190" fill="white"/>
+  </g>
+  
+  <!-- Simplified approach - just text -->
+  <text x="256" y="280" font-family="Arial, sans-serif" font-size="120" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">KS</text>
+</svg>

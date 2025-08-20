@@ -368,7 +368,8 @@ export const COLLECTIONS = {
   STOCK_MOVEMENTS: 'stock_movements',
   AUDIT_LOGS: 'audit_logs',
   REPORTS: 'reports',
-  EINVOICES: 'einvoices',
+  EINVOICES: 'einvoices',           // Dedicated E-invoice table
+  EINVOICE_ITEMS: 'einvoice_items', // E-invoice line items table
   CUSTOMER_PAYMENTS: 'customer_payments',
   CUSTOMER_BALANCES: 'customer_balances',
   SALE_ITEMS: 'sale_items',
@@ -812,27 +813,232 @@ export const settingsOperations = {
 
   async setSetting(key, value, description = '') {
     try {
-      const { data, error } = await supabase
+      console.log(`🔄 Setting key: ${key}, value:`, value);
+
+      // First, try to update existing setting
+      const { data: existingData, error: selectError } = await supabase
         .from(COLLECTIONS.SETTINGS)
-        .upsert({
-          key,
-          value,
-          description,
-          updated_at: new Date().toISOString()
-        })
-        .select()
+        .select('id')
+        .eq('key', key)
         .single();
 
-      if (error) throw error;
+      let data, error;
+
+      if (existingData) {
+        // Update existing setting
+        console.log(`🔄 Updating existing setting: ${key}`);
+        const updateResult = await supabase
+          .from(COLLECTIONS.SETTINGS)
+          .update({
+            value,
+            description,
+            updated_at: new Date().toISOString()
+          })
+          .eq('key', key)
+          .select()
+          .single();
+
+        data = updateResult.data;
+        error = updateResult.error;
+      } else {
+        // Insert new setting
+        console.log(`🔄 Inserting new setting: ${key}`);
+        const insertResult = await supabase
+          .from(COLLECTIONS.SETTINGS)
+          .insert({
+            key,
+            value,
+            description,
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        data = insertResult.data;
+        error = insertResult.error;
+      }
+
+      if (error) {
+        console.error('❌ Supabase error setting value:', error);
+        throw error;
+      }
+
+      console.log(`✅ Successfully set ${key}:`, data);
       return data;
     } catch (error) {
-      console.error('Error setting value:', error);
+      console.error('❌ Error setting value:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   },
 
   async getAllSettings() {
     return dbOperations.getAll(COLLECTIONS.SETTINGS);
+  },
+
+  // Test database connection and settings table
+  async testConnection() {
+    try {
+      console.log('🔄 Testing database connection...');
+
+      // Test basic connection
+      const { data: connectionTest, error: connectionError } = await supabase
+        .from(COLLECTIONS.SETTINGS)
+        .select('count', { count: 'exact', head: true });
+
+      if (connectionError) {
+        console.error('❌ Database connection failed:', connectionError);
+        throw connectionError;
+      }
+
+      console.log('✅ Database connection successful');
+      console.log(`✅ Settings table exists with ${connectionTest?.length || 0} records`);
+
+      // Test if we can read settings
+      const settings = await this.getAllSettings();
+      console.log(`✅ Can read settings: ${settings.length} records found`);
+
+      // Test if we can write settings (with a test setting)
+      const testKey = 'test.connection';
+      const testValue = new Date().toISOString();
+      await this.setSetting(testKey, testValue, 'Connection test');
+      console.log('✅ Can write settings');
+
+      // Clean up test setting
+      try {
+        await supabase
+          .from(COLLECTIONS.SETTINGS)
+          .delete()
+          .eq('key', testKey);
+        console.log('✅ Test setting cleaned up');
+      } catch (cleanupError) {
+        console.warn('⚠️ Could not clean up test setting:', cleanupError);
+      }
+
+      // Test the schema
+      const schemaInfo = await this.getTableSchema();
+      console.log('✅ Settings table schema:', schemaInfo);
+
+      return {
+        success: true,
+        settingsCount: settings.length,
+        schema: schemaInfo,
+        message: 'Database connection and settings table working properly'
+      };
+    } catch (error) {
+      console.error('❌ Database connection test failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: 'Database connection or settings table has issues'
+      };
+    }
+  },
+
+  // Get settings table schema information
+  async getTableSchema() {
+    try {
+      // Get table information from PostgreSQL system tables
+      const { data, error } = await supabase
+        .rpc('get_table_schema', { table_name: 'settings' });
+
+      if (error) {
+        console.warn('Could not get schema via RPC, trying alternative method');
+
+        // Alternative: Try to get a sample record to see the structure
+        const { data: sampleData, error: sampleError } = await supabase
+          .from(COLLECTIONS.SETTINGS)
+          .select('*')
+          .limit(1);
+
+        if (sampleError) throw sampleError;
+
+        const columns = sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+        return {
+          method: 'sample_record',
+          columns: columns,
+          sample: sampleData[0] || null
+        };
+      }
+
+      return {
+        method: 'rpc',
+        schema: data
+      };
+    } catch (error) {
+      console.error('Could not get table schema:', error);
+      return {
+        method: 'error',
+        error: error.message
+      };
+    }
+  },
+
+  // Clean up duplicate settings (keep the most recent one)
+  async cleanupDuplicateSettings() {
+    try {
+      console.log('🔄 Checking for duplicate settings...');
+
+      // Get all settings grouped by key
+      const { data: allSettings, error } = await supabase
+        .from(COLLECTIONS.SETTINGS)
+        .select('*')
+        .order('key', { ascending: true })
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+
+      const duplicates = [];
+      const seen = new Set();
+      const toDelete = [];
+
+      allSettings.forEach(setting => {
+        if (seen.has(setting.key)) {
+          // This is a duplicate, mark for deletion
+          toDelete.push(setting.id);
+          duplicates.push(setting.key);
+        } else {
+          seen.add(setting.key);
+        }
+      });
+
+      if (toDelete.length > 0) {
+        console.log(`🔄 Found ${toDelete.length} duplicate settings to clean up:`, duplicates);
+
+        // Delete duplicates
+        const { error: deleteError } = await supabase
+          .from(COLLECTIONS.SETTINGS)
+          .delete()
+          .in('id', toDelete);
+
+        if (deleteError) throw deleteError;
+
+        console.log(`✅ Cleaned up ${toDelete.length} duplicate settings`);
+        return {
+          success: true,
+          duplicatesRemoved: toDelete.length,
+          duplicateKeys: [...new Set(duplicates)]
+        };
+      } else {
+        console.log('✅ No duplicate settings found');
+        return {
+          success: true,
+          duplicatesRemoved: 0,
+          duplicateKeys: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error cleaning up duplicate settings:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   },
 
   // Get all system settings as a structured object
@@ -872,7 +1078,11 @@ export const settingsOperations = {
   // Update a section of settings (e.g., 'companyInfo', 'taxSettings')
   async updateSettingSection(section, data) {
     try {
+      console.log(`🔄 Updating settings section: ${section}`);
+      console.log(`🔄 Data to save:`, data);
+
       const promises = [];
+      let settingCount = 0;
 
       // Flatten the data object and create setting keys
       const flattenObject = (obj, prefix = '') => {
@@ -882,9 +1092,12 @@ export const settingsOperations = {
 
           if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
             // Recursively flatten nested objects
+            console.log(`🔄 Flattening nested object: ${settingKey}`);
             flattenObject(value, settingKey);
           } else {
             // Store the value
+            console.log(`🔄 Adding setting: ${settingKey} = ${value}`);
+            settingCount++;
             promises.push(
               this.setSetting(settingKey, value, `${section} setting: ${key}`)
             );
@@ -894,9 +1107,13 @@ export const settingsOperations = {
 
       flattenObject(data, section);
 
-      // Execute all setting updates
-      await Promise.all(promises);
+      console.log(`🔄 Total settings to save: ${settingCount}`);
+      console.log(`🔄 Executing ${promises.length} setting updates...`);
 
+      // Execute all setting updates
+      const results = await Promise.all(promises);
+
+      console.log(`✅ Successfully saved ${results.length} settings for section: ${section}`);
       return true;
     } catch (error) {
       console.error('Error updating setting section:', error);
@@ -907,15 +1124,22 @@ export const settingsOperations = {
   // Get settings by category
   async getSettingsByCategory(category) {
     try {
+      console.log(`🔍 Getting settings by category: ${category}`);
+
       const { data, error } = await supabase
         .from(COLLECTIONS.SETTINGS)
         .select('*')
         .eq('category', category);
 
-      if (error) throw error;
+      if (error) {
+        console.error(`❌ Error getting settings by category ${category}:`, error);
+        throw error;
+      }
+
+      console.log(`✅ Found ${data?.length || 0} settings for category ${category}`);
       return data || [];
     } catch (error) {
-      console.error('Error getting settings by category:', error);
+      console.error('❌ Error getting settings by category:', error);
       return [];
     }
   },
@@ -999,13 +1223,75 @@ export const settingsOperations = {
  */
 export const stockOperations = {
   async recordStockMovement(movementData) {
-    return dbOperations.create(COLLECTIONS.STOCK_MOVEMENTS, movementData);
+    try {
+      console.log('📝 Recording stock movement:', movementData);
+
+      // Clean the data to only include columns that exist in the database schema
+      const cleanMovementData = {
+        product_id: movementData.product_id,
+        movement_type: movementData.movement_type,
+        quantity: movementData.quantity,
+        reference_type: movementData.reference_type || null,
+        reference_id: movementData.reference_id || null,
+        batch_no: movementData.batch_no || null,
+        notes: movementData.notes || null,
+        created_by: movementData.created_by || null,
+        movement_date: movementData.movement_date || new Date().toISOString().split('T')[0]
+      };
+
+      // Remove any undefined values and non-existent columns
+      Object.keys(cleanMovementData).forEach(key => {
+        if (cleanMovementData[key] === undefined) {
+          delete cleanMovementData[key];
+        }
+      });
+
+      console.log('📝 Clean movement data for database:', cleanMovementData);
+      return dbOperations.create(COLLECTIONS.STOCK_MOVEMENTS, cleanMovementData);
+    } catch (error) {
+      console.error('❌ Error recording stock movement:', error);
+      throw error;
+    }
   },
 
   async getAll() {
-    return dbOperations.getAll(COLLECTIONS.STOCK_MOVEMENTS, {
-      orderBy: { field: 'movement_date', ascending: false }
-    });
+    try {
+      console.log('📊 Fetching stock movements with product details...');
+
+      // Join with products table to get product names
+      const { data, error } = await supabase
+        .from(COLLECTIONS.STOCK_MOVEMENTS)
+        .select(`
+          *,
+          products!inner(
+            id,
+            name,
+            code
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error fetching stock movements:', error);
+        throw error;
+      }
+
+      // Transform data to include product names
+      const transformedData = (data || []).map(movement => ({
+        ...movement,
+        product_name: movement.products?.name || 'Unknown Product',
+        product_code: movement.products?.code || null
+      }));
+
+      console.log('✅ Stock movements with product details:', transformedData.length);
+      return transformedData;
+    } catch (error) {
+      console.error('❌ Error in stockOperations.getAll:', error);
+      // Fallback to basic query without joins
+      return dbOperations.getAll(COLLECTIONS.STOCK_MOVEMENTS, {
+        orderBy: { field: 'created_at', ascending: false }
+      });
+    }
   },
 
   async getStockMovements(productId) {
@@ -1253,21 +1539,393 @@ export const purchasesService = {
   }
 };
 
-// Additional services for EInvoice functionality
+// Comprehensive E-Invoice service for dedicated einvoices table
 export const einvoicesService = {
-  async getAll() {
-    return dbOperations.getAll(COLLECTIONS.SALES, {
-      orderBy: { field: 'sale_date', ascending: false }
-    });
+  // Get all E-invoices with optional filtering
+  async getAll(filters = {}) {
+    try {
+      // Try einvoices table first, fallback to sales table
+      let query;
+      let tableName = 'einvoices';
+
+      try {
+        query = supabase
+          .from('einvoices')
+          .select(`
+            *,
+            customer:customers(id, name, phone, email, address, gst_number)
+          `)
+          .order('created_at', { ascending: false });
+      } catch (error) {
+        console.log('📋 E-invoices table not found, using sales table as fallback');
+        tableName = 'sales';
+        query = supabase
+          .from('sales')
+          .select(`
+            *,
+            customer:customers(id, name, phone, email, address, gst_number)
+          `)
+          .order('created_at', { ascending: false });
+      }
+
+      // Apply filters
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+      if (filters.customer_id) {
+        query = query.eq('customer_id', filters.customer_id);
+      }
+      if (filters.date_from) {
+        query = query.gte('invoice_date', filters.date_from);
+      }
+      if (filters.date_to) {
+        query = query.lte('invoice_date', filters.date_to);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching E-invoices:', error);
+      throw error;
+    }
   },
-  async add(invoiceData) {
-    return dbOperations.create(COLLECTIONS.SALES, invoiceData);
+
+  // Get single E-invoice with items
+  async getById(id) {
+    try {
+      const { data, error } = await supabase
+        .from('einvoices')
+        .select(`
+          *,
+          customer:customers(id, name, phone, email, address, gst_number),
+          items:einvoice_items(*)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error fetching E-invoice:', error);
+      throw error;
+    }
   },
+
+  // Create new E-invoice with items
+  async create(invoiceData, items = []) {
+    try {
+      let invoice;
+
+      // Try einvoices table first, fallback to sales table
+      try {
+        const { data, error } = await supabase
+          .from('einvoices')
+          .insert([invoiceData])
+          .select()
+          .single();
+
+        if (error) throw error;
+        invoice = data;
+
+        console.log('✅ E-invoice saved to einvoices table');
+      } catch (error) {
+        console.log('📋 E-invoices table not available, using sales table as fallback');
+
+        // Map E-invoice data to sales table format
+        const salesData = {
+          sale_number: invoiceData.invoice_number,
+          customer_id: invoiceData.customer_id,
+          customer_name: invoiceData.buyer_name,
+          subtotal: invoiceData.subtotal,
+          tax_amount: invoiceData.total_tax_amount,
+          total_amount: invoiceData.total_amount,
+          payment_method: invoiceData.payment_method,
+          amount_paid: invoiceData.amount_paid,
+          payment_status: invoiceData.payment_status,
+          status: invoiceData.status,
+          sale_date: invoiceData.invoice_date,
+          notes: `E-Invoice: ${invoiceData.invoice_number}\nBuyer GSTIN: ${invoiceData.buyer_gstin || 'N/A'}\nIRN: ${invoiceData.irn || 'Pending'}\nQR Data: ${invoiceData.qr_code_data || 'N/A'}`,
+          created_by: invoiceData.created_by
+        };
+
+        const { data, error: salesError } = await supabase
+          .from('sales')
+          .insert([salesData])
+          .select()
+          .single();
+
+        if (salesError) throw salesError;
+        invoice = data;
+
+        console.log('✅ E-invoice saved to sales table as fallback');
+      }
+
+      // Insert items if provided
+      if (items.length > 0) {
+        try {
+          // Try einvoice_items table first
+          const itemsWithInvoiceId = items.map(item => ({
+            ...item,
+            einvoice_id: invoice.id
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('einvoice_items')
+            .insert(itemsWithInvoiceId);
+
+          if (itemsError) throw itemsError;
+          console.log('✅ E-invoice items saved to einvoice_items table');
+        } catch (error) {
+          console.log('📋 E-invoice items table not available, using sale_items as fallback');
+
+          // Map to sale_items format
+          const saleItems = items.map(item => ({
+            sale_id: invoice.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            total_price: item.total_amount,
+            gst_rate: item.gst_rate,
+            hsn_code: item.hsn_code
+          }));
+
+          const { error: saleItemsError } = await supabase
+            .from('sale_items')
+            .insert(saleItems);
+
+          if (saleItemsError) {
+            console.warn('Could not save items to sale_items table:', saleItemsError);
+          } else {
+            console.log('✅ E-invoice items saved to sale_items table as fallback');
+          }
+        }
+      }
+
+      return invoice;
+    } catch (error) {
+      console.error('Error creating E-invoice:', error);
+      throw error;
+    }
+  },
+
+  // Update E-invoice
   async update(id, invoiceData) {
-    return dbOperations.update(COLLECTIONS.SALES, id, invoiceData);
+    try {
+      const { data, error } = await supabase
+        .from('einvoices')
+        .update({
+          ...invoiceData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating E-invoice:', error);
+      throw error;
+    }
   },
+
+  // Delete E-invoice (cascade will delete items)
   async delete(id) {
-    return dbOperations.delete(COLLECTIONS.SALES, id);
+    try {
+      const { error } = await supabase
+        .from('einvoices')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting E-invoice:', error);
+      throw error;
+    }
+  },
+
+  // Generate IRN and update E-invoice status
+  async generateIRN(id, irnData) {
+    try {
+      const { data, error } = await supabase
+        .from('einvoices')
+        .update({
+          irn: irnData.irn,
+          ack_number: irnData.ack_number,
+          ack_date: irnData.ack_date,
+          qr_code_data: irnData.qr_code_data,
+          signed_invoice: irnData.signed_invoice,
+          status: 'generated',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error generating IRN:', error);
+      throw error;
+    }
+  },
+
+  // Cancel E-invoice
+  async cancel(id, reason) {
+    try {
+      const { data, error } = await supabase
+        .from('einvoices')
+        .update({
+          status: 'cancelled',
+          notes: `Cancelled: ${reason}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error cancelling E-invoice:', error);
+      throw error;
+    }
+  },
+
+  // Get E-invoice statistics
+  async getStats(dateRange = {}) {
+    try {
+      let query = supabase
+        .from('einvoices')
+        .select('status, total_amount, invoice_date');
+
+      if (dateRange.from) {
+        query = query.gte('invoice_date', dateRange.from);
+      }
+      if (dateRange.to) {
+        query = query.lte('invoice_date', dateRange.to);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // Calculate statistics
+      const stats = {
+        total_count: data.length,
+        draft_count: data.filter(inv => inv.status === 'draft').length,
+        generated_count: data.filter(inv => inv.status === 'generated').length,
+        cancelled_count: data.filter(inv => inv.status === 'cancelled').length,
+        total_value: data.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0),
+        average_value: data.length > 0 ? data.reduce((sum, inv) => sum + (parseFloat(inv.total_amount) || 0), 0) / data.length : 0
+      };
+
+      return stats;
+    } catch (error) {
+      console.error('Error fetching E-invoice stats:', error);
+      throw error;
+    }
+  }
+};
+
+// E-Invoice Items service
+export const einvoiceItemsService = {
+  // Get items for a specific E-invoice
+  async getByInvoiceId(einvoiceId) {
+    try {
+      const { data, error } = await supabase
+        .from('einvoice_items')
+        .select(`
+          *,
+          product:products(id, name, code, hsn_code, gst_rate)
+        `)
+        .eq('einvoice_id', einvoiceId)
+        .order('item_serial_number');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching E-invoice items:', error);
+      throw error;
+    }
+  },
+
+  // Add items to E-invoice
+  async addItems(einvoiceId, items) {
+    try {
+      const itemsWithInvoiceId = items.map((item, index) => ({
+        ...item,
+        einvoice_id: einvoiceId,
+        item_serial_number: index + 1
+      }));
+
+      const { data, error } = await supabase
+        .from('einvoice_items')
+        .insert(itemsWithInvoiceId)
+        .select();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error adding E-invoice items:', error);
+      throw error;
+    }
+  },
+
+  // Update E-invoice item
+  async updateItem(itemId, itemData) {
+    try {
+      const { data, error } = await supabase
+        .from('einvoice_items')
+        .update(itemData)
+        .eq('id', itemId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating E-invoice item:', error);
+      throw error;
+    }
+  },
+
+  // Delete E-invoice item
+  async deleteItem(itemId) {
+    try {
+      const { error } = await supabase
+        .from('einvoice_items')
+        .delete()
+        .eq('id', itemId);
+
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error deleting E-invoice item:', error);
+      throw error;
+    }
+  },
+
+  // Replace all items for an E-invoice
+  async replaceItems(einvoiceId, newItems) {
+    try {
+      // Delete existing items
+      await supabase
+        .from('einvoice_items')
+        .delete()
+        .eq('einvoice_id', einvoiceId);
+
+      // Add new items
+      if (newItems.length > 0) {
+        return await this.addItems(einvoiceId, newItems);
+      }
+      return [];
+    } catch (error) {
+      console.error('Error replacing E-invoice items:', error);
+      throw error;
+    }
   }
 };
 

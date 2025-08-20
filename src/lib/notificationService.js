@@ -76,13 +76,28 @@ class NotificationService {
   }
 
   // Show welcome notification
-  showWelcomeNotification() {
-    this.showNotification('Krishisethu Notifications Enabled', {
-      body: 'You will now receive important inventory alerts and updates.',
-      icon: '/logo192.png',
-      tag: 'welcome',
-      requireInteraction: false
-    });
+  async showWelcomeNotification() {
+    try {
+      // Try to get company name from shop details
+      const { shopDetailsService } = await import('./shopDetails');
+      const details = await shopDetailsService.getShopDetails();
+      const companyName = details?.name || 'Krishisethu';
+
+      this.showNotification(`${companyName} Notifications Enabled`, {
+        body: 'You will now receive important inventory alerts and updates.',
+        icon: '/logo192.png',
+        tag: 'welcome',
+        requireInteraction: false
+      });
+    } catch (error) {
+      // Fallback to default name if shop details can't be loaded
+      this.showNotification('Krishisethu Notifications Enabled', {
+        body: 'You will now receive important inventory alerts and updates.',
+        icon: '/logo192.png',
+        tag: 'welcome',
+        requireInteraction: false
+      });
+    }
   }
 
   // Show basic notification

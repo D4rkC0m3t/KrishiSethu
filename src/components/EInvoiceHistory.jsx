@@ -6,7 +6,8 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { salesService, einvoicesService, customerPaymentsService } from '../lib/supabaseDb';
+import { salesService, einvoicesService, einvoiceItemsService, customerPaymentsService, customerBalanceService } from '../lib/supabaseDb';
+import { generateEInvoiceQRCode, generateEInvoiceQRData } from '../utils/qrCodeGenerator';
 import InvoicePreview from './InvoicePreview';
 import {
   FileText,
@@ -29,7 +30,14 @@ import {
   AlertCircle,
   Plus,
   RefreshCw,
-  MoreHorizontal
+  MoreHorizontal,
+  Scan,
+  Camera,
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  Target,
+  Activity
 } from 'lucide-react';
 
 const EInvoiceHistory = ({ onNavigate }) => {
@@ -48,6 +56,27 @@ const EInvoiceHistory = ({ onNavigate }) => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentReference, setPaymentReference] = useState('');
+
+  // Enhanced features state
+  const [showBarcodeSearch, setShowBarcodeSearch] = useState(false);
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [amountRangeFilter, setAmountRangeFilter] = useState({ min: '', max: '' });
+  const [gstinFilter, setGstinFilter] = useState('');
+  const [irnFilter, setIrnFilter] = useState('');
+  const [showStats, setShowStats] = useState(false);
+  const [invoiceStats, setInvoiceStats] = useState(null);
+  const [customerOutstandings, setCustomerOutstandings] = useState({});
+  const [loadingOutstandings, setLoadingOutstandings] = useState(false);
+
+  // QR Code generation states
+  const [showQRDialog, setShowQRDialog] = useState(false);
+  const [selectedInvoiceForQR, setSelectedInvoiceForQR] = useState(null);
+  const [qrCodeData, setQrCodeData] = useState('');
+  const [qrCodeImage, setQrCodeImage] = useState('');
+  const [generatingQR, setGeneratingQR] = useState(false);
   const [showOverpaymentDialog, setShowOverpaymentDialog] = useState(false);
   const [overpaymentData, setOverpaymentData] = useState(null);
 
@@ -87,6 +116,9 @@ const EInvoiceHistory = ({ onNavigate }) => {
       setIsLoading(true);
       const invoiceData = await einvoicesService.getAll();
       setEinvoices(invoiceData);
+
+      // Load customer outstandings for all invoices
+      await loadAllCustomerOutstandings(invoiceData);
     } catch (error) {
       console.error('Error loading E-Invoices:', error);
       alert('Error loading E-Invoice history');
@@ -95,17 +127,164 @@ const EInvoiceHistory = ({ onNavigate }) => {
     }
   };
 
+  // Load customer outstanding balances for all invoices
+  const loadAllCustomerOutstandings = async (invoices) => {
+    try {
+      setLoadingOutstandings(true);
+      const outstandings = {};
+
+      // Get unique customer IDs
+      const customerIds = [...new Set(invoices.map(inv => inv.customer_id).filter(Boolean))];
+
+      // Load outstanding for each customer
+      for (const customerId of customerIds) {
+        try {
+          const balance = await customerBalanceService.getBalance(customerId);
+          outstandings[customerId] = balance?.outstanding_amount || balance?.outstandingAmount || 0;
+        } catch (error) {
+          console.error(`Error loading outstanding for customer ${customerId}:`, error);
+          outstandings[customerId] = 0;
+        }
+      }
+
+      setCustomerOutstandings(outstandings);
+    } catch (error) {
+      console.error('Error loading customer outstandings:', error);
+    } finally {
+      setLoadingOutstandings(false);
+    }
+  };
+
+  // Barcode search functionality
+  const handleBarcodeSearch = async (barcode) => {
+    if (!barcode.trim()) return;
+
+    try {
+      setIsScanning(true);
+      console.log('🔍 Searching E-Invoice by barcode/number:', barcode);
+
+      // Search invoices by invoice number, IRN, or customer details
+      const foundInvoices = einvoices.filter(invoice =>
+        invoice.invoice_number?.toLowerCase().includes(barcode.toLowerCase()) ||
+        invoice.irn?.toLowerCase().includes(barcode.toLowerCase()) ||
+        invoice.buyer_name?.toLowerCase().includes(barcode.toLowerCase()) ||
+        invoice.buyer_gstin?.toLowerCase().includes(barcode.toLowerCase())
+      );
+
+      if (foundInvoices.length > 0) {
+        setFilteredInvoices(foundInvoices);
+        setSearchTerm(barcode);
+        setBarcodeInput('');
+        setShowBarcodeSearch(false);
+
+        alert(`✅ Found ${foundInvoices.length} invoice(s) matching: ${barcode}`);
+      } else {
+        alert(`❌ No invoices found matching: ${barcode}`);
+      }
+    } catch (error) {
+      console.error('❌ Error searching by barcode:', error);
+      alert('Error searching invoices');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Load invoice statistics
+  const loadInvoiceStats = async () => {
+    try {
+      const stats = await einvoicesService.getStats();
+      setInvoiceStats(stats);
+      setShowStats(true);
+    } catch (error) {
+      console.error('Error loading invoice stats:', error);
+      alert('Error loading statistics');
+    }
+  };
+
+  // Generate real-time QR code for selected invoice
+  const generateInvoiceQRCode = async (invoice) => {
+    try {
+      setGeneratingQR(true);
+      setSelectedInvoiceForQR(invoice);
+      setShowQRDialog(true);
+
+      console.log('🔄 Generating QR code for invoice:', invoice.invoice_number);
+
+      // Get invoice items
+      const items = await einvoiceItemsService.getByInvoiceId(invoice.id);
+
+      // Prepare invoice data for QR generation
+      const qrInvoiceData = {
+        invoice_number: invoice.invoice_number,
+        irn: invoice.irn,
+        ack_number: invoice.ack_number,
+        ack_date: invoice.ack_date,
+        seller_gstin: invoice.seller_gstin || '29ABCDE1234F1Z5',
+        buyer_gstin: invoice.buyer_gstin || '',
+        invoice_date: invoice.invoice_date,
+        total_amount: invoice.total_amount,
+        invoice_type: invoice.invoice_type || 'INV'
+      };
+
+      // Generate QR code
+      const qrResult = await generateEInvoiceQRCode(qrInvoiceData, items);
+
+      setQrCodeData(qrResult.qrData);
+      setQrCodeImage(qrResult.qrCodeImage);
+
+      console.log('✅ QR code generated successfully for invoice:', invoice.invoice_number);
+
+    } catch (error) {
+      console.error('❌ Error generating QR code:', error);
+      alert('Error generating QR code: ' + error.message);
+    } finally {
+      setGeneratingQR(false);
+    }
+  };
+
   // Filter invoices based on search term and filters - defined before useEffect
   const filterInvoices = useCallback(() => {
     let filtered = [...einvoices];
 
-    // Search filter
+    // Search filter - enhanced with more fields
     if (searchTerm.trim()) {
       filtered = filtered.filter(invoice =>
-        invoice.invoiceNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        invoice.customerGSTIN?.toLowerCase().includes(searchTerm.toLowerCase())
+        invoice.invoice_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.buyer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.buyer_gstin?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.irn?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.ack_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        invoice.ewaybill_number?.toLowerCase().includes(searchTerm.toLowerCase())
       );
+    }
+
+    // Advanced filters
+    if (customerFilter.trim()) {
+      filtered = filtered.filter(invoice =>
+        invoice.buyer_name?.toLowerCase().includes(customerFilter.toLowerCase())
+      );
+    }
+
+    if (gstinFilter.trim()) {
+      filtered = filtered.filter(invoice =>
+        invoice.buyer_gstin?.toLowerCase().includes(gstinFilter.toLowerCase())
+      );
+    }
+
+    if (irnFilter.trim()) {
+      filtered = filtered.filter(invoice =>
+        invoice.irn?.toLowerCase().includes(irnFilter.toLowerCase())
+      );
+    }
+
+    // Amount range filter
+    if (amountRangeFilter.min || amountRangeFilter.max) {
+      filtered = filtered.filter(invoice => {
+        const amount = parseFloat(invoice.total_amount) || 0;
+        const min = parseFloat(amountRangeFilter.min) || 0;
+        const max = parseFloat(amountRangeFilter.max) || Infinity;
+        return amount >= min && amount <= max;
+      });
     }
 
     // Status filter
@@ -147,7 +326,7 @@ const EInvoiceHistory = ({ onNavigate }) => {
     }
 
     setFilteredInvoices(filtered);
-  }, [einvoices, searchTerm, statusFilter, dateFilter]);
+  }, [einvoices, searchTerm, statusFilter, dateFilter, customerFilter, gstinFilter, irnFilter, amountRangeFilter]);
 
   // Load E-Invoices on component mount
   useEffect(() => {
@@ -157,7 +336,7 @@ const EInvoiceHistory = ({ onNavigate }) => {
   // Filter invoices based on search and filters
   useEffect(() => {
     filterInvoices();
-  }, [einvoices, searchTerm, statusFilter, dateFilter, filterInvoices]);
+  }, [einvoices, searchTerm, statusFilter, dateFilter, customerFilter, gstinFilter, irnFilter, amountRangeFilter, filterInvoices]);
 
   // Get status badge
   const getStatusBadge = (status) => {
@@ -461,6 +640,74 @@ const EInvoiceHistory = ({ onNavigate }) => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* Barcode Search Button */}
+          <Dialog open={showBarcodeSearch} onOpenChange={setShowBarcodeSearch}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Scan className="h-4 w-4" />
+                Scan Search
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Camera className="h-5 w-5" />
+                  Barcode Search
+                </DialogTitle>
+                <DialogDescription>
+                  Search invoices by barcode, invoice number, IRN, or customer details
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Search Term</label>
+                  <Input
+                    placeholder="Scan or type search term..."
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleBarcodeSearch(barcodeInput)}
+                    autoFocus
+                    className="text-center font-mono"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleBarcodeSearch(barcodeInput)}
+                    disabled={!barcodeInput.trim() || isScanning}
+                    className="flex-1"
+                  >
+                    {isScanning ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4 mr-2" />
+                        Search
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setBarcodeInput('');
+                      setShowBarcodeSearch(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Statistics Button */}
+          <Button variant="outline" size="sm" onClick={loadInvoiceStats}>
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Stats
+          </Button>
+
           <Button variant="outline" size="sm" onClick={loadEInvoices} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
@@ -552,7 +799,95 @@ const EInvoiceHistory = ({ onNavigate }) => {
                 <SelectItem value="month">Last Month</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Advanced Filters Toggle */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="flex items-center gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              Advanced
+            </Button>
           </div>
+
+          {/* Advanced Filters Section */}
+          {showAdvancedFilters && (
+            <div className="mt-4 p-4 border rounded-lg bg-gray-50 space-y-4">
+              <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                <Target className="h-4 w-4" />
+                Advanced Filters
+              </h4>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Customer Name</label>
+                  <Input
+                    placeholder="Filter by customer..."
+                    value={customerFilter}
+                    onChange={(e) => setCustomerFilter(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Customer GSTIN</label>
+                  <Input
+                    placeholder="Filter by GSTIN..."
+                    value={gstinFilter}
+                    onChange={(e) => setGstinFilter(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">IRN Number</label>
+                  <Input
+                    placeholder="Filter by IRN..."
+                    value={irnFilter}
+                    onChange={(e) => setIrnFilter(e.target.value)}
+                    className="w-full"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Amount Range</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Min"
+                      type="number"
+                      value={amountRangeFilter.min}
+                      onChange={(e) => setAmountRangeFilter(prev => ({ ...prev, min: e.target.value }))}
+                      className="w-full"
+                    />
+                    <Input
+                      placeholder="Max"
+                      type="number"
+                      value={amountRangeFilter.max}
+                      onChange={(e) => setAmountRangeFilter(prev => ({ ...prev, max: e.target.value }))}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setCustomerFilter('');
+                    setGstinFilter('');
+                    setIrnFilter('');
+                    setAmountRangeFilter({ min: '', max: '' });
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -601,10 +936,33 @@ const EInvoiceHistory = ({ onNavigate }) => {
                             <User className="h-4 w-4" />
                             <span className="font-medium">Customer:</span>
                           </div>
-                          <div>{invoice.customerName}</div>
-                          {invoice.customerGSTIN && (
-                            <div className="text-xs">GSTIN: {invoice.customerGSTIN}</div>
-                          )}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div>{invoice.buyer_name || invoice.customerName}</div>
+                              {(invoice.buyer_gstin || invoice.customerGSTIN) && (
+                                <div className="text-xs">GSTIN: {invoice.buyer_gstin || invoice.customerGSTIN}</div>
+                              )}
+                            </div>
+                            {/* Real-time Customer Outstanding */}
+                            {invoice.customer_id && (
+                              <div className="ml-2">
+                                {loadingOutstandings ? (
+                                  <div className="flex items-center gap-1 text-xs text-gray-400">
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                    Loading...
+                                  </div>
+                                ) : (
+                                  <Badge
+                                    variant={customerOutstandings[invoice.customer_id] > 0 ? "destructive" : "secondary"}
+                                    className="text-xs"
+                                  >
+                                    <DollarSign className="h-3 w-3 mr-1" />
+                                    ₹{(customerOutstandings[invoice.customer_id] || 0).toFixed(2)}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div>
@@ -661,6 +1019,15 @@ const EInvoiceHistory = ({ onNavigate }) => {
                         onClick={() => printInvoice(invoice)}
                       >
                         <Printer className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => generateInvoiceQRCode(invoice)}
+                        className="text-blue-600 hover:text-blue-700"
+                        title="Generate QR Code"
+                      >
+                        <Scan className="h-4 w-4" />
                       </Button>
                       {invoice.status !== 'paid' && (
                         <Button
@@ -908,6 +1275,239 @@ const EInvoiceHistory = ({ onNavigate }) => {
             </Button>
             <Button onClick={handleOverpaymentConfirm} className="bg-yellow-600 hover:bg-yellow-700">
               Continue Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Statistics Dialog */}
+      <Dialog open={showStats} onOpenChange={setShowStats}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              E-Invoice Statistics
+            </DialogTitle>
+            <DialogDescription>
+              Comprehensive statistics for your E-Invoice data
+            </DialogDescription>
+          </DialogHeader>
+
+          {invoiceStats && (
+            <div className="space-y-6">
+              {/* Overview Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">{invoiceStats.total_count}</div>
+                  <div className="text-sm text-gray-600">Total Invoices</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{invoiceStats.generated_count}</div>
+                  <div className="text-sm text-gray-600">Generated</div>
+                </div>
+                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                  <div className="text-2xl font-bold text-yellow-600">{invoiceStats.draft_count}</div>
+                  <div className="text-sm text-gray-600">Drafts</div>
+                </div>
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{invoiceStats.cancelled_count}</div>
+                  <div className="text-sm text-gray-600">Cancelled</div>
+                </div>
+              </div>
+
+              {/* Financial Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="h-5 w-5 text-green-600" />
+                    <h4 className="font-medium">Total Value</h4>
+                  </div>
+                  <div className="text-2xl font-bold text-green-600">
+                    ₹{invoiceStats.total_value?.toFixed(2) || '0.00'}
+                  </div>
+                </div>
+                <div className="p-4 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Activity className="h-5 w-5 text-blue-600" />
+                    <h4 className="font-medium">Average Value</h4>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    ₹{invoiceStats.average_value?.toFixed(2) || '0.00'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Breakdown */}
+              <div className="space-y-2">
+                <h4 className="font-medium flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Status Breakdown
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <span>Generated Invoices</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-green-600 h-2 rounded-full"
+                          style={{ width: `${(invoiceStats.generated_count / invoiceStats.total_count) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {((invoiceStats.generated_count / invoiceStats.total_count) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <span>Draft Invoices</span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-yellow-600 h-2 rounded-full"
+                          style={{ width: `${(invoiceStats.draft_count / invoiceStats.total_count) * 100}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {((invoiceStats.draft_count / invoiceStats.total_count) * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStats(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Scan className="h-5 w-5" />
+              Real-time QR Code - {selectedInvoiceForQR?.invoice_number}
+            </DialogTitle>
+            <DialogDescription>
+              GST-compliant QR code generated from invoice data
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* QR Code Display */}
+            <div className="flex flex-col items-center space-y-4">
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+                {generatingQR ? (
+                  <div className="flex flex-col items-center justify-center w-48 h-48">
+                    <RefreshCw className="h-8 w-8 animate-spin text-blue-600 mb-2" />
+                    <p className="text-sm text-gray-600">Generating QR Code...</p>
+                  </div>
+                ) : qrCodeImage ? (
+                  <div className="flex flex-col items-center">
+                    <img
+                      src={qrCodeImage}
+                      alt="E-Invoice QR Code"
+                      className="w-48 h-48 border rounded"
+                    />
+                    <p className="text-xs text-gray-500 mt-2">
+                      Generated: {new Date().toLocaleString()}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center w-48 h-48 text-gray-400">
+                    <Scan className="h-12 w-12 mb-2" />
+                    <p className="text-sm">QR Code will appear here</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => selectedInvoiceForQR && generateInvoiceQRCode(selectedInvoiceForQR)}
+                  disabled={generatingQR}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${generatingQR ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+
+                {qrCodeImage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.download = `qr-${selectedInvoiceForQR?.invoice_number || 'invoice'}.png`;
+                      link.href = qrCodeImage;
+                      link.click();
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* QR Code Data */}
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">QR Code Data</h4>
+                <div className="bg-gray-50 rounded-lg p-3 text-sm font-mono break-all max-h-32 overflow-y-auto">
+                  {qrCodeData || 'QR data will appear here when generated'}
+                </div>
+              </div>
+
+              {selectedInvoiceForQR && (
+                <div className="space-y-2">
+                  <h4 className="font-medium text-gray-900">Invoice Details</h4>
+                  <div className="text-sm space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Invoice Number:</span>
+                      <span className="font-medium">{selectedInvoiceForQR.invoice_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Total Amount:</span>
+                      <span className="font-medium">₹{parseFloat(selectedInvoiceForQR.total_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Seller GSTIN:</span>
+                      <span className="font-medium">{selectedInvoiceForQR.seller_gstin || 'Not set'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Buyer GSTIN:</span>
+                      <span className="font-medium">{selectedInvoiceForQR.buyer_gstin || 'Not provided'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">IRN:</span>
+                      <span className={`font-medium ${selectedInvoiceForQR.irn ? 'text-green-600' : 'text-yellow-600'}`}>
+                        {selectedInvoiceForQR.irn || 'Pending'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Status:</span>
+                      <span className="font-medium capitalize">{selectedInvoiceForQR.status}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg">
+                <p className="font-medium text-blue-800 mb-1">📱 Real-time QR Code</p>
+                <p>This QR code is generated in real-time from the stored invoice data and complies with GST E-Invoice standards.</p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowQRDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
