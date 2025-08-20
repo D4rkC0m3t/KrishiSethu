@@ -1,11 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import {
   Download,
   Upload,
@@ -16,25 +15,18 @@ import {
   XCircle,
   AlertTriangle,
   RefreshCw,
-  Eye,
-  Trash2,
-  Settings,
-  Calendar,
   Users,
   Package,
   Truck,
   ShoppingCart,
-  BarChart3,
   FileDown,
   FileUp,
-  Clock,
-  Target,
-  Zap
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const DataImportExport = ({ onNavigate }) => {
-  const { currentUser, userProfile, hasPermission } = useAuth();
+  const { userProfile, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState('export');
   const [selectedDataType, setSelectedDataType] = useState('products');
   const [exportFormat, setExportFormat] = useState('csv');

@@ -853,7 +853,7 @@ export const useProductImage = (product) => {
     return () => {
       mounted = false;
     };
-  }, [product.id, product.name, product.category]);
+  }, [product]);
 
   return { imageData, loading };
 };

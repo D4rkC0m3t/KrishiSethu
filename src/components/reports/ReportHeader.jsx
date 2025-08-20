@@ -88,7 +88,7 @@ const ReportHeader = ({
       </div>
 
       {/* Print-specific styles */}
-      <style jsx>{`
+      <style>{`
         @media print {
           .report-header {
             background: white !important;

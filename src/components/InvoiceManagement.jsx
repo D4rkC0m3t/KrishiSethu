@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import InvoiceGenerator from './invoice/InvoiceGenerator';
-import { salesService } from '../lib/firestore';
+import { salesService } from '../lib/supabaseDb';
 import { invoiceService } from '../lib/invoice';
 import {
   FileText,
@@ -46,12 +46,14 @@ const InvoiceManagement = ({ onNavigate }) => {
     try {
       setLoading(true);
       setError(null);
+      console.log('🔄 Loading sales from Supabase for invoices...');
       const salesData = await salesService.getAll();
+      console.log('📊 Loaded sales data from Supabase:', salesData);
       setSales(salesData);
       setFilteredSales(salesData);
     } catch (err) {
-      console.error('Error loading sales:', err);
-      setError('Failed to load sales data. Please try again.');
+      console.error('❌ Error loading sales from Supabase:', err);
+      setError('Failed to load sales data from Supabase. Please try again.');
     } finally {
       setLoading(false);
     }

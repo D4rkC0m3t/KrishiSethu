@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { stockMovementsService } from '../lib/firestore';
+import { stockOperations as stockMovementsService } from '../lib/supabaseDb';
 import {
   Search,
   Filter,

@@ -5,7 +5,6 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import {
   Bell,
   AlertTriangle,
@@ -14,43 +13,22 @@ import {
   XCircle,
   Clock,
   Package,
-  TrendingDown,
-  TrendingUp,
   DollarSign,
   Users,
-  ShoppingCart,
   Truck,
   Settings,
-  Mail,
-  MessageSquare,
-  Phone,
-  Calendar,
-  Target,
-  Zap,
-  Filter,
   Search,
   Download,
   RefreshCw,
-  Eye,
-  EyeOff,
-  Volume2,
-  VolumeX,
-  Smartphone,
-  Globe,
   Database,
-  Activity,
-  Plus,
-  Edit,
-  Trash2,
-  MoreHorizontal,
-  Play,
-  Pause,
-  BarChart3
+  BarChart3,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 
 const EnhancedAlertsSystem = ({ onNavigate }) => {
-  const { currentUser, userProfile, hasPermission } = useAuth();
+  const { userProfile } = useAuth();
   const [alerts, setAlerts] = useState([]);
   const [filteredAlerts, setFilteredAlerts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -58,11 +36,8 @@ const EnhancedAlertsSystem = ({ onNavigate }) => {
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-  const [showNotificationDialog, setShowNotificationDialog] = useState(false);
-  const [showRuleDialog, setShowRuleDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('alerts');
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedAlert, setSelectedAlert] = useState(null);
 
   // Enhanced alert settings
   const [alertSettings, setAlertSettings] = useState({

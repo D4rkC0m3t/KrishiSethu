@@ -1,4 +1,5 @@
-import { supabase, supabaseStorageHelpers } from './supabase';
+import { supabase } from './supabase';
+import { uploadFileWithAuth, testStorageAccess } from '../utils/storageAuthFix';
 
 /**
  * Supabase Storage Service for handling file uploads
@@ -19,71 +20,22 @@ class StorageService {
    */
   async uploadFile(file, path = 'uploads/', onProgress = null) {
     try {
-      // Generate unique filename
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const fullPath = `${path}${fileName}`;
-
-      console.log('📁 Uploading file to Supabase:', fileName, 'to path:', fullPath);
-
-      // Determine bucket based on path
-      let bucket = 'product-images'; // default bucket
-      if (path.includes('documents')) {
-        bucket = 'documents';
-      }
-
-      // Upload to Supabase Storage
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(fullPath, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (error) {
-        console.error('Supabase upload error:', error);
-        throw new Error(`Upload failed: ${error.message}`);
-      }
-
-      console.log('✅ Upload successful:', data);
-
-      // Get public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(fullPath);
-
-      console.log('📎 Public URL obtained:', publicUrl);
-
-      // Simulate progress if callback provided
-      if (onProgress) {
-        onProgress(100);
-      }
-
-      return {
-        url: publicUrl,
-        path: fullPath,
-        bucket: bucket,
-        metadata: {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          uploadedAt: new Date().toISOString(),
-          bucket: bucket
-        }
-      };
+      console.log('📁 Using authenticated upload for file:', file.name);
+      
+      // Use the authentication-aware upload function
+      return await uploadFileWithAuth(file, path, onProgress);
+      
     } catch (error) {
-      console.error('Error uploading file:', error);
-
-      // Handle Supabase-specific errors
-      if (error.message?.includes('row-level security')) {
-        throw new Error('Upload failed: Permission denied. Please check your authentication.');
-      } else if (error.message?.includes('payload too large')) {
-        throw new Error('Upload failed: File too large. Please choose a smaller file.');
-      } else if (error.message?.includes('bucket')) {
-        throw new Error('Upload failed: Storage bucket not found. Please contact support.');
+      console.error('Error in storage upload:', error);
+      
+      // Provide more user-friendly error messages
+      if (error.message?.includes('Permission denied')) {
+        throw new Error('Upload failed: Permission denied. Please check your login status and try again.');
+      } else if (error.message?.includes('Authentication failed')) {
+        throw new Error('Upload failed: Authentication issue. Please log out and log back in, then try again.');
+      } else {
+        throw new Error(`Upload failed: ${error.message || 'Unknown error occurred'}`);
       }
-
-      throw new Error(`Failed to upload file: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -116,27 +68,27 @@ class StorageService {
    * @returns {Promise<object>} Upload result
    */
   async uploadProductImage(imageFile, productId, onProgress = null) {
-    console.log('📸 Starting image upload:', imageFile.name, `(${this.formatFileSize(imageFile.size)})`);
+    console.log('📸 Starting product image upload:', imageFile.name, `(${this.formatFileSize(imageFile.size)})`);
 
     // Validate image file
     if (!imageFile.type.startsWith('image/')) {
       throw new Error('File must be an image');
     }
 
-    // Check file size (max 5MB)
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    // Check file size (max 10MB for product images)
+    const maxSize = 10 * 1024 * 1024; // 10MB
     if (imageFile.size > maxSize) {
-      throw new Error('Image file size must be less than 5MB');
+      throw new Error('Image file size must be less than 10MB');
     }
 
     const path = `products/${productId}/images/`;
 
     try {
       const result = await this.uploadFile(imageFile, path, onProgress);
-      console.log('✅ Image upload successful:', result);
+      console.log('✅ Product image upload successful:', result);
       return result;
     } catch (error) {
-      console.error('❌ Image upload failed:', error);
+      console.error('❌ Product image upload failed:', error);
 
       // Try fallback upload without progress tracking
       if (onProgress) {
@@ -156,34 +108,121 @@ class StorageService {
   }
 
   /**
-   * Upload product document
+   * Upload product document/attachment
    * @param {File} documentFile - Document file to upload
    * @param {string} productId - Product ID for organizing files
    * @param {Function} onProgress - Progress callback
    * @returns {Promise<object>} Upload result
    */
   async uploadProductDocument(documentFile, productId, onProgress = null) {
-    // Validate document file
+    console.log('📄 Starting product document upload:', documentFile.name, `(${this.formatFileSize(documentFile.size)})`);
+
+    // Validate document file types
     const allowedTypes = [
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'text/plain'
+      'text/plain',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     ];
-    
+
     if (!allowedTypes.includes(documentFile.type)) {
-      throw new Error('Document must be PDF, DOC, DOCX, or TXT format');
+      throw new Error('File type not supported. Please upload PDF, DOC, DOCX, TXT, XLS, or XLSX files.');
     }
-    
-    // Check file size (max 10MB)
+
+    // Check file size (max 20MB for documents)
+    const maxSize = 20 * 1024 * 1024; // 20MB
+    if (documentFile.size > maxSize) {
+      throw new Error('Document file size must be less than 20MB');
+    }
+
+    const path = `products/${productId}/documents/`;
+
+    try {
+      const result = await this.uploadFile(documentFile, path, onProgress);
+      console.log('✅ Product document upload successful:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Product document upload failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload POS image (receipts, customer docs, etc.)
+   * @param {File} imageFile - Image file to upload
+   * @param {string} saleId - Sale ID for organizing files
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<object>} Upload result
+   */
+  async uploadPOSImage(imageFile, saleId, onProgress = null) {
+    console.log('📸 Starting POS image upload:', imageFile.name, `(${this.formatFileSize(imageFile.size)})`);
+
+    // Validate image file
+    if (!imageFile.type.startsWith('image/')) {
+      throw new Error('File must be an image');
+    }
+
+    // Check file size (max 5MB for POS images)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (imageFile.size > maxSize) {
+      throw new Error('Image file size must be less than 5MB');
+    }
+
+    const path = `pos/${saleId}/images/`;
+
+    try {
+      const result = await this.uploadFile(imageFile, path, onProgress);
+      console.log('✅ POS image upload successful:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ POS image upload failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload POS document
+   * @param {File} documentFile - Document file to upload
+   * @param {string} saleId - Sale ID for organizing files
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<object>} Upload result
+   */
+  async uploadPOSDocument(documentFile, saleId, onProgress = null) {
+    console.log('📄 Starting POS document upload:', documentFile.name, `(${this.formatFileSize(documentFile.size)})`);
+
+    // Validate document file types
+    const allowedTypes = [
+      'application/pdf',
+      'text/plain',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+
+    if (!allowedTypes.includes(documentFile.type)) {
+      throw new Error('File type not supported. Please upload PDF, TXT, DOC, or DOCX files.');
+    }
+
+    // Check file size (max 10MB for POS documents)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (documentFile.size > maxSize) {
       throw new Error('Document file size must be less than 10MB');
     }
-    
-    const path = `products/${productId}/documents/`;
-    return await this.uploadFile(documentFile, path, onProgress);
+
+    const path = `pos/${saleId}/documents/`;
+
+    try {
+      const result = await this.uploadFile(documentFile, path, onProgress);
+      console.log('✅ POS document upload successful:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ POS document upload failed:', error);
+      throw error;
+    }
   }
+
+
 
   /**
    * Delete a file from storage
@@ -318,6 +357,14 @@ class StorageService {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+  /**
+   * Test storage access and authentication
+   * @returns {Promise<object>} Test results
+   */
+  async testStorage() {
+    return await testStorageAccess();
   }
 }
 

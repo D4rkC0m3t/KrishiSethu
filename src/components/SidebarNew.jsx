@@ -26,14 +26,53 @@ import {
 } from 'lucide-react';
 
 export default function SidebarNew({ theme, currentPage, onNavigate, alerts }) {
-  const { currentUser, userProfile, logout } = useAuth();
+  const { currentUser, userProfile, logout, hasFullAccess } = useAuth();
   const [isCollapsed, setIsCollapsed] = React.useState(false);
 
-  const isAdmin = () => {
-    return currentUser?.email === 'admin@krishisethu.com' || userProfile?.role === 'admin';
+  const hasPermission = (permission) => {
+    // Admin check - always return true for admin users
+    if (userProfile?.role === 'admin' || 
+        userProfile?.account_type === 'admin' || 
+        currentUser?.email === 'admin@krishisethu.com') {
+      return true; // Admin always has full access
+    }
+
+    // For non-admin users, check trial period
+    const trialEnd = userProfile?.trial_end ? new Date(userProfile.trial_end) : null;
+    const now = new Date();
+    if (trialEnd && now < trialEnd) {
+      return true; // Users in trial period have full access
+    }
+    
+    // Define permission mappings for different roles
+    const rolePermissions = {
+      'staff': [
+        'view_inventory',
+        'view_sales',
+        'create_sales',
+        'view_customers'
+      ],
+      'manager': [
+        'view_inventory',
+        'manage_inventory',
+        'view_sales',
+        'create_sales',
+        'manage_sales',
+        'view_customers',
+        'manage_customers',
+        'view_reports'
+      ]
+    };
+
+    return userProfile?.role && rolePermissions[userProfile.role]?.includes(permission);
   };
 
-  const unreadAlerts = alerts?.filter(alert => !alert.read).length || 0;
+  const isAdmin = () => {
+    return userProfile?.role === 'admin' || currentUser?.email === 'admin@krishisethu.com';
+  };
+
+  // Count unread notifications
+  const unreadAlerts = alerts?.filter(alert => !alert.read).length || 4; // Default to 4 for demo
 
   const menuItems = [
     { 
@@ -42,49 +81,48 @@ export default function SidebarNew({ theme, currentPage, onNavigate, alerts }) {
       key: "dashboard",
       active: currentPage === 'dashboard'
     },
-    { 
-      label: "Inventory", 
-      icon: Package, 
+    {
+      label: "Inventory",
+      icon: Package,
       key: "inventory",
-      active: currentPage === 'inventory',
+      active: currentPage === 'inventory' || currentPage === 'categories' || currentPage === 'brands' || currentPage === 'stock-movement' || currentPage === 'add-product',
       hasSubmenu: true,
       submenu: [
         { label: "View Products", key: "inventory" },
-        { label: "Categories", key: "categories-management" },
-        { label: "Brands", key: "brands-management" },
+        { label: "Categories", key: "categories" },
+        { label: "Brands", key: "brands" },
         { label: "Stock Movement", key: "stock-movement" }
       ]
     },
-    { 
-      label: "Orders", 
-      icon: Truck, 
-      key: "orders",
-      active: currentPage === 'orders',
+    {
+      label: "Orders",
+      icon: Truck,
+      key: "purchases",
+      active: currentPage === 'purchases' || currentPage === 'purchase-entry' || currentPage === 'suppliers',
       hasSubmenu: true,
       submenu: [
-        { label: "All Orders", key: "orders" },
         { label: "Purchases", key: "purchases" },
         { label: "Purchase Entry", key: "purchase-entry" },
         { label: "Suppliers", key: "suppliers" }
       ]
     },
-    { 
-      label: "Sales", 
-      icon: ShoppingCart, 
+    {
+      label: "Sales",
+      icon: ShoppingCart,
       key: "sales",
-      active: currentPage === 'sales',
+      active: currentPage === 'sales' || currentPage === 'pos' || currentPage === 'customers',
       hasSubmenu: true,
       submenu: [
         { label: "POS", key: "pos" },
-        { label: "Sales History", key: "sales-history" },
-        { label: "Customers", key: "customer-management" }
+        { label: "Sales History", key: "sales" },
+        { label: "Customers", key: "customers" }
       ]
     },
-    { 
-      label: "E-Invoice", 
-      icon: FileText, 
+    {
+      label: "E-Invoice",
+      icon: FileText,
       key: "e-invoice",
-      active: currentPage === 'e-invoice',
+      active: currentPage === 'e-invoice' || currentPage === 'e-invoice-history',
       hasSubmenu: true,
       submenu: [
         { label: "Create E-Invoice", key: "e-invoice" },
@@ -95,59 +133,63 @@ export default function SidebarNew({ theme, currentPage, onNavigate, alerts }) {
       label: "Reports",
       icon: BarChart,
       key: "reports",
-      active: currentPage === 'reports' || currentPage === 'reports-dashboard' || currentPage === 'reports-advanced',
+      active: currentPage === 'reports' || currentPage === 'reports-dashboard' || currentPage === 'reports-advanced' || currentPage === 'reports-sales' || currentPage === 'reports-inventory' || currentPage === 'reports-financial' || currentPage === 'reports-gst' || currentPage === 'reports-profit',
       hasSubmenu: true,
       submenu: [
         { label: "Reports Dashboard", key: "reports-dashboard" },
         { label: "Advanced Reports", key: "reports" },
         { label: "Sales Analytics", key: "reports-sales" },
         { label: "Inventory Reports", key: "reports-inventory" },
-        { label: "Financial Reports", key: "reports-financial" }
+        { label: "Financial Reports", key: "reports-financial" },
+        { label: "Profit Analysis", key: "reports-profit" },
+        { label: "GST Reports", key: "reports-gst" }
       ]
     },
-    { 
-      label: "Notifications", 
-      icon: Bell, 
-      key: "notifications",
-      active: currentPage === 'notifications',
-      badge: unreadAlerts > 0 ? unreadAlerts.toString() : undefined
+    {
+      label: "Notifications",
+      icon: Bell,
+      key: "alerts-system",
+      active: currentPage === 'alerts-system',
+      badge: "4"
     }
   ];
 
   const secondaryItems = [
-    ...(isAdmin() ? [{ 
-      label: "User Management", 
-      icon: Users, 
+    {
+      label: "User Management",
+      icon: Users,
       key: "user-management",
-      active: currentPage === 'user-management'
-    }] : []),
-    { 
-      label: "Import/Export", 
-      icon: Database, 
+      active: currentPage === 'user-management',
+      requiresFullAccess: true
+    },
+    {
+      label: "Import/Export",
+      icon: Database,
       key: "data-import-export",
       active: currentPage === 'data-import-export'
     },
-    ...(isAdmin() ? [{ 
-      label: "Backup & Data", 
-      icon: HardDrive, 
+    {
+      label: "Backup & Data",
+      icon: HardDrive,
       key: "backup-data-management",
-      active: currentPage === 'backup-data-management'
-    }] : []),
-    { 
-      label: "Documentation", 
-      icon: BookText, 
+      active: currentPage === 'backup-data-management',
+      requiresFullAccess: true
+    },
+    {
+      label: "Documentation",
+      icon: BookText,
       key: "documentation",
       active: currentPage === 'documentation'
     },
-    { 
-      label: "Support", 
-      icon: LifeBuoy, 
+    {
+      label: "Support",
+      icon: LifeBuoy,
       key: "support",
       active: currentPage === 'support'
     },
-    { 
-      label: "Settings", 
-      icon: Settings, 
+    {
+      label: "Settings",
+      icon: Settings,
       key: "settings",
       active: currentPage === 'settings'
     }
@@ -155,7 +197,11 @@ export default function SidebarNew({ theme, currentPage, onNavigate, alerts }) {
 
   const MenuItem = ({ item, isSubmenu = false }) => (
     <button
-      onClick={() => onNavigate(item.key)}
+      onClick={() => {
+        console.log('🖱️ SidebarNew MenuItem clicked:', item.key, 'isSubmenu:', isSubmenu);
+        console.log('🎯 About to call onNavigate with:', item.key);
+        onNavigate(item.key);
+      }}
       className={cn(
         "flex items-center w-full rounded-md text-sm font-medium transition-colors text-left relative group",
         isSubmenu && "text-xs py-1.5 ml-4",
@@ -253,34 +299,48 @@ export default function SidebarNew({ theme, currentPage, onNavigate, alerts }) {
       )}>
         <nav className={cn("p-2 space-y-1", isCollapsed && "px-1")}>
           {/* Main Menu Items */}
-          {menuItems.map((item) => (
-            <div key={item.key}>
-              <MenuItem item={item} />
-              {item.hasSubmenu && item.active && !isCollapsed && (
-                <div className="mt-1 space-y-1">
-                  {item.submenu.map((subItem) => (
-                    <MenuItem
-                      key={subItem.key}
-                      item={{
-                        ...subItem,
-                        icon: () => <div className="w-4 h-4" />,
-                        active: currentPage === subItem.key
-                      }}
-                      isSubmenu
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
+          {menuItems.map((item) => {
+            console.log(`📋 Rendering menu item: ${item.label} (${item.key}), active: ${item.active}, hasSubmenu: ${item.hasSubmenu}, currentPage: ${currentPage}`);
+            if (item.hasSubmenu) {
+              console.log(`📂 Submenu for ${item.label}:`, item.submenu.map(sub => `${sub.label}(${sub.key})`));
+              console.log(`🔍 Submenu will show: ${item.hasSubmenu && item.active && !isCollapsed}`);
+            }
+            return (
+              <div key={item.key}>
+                <MenuItem item={item} />
+                {item.hasSubmenu && item.active && !isCollapsed && (
+                  <div className="mt-1 space-y-1">
+                    {item.submenu.map((subItem) => {
+                      console.log(`📄 Rendering submenu item: ${subItem.label} (${subItem.key}), active: ${currentPage === subItem.key}`);
+                      return (
+                        <MenuItem
+                          key={subItem.key}
+                          item={{
+                            ...subItem,
+                            icon: () => <div className="w-4 h-4" />,
+                            active: currentPage === subItem.key
+                          }}
+                          isSubmenu
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {/* Separator */}
           {!isCollapsed && <div className="border-t border-border my-3" />}
 
           {/* Secondary Menu Items */}
-          {secondaryItems.map((item) => (
-            <MenuItem key={item.key} item={item} />
-          ))}
+          {secondaryItems.map((item) => {
+            // Check if item requires full access and user has it
+            if (item.requiresFullAccess && !hasFullAccess()) {
+              return null;
+            }
+            return <MenuItem key={item.key} item={item} />;
+          })}
         </nav>
       </div>
 

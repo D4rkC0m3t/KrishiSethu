@@ -21,7 +21,7 @@ const ReportTemplate = ({
   return (
     <div className={`bg-white text-gray-900 min-h-screen print:min-h-0 ${className}`}>
       {/* Enhanced Print Styles with A4 formatting */}
-      <style jsx>{`
+      <style>{`
         @media print {
           @page {
             size: ${pageSize} ${orientation};

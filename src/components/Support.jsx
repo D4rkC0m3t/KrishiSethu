@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import {
   LifeBuoy,
   ArrowLeft,
@@ -32,11 +33,22 @@ import {
   Lightbulb,
   Star,
   ThumbsUp,
-  CreditCard
+  CreditCard,
+  Sparkles,
+  Rocket,
+  Construction
 } from 'lucide-react';
 
 const Support = ({ onNavigate }) => {
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  const [comingSoonFeature, setComingSoonFeature] = useState('');
+
+  // Handle coming soon popup
+  const handleComingSoon = (featureName) => {
+    setComingSoonFeature(featureName);
+    setShowComingSoon(true);
+  };
   const [supportForm, setSupportForm] = useState({
     name: '',
     email: '',
@@ -215,16 +227,8 @@ const Support = ({ onNavigate }) => {
 
   const handleFormSubmit = (e) => {
     e.preventDefault();
-    // Handle form submission
-    alert('Support ticket submitted successfully! We will get back to you soon.');
-    setSupportForm({
-      name: '',
-      email: '',
-      subject: '',
-      category: '',
-      priority: 'medium',
-      description: ''
-    });
+    // Show coming soon popup instead of actual submission
+    handleComingSoon('Support Ticket Submission');
   };
 
   return (
@@ -304,7 +308,10 @@ const Support = ({ onNavigate }) => {
                             <span className="font-medium">{channel.email}</span>
                           </div>
                         )}
-                        <Button className="w-full mt-3">
+                        <Button
+                          className="w-full mt-3"
+                          onClick={() => handleComingSoon(channel.action)}
+                        >
                           {channel.action}
                         </Button>
                       </div>
@@ -462,7 +469,11 @@ const Support = ({ onNavigate }) => {
                             <span>Last update: {ticket.lastUpdate}</span>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleComingSoon('Ticket Details')}
+                        >
                           View Details
                         </Button>
                       </div>
@@ -485,7 +496,11 @@ const Support = ({ onNavigate }) => {
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 mb-4">Complete user guide with step-by-step instructions</p>
-                  <Button variant="outline" className="w-full">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleComingSoon('User Manual Download')}
+                  >
                     <Download className="h-4 w-4 mr-2" />
                     Download PDF
                   </Button>
@@ -501,7 +516,11 @@ const Support = ({ onNavigate }) => {
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 mb-4">Watch video guides for common tasks and features</p>
-                  <Button variant="outline" className="w-full">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleComingSoon('Video Tutorials')}
+                  >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Watch Videos
                   </Button>
@@ -517,7 +536,11 @@ const Support = ({ onNavigate }) => {
                 </CardHeader>
                 <CardContent>
                   <p className="text-gray-600 mb-4">Browse our comprehensive online help center</p>
-                  <Button variant="outline" className="w-full">
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleComingSoon('Knowledge Base')}
+                  >
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Visit Knowledge Base
                   </Button>
@@ -527,6 +550,68 @@ const Support = ({ onNavigate }) => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Coming Soon Popup */}
+      <Dialog open={showComingSoon} onOpenChange={setShowComingSoon}>
+        <DialogContent className="max-w-md mx-auto">
+          <div className="text-center py-6">
+            {/* Animated Background */}
+            <div className="relative mb-6">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 rounded-full blur-xl opacity-30 animate-pulse"></div>
+              <div className="relative bg-gradient-to-r from-blue-500 via-purple-600 to-pink-600 rounded-full p-6 mx-auto w-24 h-24 flex items-center justify-center">
+                <Construction className="h-12 w-12 text-white animate-bounce" />
+              </div>
+            </div>
+
+            {/* Title with Sparkles */}
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <Sparkles className="h-6 w-6 text-yellow-500 animate-pulse" />
+              <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+                Coming Soon!
+              </DialogTitle>
+              <Sparkles className="h-6 w-6 text-yellow-500 animate-pulse" />
+            </div>
+
+            {/* Feature Name */}
+            <div className="mb-6">
+              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-2 rounded-full border border-blue-200">
+                <Rocket className="h-4 w-4 text-blue-600" />
+                <span className="font-semibold text-blue-800">{comingSoonFeature}</span>
+              </div>
+            </div>
+
+            {/* Description */}
+            <DialogDescription className="text-gray-600 mb-6 leading-relaxed">
+              We're working hard to bring you this amazing feature!
+              <br />
+              <span className="font-medium text-purple-600">Stay tuned for updates.</span>
+            </DialogDescription>
+
+            {/* Decorative Elements */}
+            <div className="flex justify-center gap-4 mb-6">
+              <div className="flex items-center gap-1">
+                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+              </div>
+              <Zap className="h-5 w-5 text-orange-500 animate-pulse" />
+              <div className="flex items-center gap-1">
+                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                <Star className="h-4 w-4 text-yellow-400 fill-current" />
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <Button
+              onClick={() => setShowComingSoon(false)}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-2 rounded-full font-medium transition-all duration-300 transform hover:scale-105"
+            >
+              Got it! ✨
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

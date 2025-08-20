@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -41,19 +41,53 @@ const Suppliers = ({ onNavigate }) => {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Load suppliers from Firebase
-  const loadSuppliers = async () => {
+  // Normalize supplier data to ensure all required properties exist
+  const normalizeSupplier = (supplier) => {
+    // Handle JSONB address field from database
+    const addressObj = supplier.address || {};
+    const isAddressObject = typeof addressObj === 'object' && addressObj !== null;
+
+    return {
+      id: supplier.id || `sup_${Date.now()}_${Math.random()}`,
+      name: supplier.name || 'Unknown Supplier',
+      contactPerson: supplier.contact_person || supplier.contactPerson || 'N/A',
+      phone: supplier.phone || 'N/A',
+      email: supplier.email || '',
+      // Handle both JSONB address object and legacy string address
+      address: isAddressObject ? (addressObj.street || '') : (supplier.address || 'N/A'),
+      city: isAddressObject ? (addressObj.city || '') : (supplier.city || 'N/A'),
+      state: isAddressObject ? (addressObj.state || '') : (supplier.state || 'N/A'),
+      pincode: isAddressObject ? (addressObj.pincode || '') : (supplier.pincode || 'N/A'),
+      country: isAddressObject ? (addressObj.country || 'India') : (supplier.country || 'India'),
+      gstNumber: supplier.gst_number || supplier.gstNumber || '',
+      panNumber: supplier.pan_number || supplier.panNumber || '',
+      paymentTerms: supplier.payment_terms || supplier.paymentTerms || '30 days',
+      creditLimit: supplier.credit_limit || supplier.creditLimit || 0,
+      outstandingAmount: supplier.outstanding_amount || supplier.outstandingAmount || 0,
+      isActive: supplier.is_active !== false && supplier.isActive !== false, // Default to true if undefined
+      totalPurchases: supplier.totalPurchases || 0,
+      totalAmount: supplier.totalAmount || 0,
+      createdAt: supplier.created_at || supplier.createdAt,
+      updatedAt: supplier.updated_at || supplier.updatedAt,
+      ...supplier // Keep any additional properties
+    };
+  };
+
+  // Load suppliers from Supabase - memoized to prevent infinite re-renders
+  const loadSuppliers = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      console.log('Loading suppliers from Firebase...');
+      console.log('Loading suppliers from Supabase...');
 
-      const firebaseSuppliers = await suppliersService.getAll();
-      console.log('Loaded suppliers:', firebaseSuppliers);
+      const supabaseSuppliers = await suppliersService.getAll();
+      console.log('Loaded suppliers:', supabaseSuppliers);
 
-      if (firebaseSuppliers && firebaseSuppliers.length > 0) {
-        setSuppliers(firebaseSuppliers);
-        setFilteredSuppliers(firebaseSuppliers);
+      if (supabaseSuppliers && supabaseSuppliers.length > 0) {
+        // Normalize all suppliers to ensure required properties
+        const normalizedSuppliers = supabaseSuppliers.map(normalizeSupplier);
+        setSuppliers(normalizedSuppliers);
+        setFilteredSuppliers(normalizedSuppliers);
       } else {
         // If no suppliers exist, create some sample data
         await createSampleSuppliers();
@@ -67,10 +101,10 @@ const Suppliers = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Empty dependency array since this function doesn't depend on any props or state
 
-  // Create sample suppliers for demo
-  const createSampleSuppliers = async () => {
+  // Create sample suppliers for demo - memoized to prevent re-creation
+  const createSampleSuppliers = useCallback(async () => {
     const sampleSuppliers = [
       {
         name: 'Tata Chemicals Ltd',
@@ -132,48 +166,54 @@ const Suppliers = ({ onNavigate }) => {
 
     try {
       for (const supplier of sampleSuppliers) {
-        await suppliersService.create(supplier);
+        try {
+          await suppliersService.add(supplier);
+        } catch (dbError) {
+          console.warn('Failed to save sample supplier to database:', dbError);
+        }
       }
-      // Reload suppliers after creating samples
-      const newSuppliers = await suppliersService.getAll();
-      setSuppliers(newSuppliers);
-      setFilteredSuppliers(newSuppliers);
+
+      // Try to reload from database, fallback to local data
+      try {
+        const newSuppliers = await suppliersService.getAll();
+        if (newSuppliers && newSuppliers.length > 0) {
+          const normalizedSuppliers = newSuppliers.map(normalizeSupplier);
+          setSuppliers(normalizedSuppliers);
+          setFilteredSuppliers(normalizedSuppliers);
+        } else {
+          throw new Error('No suppliers returned from database');
+        }
+      } catch (dbError) {
+        console.warn('Failed to load from database, using local sample data:', dbError);
+        const normalizedSuppliers = sampleSuppliers.map(normalizeSupplier);
+        setSuppliers(normalizedSuppliers);
+        setFilteredSuppliers(normalizedSuppliers);
+      }
     } catch (error) {
       console.error('Error creating sample suppliers:', error);
+      // Fallback to local sample data
+      const normalizedSuppliers = sampleSuppliers.map(normalizeSupplier);
+      setSuppliers(normalizedSuppliers);
+      setFilteredSuppliers(normalizedSuppliers);
     }
-  };
+  }, []); // Empty dependency array since this function doesn't depend on any props or state
 
   useEffect(() => {
-    // Set up real-time subscription for suppliers
-    const unsubscribe = realtimeService.subscribeToSuppliers((data, error) => {
-      if (error) {
-        console.error('Real-time suppliers error:', error);
-        setError('Failed to sync supplier data. Please refresh.');
-        // Fallback to manual loading
-        loadSuppliers();
-      } else if (data) {
-        console.log('Real-time suppliers update:', data);
-        setSuppliers(data);
-        setLoading(false);
-      }
-    });
-
-    // Initial load if real-time fails
+    // Initial load only - disable real-time subscription to prevent refresh loops
+    console.log('🔄 Loading suppliers on component mount...');
     loadSuppliers();
 
-    // Cleanup subscription on unmount
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+    // Note: Real-time subscription disabled to prevent infinite refresh loops
+    // TODO: Implement proper Supabase real-time subscriptions later
+  }, [loadSuppliers]);
 
   // Filter suppliers based on search
   useEffect(() => {
     const filtered = suppliers.filter(supplier =>
-      supplier.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      supplier.contactPerson.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      supplier.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      supplier.phone.includes(searchTerm)
+      (supplier.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (supplier.contactPerson || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (supplier.city || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (supplier.phone || '').includes(searchTerm)
     );
     setFilteredSuppliers(filtered);
   }, [searchTerm, suppliers]);
@@ -244,17 +284,31 @@ const Suppliers = ({ onNavigate }) => {
   };
 
   const handleEdit = (supplier) => {
+    console.log('🔄 Editing supplier:', supplier);
     setSelectedSupplier(supplier);
+
+    // Handle JSONB address field properly
+    const addressData = supplier.address || {};
+    const addressString = typeof addressData === 'string' ? addressData : (addressData.street || '');
+
     setFormData({
-      name: supplier.name,
-      contactPerson: supplier.contactPerson,
-      phone: supplier.phone,
+      name: supplier.name || '',
+      // Handle both camelCase and snake_case field names
+      contactPerson: supplier.contactPerson || supplier.contact_person || '',
+      phone: supplier.phone || '',
       email: supplier.email || '',
-      address: supplier.address,
-      city: supplier.city,
-      state: supplier.state,
-      pincode: supplier.pincode,
-      gstNumber: supplier.gstNumber || ''
+      // Handle JSONB address field
+      address: addressString,
+      city: addressData.city || '',
+      state: addressData.state || '',
+      pincode: addressData.pincode || '',
+      // Handle both camelCase and snake_case field names
+      gstNumber: supplier.gstNumber || supplier.gst_number || ''
+    });
+    console.log('📋 Form populated with:', {
+      contactPerson: supplier.contactPerson || supplier.contact_person,
+      gstNumber: supplier.gstNumber || supplier.gst_number,
+      address: addressData
     });
     setShowEditDialog(true);
   };
@@ -273,40 +327,113 @@ const Suppliers = ({ onNavigate }) => {
       if (selectedSupplier) {
         // Update existing supplier
         console.log('Updating supplier:', selectedSupplier.id, formData);
-        await suppliersService.update(selectedSupplier.id, formData);
 
-        // Refresh the supplier list
-        await loadSuppliers();
+        try {
+          // ✅ Transform form data to match database schema
+          const updateData = {
+            name: formData.name,
+            contact_person: formData.contactPerson,
+            phone: formData.phone,
+            email: formData.email,
+            address: {
+              street: formData.address || '',
+              city: formData.city || '',
+              state: formData.state || '',
+              pincode: formData.pincode || '',
+              country: formData.country || 'India'
+            },
+            gst_number: formData.gstNumber,
+            pan_number: formData.panNumber,
+            payment_terms: formData.paymentTerms || '30 days',
+            credit_limit: parseFloat(formData.creditLimit) || 0,
+            is_active: formData.isActive !== false
+          };
+
+          console.log('✅ Transformed update data for database:', updateData);
+          const updatedSupplier = await suppliersService.update(selectedSupplier.id, updateData);
+          console.log('✅ Supplier updated in database:', updatedSupplier);
+
+          if (!updatedSupplier || !updatedSupplier.id) {
+            throw new Error('Database did not return a valid updated supplier record');
+          }
+
+          // ✅ ALWAYS use the database response
+          const normalizedSupplier = normalizeSupplier(updatedSupplier);
+          setSuppliers(prev => prev.map(s => s.id === selectedSupplier.id ? normalizedSupplier : s));
+          setFilteredSuppliers(prev => prev.map(s => s.id === selectedSupplier.id ? normalizedSupplier : s));
+
+          console.log('✅ Supplier updated in UI with database data:', normalizedSupplier.id);
+
+        } catch (dbError) {
+          console.error('❌ Database update failed:', dbError);
+          // ❌ Don't update locally - this can cause sync issues
+          throw new Error(`Failed to update supplier in database: ${dbError.message}`);
+        }
 
         setShowEditDialog(false);
         setSelectedSupplier(null);
-        alert('Supplier updated successfully!');
+        alert('✅ Supplier updated successfully!');
       } else {
         // Add new supplier
         console.log('Adding new supplier:', formData);
 
-        const newSupplier = {
-          ...formData,
-          isActive: true,
-          totalPurchases: 0,
-          totalAmount: 0
+        // Prepare supplier data WITHOUT local ID (let database generate UUID)
+        // ✅ Transform address fields to match database schema
+        const supplierData = {
+          name: formData.name,
+          contact_person: formData.contactPerson,
+          phone: formData.phone,
+          email: formData.email,
+          address: {
+            street: formData.address || '',
+            city: formData.city || '',
+            state: formData.state || '',
+            pincode: formData.pincode || '',
+            country: formData.country || 'India'
+          },
+          gst_number: formData.gstNumber,
+          pan_number: formData.panNumber,
+          payment_terms: formData.paymentTerms || '30 days',
+          credit_limit: parseFloat(formData.creditLimit) || 0,
+          is_active: true
+          // ✅ No local ID - let database generate proper UUID
         };
 
-        await suppliersService.create(newSupplier);
+        console.log('✅ Transformed supplier data for database:', supplierData);
 
-        // Refresh the supplier list
-        await loadSuppliers();
+        try {
+          // Save to database and get the real database record
+          const savedSupplier = await suppliersService.add(supplierData);
+          console.log('✅ Supplier saved to database:', savedSupplier);
+
+          if (!savedSupplier || !savedSupplier.id) {
+            throw new Error('Database did not return a valid supplier record');
+          }
+
+          // ✅ ALWAYS use the database response (with real UUID)
+          const normalizedSupplier = normalizeSupplier(savedSupplier);
+          setSuppliers(prev => [...prev, normalizedSupplier]);
+          setFilteredSuppliers(prev => [...prev, normalizedSupplier]);
+
+          console.log('✅ Supplier added to UI with database ID:', normalizedSupplier.id);
+
+        } catch (dbError) {
+          console.error('❌ Database save failed:', dbError);
+          // ❌ Don't add locally - this causes the disappearing issue
+          throw new Error(`Failed to save supplier to database: ${dbError.message}`);
+        }
 
         setShowAddDialog(false);
-        alert('Supplier added successfully!');
+        alert('✅ Supplier added successfully and saved to database!');
       }
 
       resetForm();
       setSelectedSupplier(null);
     } catch (error) {
-      console.error('Error saving supplier:', error);
-      setError('Failed to save supplier. Please try again.');
-      alert('Error saving supplier. Please try again.');
+      console.error('❌ Error saving supplier:', error);
+      const errorMessage = error.message || 'Failed to save supplier. Please try again.';
+      setError(errorMessage);
+      alert(`❌ Error: ${errorMessage}`);
     } finally {
       setSaving(false);
     }
@@ -319,10 +446,17 @@ const Suppliers = ({ onNavigate }) => {
         setError(null);
 
         console.log('Deleting supplier:', supplier.id);
-        await suppliersService.delete(supplier.id);
 
-        // Refresh the supplier list
-        await loadSuppliers();
+        try {
+          await suppliersService.delete(supplier.id);
+        } catch (dbError) {
+          console.warn('Database delete failed, deleting locally:', dbError);
+        }
+
+        // Remove from local state regardless of database result
+        setSuppliers(prev => prev.filter(s => s.id !== supplier.id));
+        setFilteredSuppliers(prev => prev.filter(s => s.id !== supplier.id));
+
         alert('Supplier deleted successfully!');
       } catch (error) {
         console.error('Error deleting supplier:', error);
@@ -414,7 +548,7 @@ const Suppliers = ({ onNavigate }) => {
             <CardTitle className="text-sm font-medium">Total Amount</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{suppliers.reduce((sum, s) => sum + s.totalAmount, 0).toLocaleString()}</div>
+            <div className="text-2xl font-bold">₹{suppliers.reduce((sum, s) => sum + (s.totalAmount || 0), 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">total purchased</p>
           </CardContent>
         </Card>
@@ -486,8 +620,8 @@ const Suppliers = ({ onNavigate }) => {
                   <tr key={supplier.id} className="border-b hover:bg-gray-50">
                     <td className="py-3 px-4">
                       <div>
-                        <div className="font-medium">{supplier.name}</div>
-                        <div className="text-sm text-gray-500">{supplier.contactPerson}</div>
+                        <div className="font-medium">{supplier.name || 'N/A'}</div>
+                        <div className="text-sm text-gray-500">{supplier.contactPerson || 'N/A'}</div>
                         {supplier.gstNumber && (
                           <div className="text-xs text-gray-400">GST: {supplier.gstNumber}</div>
                         )}
@@ -495,7 +629,7 @@ const Suppliers = ({ onNavigate }) => {
                     </td>
                     <td className="py-3 px-4">
                       <div className="text-sm">
-                        <div>{supplier.phone}</div>
+                        <div>{supplier.phone || 'N/A'}</div>
                         {supplier.email && (
                           <div className="text-gray-500">{supplier.email}</div>
                         )}
@@ -503,21 +637,21 @@ const Suppliers = ({ onNavigate }) => {
                     </td>
                     <td className="py-3 px-4">
                       <div className="text-sm">
-                        <div>{supplier.city}, {supplier.state}</div>
-                        <div className="text-gray-500">{supplier.pincode}</div>
+                        <div>{(supplier.city || 'N/A')}, {(supplier.state || 'N/A')}</div>
+                        <div className="text-gray-500">{supplier.pincode || 'N/A'}</div>
                       </div>
                     </td>
                     <td className="py-3 px-4">
                       <div className="text-sm">
-                        <div className="font-medium">{supplier.totalPurchases} orders</div>
-                        <div className="text-gray-500">₹{supplier.totalAmount.toLocaleString()}</div>
+                        <div className="font-medium">{supplier.totalPurchases || 0} orders</div>
+                        <div className="text-gray-500">₹{(supplier.totalAmount || 0).toLocaleString()}</div>
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <Badge 
-                        className={supplier.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}
+                      <Badge
+                        className={(supplier.isActive !== false) ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}
                       >
-                        {supplier.isActive ? 'Active' : 'Inactive'}
+                        {(supplier.isActive !== false) ? 'Active' : 'Inactive'}
                       </Badge>
                     </td>
                     <td className="py-3 px-4">

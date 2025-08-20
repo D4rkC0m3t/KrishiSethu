@@ -28,3 +28,65 @@ node_modules/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Test and debug files
+*.test.html
+*test-*.html
+*debug-*.html
+*test-*.sql
+*debug-*.sql
+*test-*.js
+*debug-*.js
+*.test.js
+*.spec.js
+
+# Specific test and debug files
+test-*.js
+test-*.sql
+debug-*.js
+debug-*.sql
+comprehensive-*.html
+verify-*.js
+verify-*.sql
+check-*.js
+check-*.sql
+setup-*.js
+setup-*.sql
+fix-*.js
+fix-*.sql
+
+# Test directories
+/tests/
+/test-*/
+/debug-*/
+/archive/components/test-*/
+/archive/components/debug-*/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Local development files
+.env
+.env.*
+!.env.example
+
+# IDE specific files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,141 +1,558 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { salesService, productsService, customersService, suppliersService, COLLECTIONS } from '../lib/supabaseDb';
-import { supabase } from '../lib/supabase';
+import { salesService, productsService, purchasesService, settingsOperations } from '../lib/supabaseDb';
 import InvoicePreview from './InvoicePreview';
 import ReportHeader from './reports/ReportHeader';
 import {
   BarChart3,
   TrendingUp,
-  TrendingDown,
   Download,
   FileText,
   Calendar,
-  DollarSign,
-  Package,
-  Users,
-  PieChart,
-  LineChart as LineChartIcon,
   Filter,
   RefreshCw,
   Printer,
-  Mail,
-  Share,
   Target,
-  Clock,
   AlertTriangle,
   CheckCircle,
-  Truck,
-  CreditCard,
-  Percent,
   Calculator,
-  Database,
-  Eye,
-  Settings,
+  Percent,
+  PieChart,
   Activity,
-  ShoppingCart
+  Database,
+  Eye
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+
 // ReportHeader functionality implemented inline below
 import { shopDetailsService } from '../lib/shopDetails';
 import GSTReports from './reports/GSTReports';
 // Recharts imports removed as they're not used in this component
 
-// Updated Invoice utility functions
-const fmtCurrency = (n) => (typeof n === 'number' ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—');
-const fmt = (v) => (v !== undefined && v !== null && v !== '' ? v : '—');
 
-const formatShortDate = (d) => {
-  const date = d?.seconds ? new Date(d.seconds * 1000) : (d ? new Date(d) : null);
-  if (!date || isNaN(date)) return '—';
-  const day = date.getDate();
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const mon = months[date.getMonth()];
-  const yr = date.getFullYear().toString().slice(-2);
-  return `${day}-${mon}-${yr}`;
-};
-
-const numberToWordsIndian = (num) => {
-  if (num === 0) return 'Zero';
-  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
-  const convertHundreds = (n) => {
-    let result = '';
-    if (n >= 100) {
-      result += ones[Math.floor(n / 100)] + ' Hundred ';
-      n %= 100;
-    }
-    if (n >= 20) {
-      result += tens[Math.floor(n / 10)] + ' ';
-      n %= 10;
-    } else if (n >= 10) {
-      result += teens[n - 10] + ' ';
-      return result;
-    }
-    if (n > 0) result += ones[n] + ' ';
-    return result;
-  };
-
-  if (num < 1000) return convertHundreds(num).trim();
-  if (num < 100000) return convertHundreds(Math.floor(num / 1000)) + 'Thousand ' + convertHundreds(num % 1000);
-  if (num < 10000000) return convertHundreds(Math.floor(num / 100000)) + 'Lakh ' + convertHundreds(Math.floor((num % 100000) / 1000)) + (Math.floor((num % 100000) / 1000) > 0 ? 'Thousand ' : '') + convertHundreds(num % 1000);
-  return convertHundreds(Math.floor(num / 10000000)) + 'Crore ' + convertHundreds(Math.floor((num % 10000000) / 100000)) + (Math.floor((num % 10000000) / 100000) > 0 ? 'Lakh ' : '') + convertHundreds(Math.floor((num % 100000) / 1000)) + (Math.floor((num % 100000) / 1000) > 0 ? 'Thousand ' : '') + convertHundreds(num % 1000);
-};
 
 // Use the working InvoicePreview component instead
 
 
 const Reports = ({ onNavigate, defaultTab = "overview" }) => {
-  const { userProfile } = useAuth();
   const [reportType, setReportType] = useState('sales');
   const [dateRange, setDateRange] = useState('this_month');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selectedMetrics, setSelectedMetrics] = useState(['revenue', 'transactions', 'profit']);
   const [reportOrientation, setReportOrientation] = useState('portrait');
   const [autoDetectOrientation, setAutoDetectOrientation] = useState(true);
   const [companyDetails, setCompanyDetails] = useState(null);
-  const [comparisonPeriod, setComparisonPeriod] = useState('previous_month');
   const [exportFormat, setExportFormat] = useState('pdf');
   const [isGenerating, setIsGenerating] = useState(false);
-
-  // Advanced reporting features
-  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
-  const [filterOptions, setFilterOptions] = useState({
+  const [filterOptions] = useState({
     category: 'all',
     supplier: 'all',
     customer: 'all',
     paymentMethod: 'all',
     status: 'all'
   });
-  const [chartType, setChartType] = useState('line');
-  const [showComparison, setShowComparison] = useState(false);
-  const [reportSchedule, setReportSchedule] = useState({
+  const [reportSchedule] = useState({
     enabled: false,
     frequency: 'weekly',
     email: '',
     format: 'pdf'
   });
-  const [realTimeData, setRealTimeData] = useState(null);
-  const [kpiTargets, setKpiTargets] = useState({
-    salesTarget: 150000,
-    profitTarget: 45000,
-    customerTarget: 100,
-    inventoryTurnover: 12
-  });
+  const [_realTimeData, setRealTimeData] = useState(null);
   const [salesList, setSalesList] = useState([]);
   const [selectedSaleId, setSelectedSaleId] = useState('');
   const [systemSettings, setSystemSettings] = useState(null);
   const selectedSale = salesList.find(s => s.id === selectedSaleId);
   const [pdfOrientation, setPdfOrientation] = useState('portrait'); // 'portrait' | 'landscape'
   const [compactInvoice, setCompactInvoice] = useState(false); // smaller font size
+
+  // Helper function to get date filter based on selected range
+  const getDateFilter = useCallback((range) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (range) {
+      case 'today':
+        return {
+          start: today.toISOString(),
+          end: new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString()
+        };
+      case 'yesterday':
+        const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+        return {
+          start: yesterday.toISOString(),
+          end: today.toISOString()
+        };
+      case 'this_week':
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - today.getDay());
+        return {
+          start: weekStart.toISOString(),
+          end: now.toISOString()
+        };
+      case 'this_month':
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        return {
+          start: monthStart.toISOString(),
+          end: now.toISOString()
+        };
+      case 'last_month':
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        return {
+          start: lastMonthStart.toISOString(),
+          end: lastMonthEnd.toISOString()
+        };
+      case 'this_year':
+        const yearStart = new Date(now.getFullYear(), 0, 1);
+        return {
+          start: yearStart.toISOString(),
+          end: now.toISOString()
+        };
+      default:
+        return {
+          start: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+          end: now.toISOString()
+        };
+    }
+  }, []);
+
+  // Auto-detect orientation based on data complexity
+  const detectOptimalOrientation = useCallback((data) => {
+    if (!autoDetectOrientation || !data) return reportOrientation;
+
+    // Check for large tables or many columns
+    const hasLargeTables = data.salesData?.length > 20 ||
+                          data.inventoryData?.length > 30 ||
+                          data.mandatoryFields?.length > 8;
+
+    // Check for wide content
+    const hasWideContent = data.mandatoryFields?.length > 6 ||
+                          (data.summary && Object.keys(data.summary).length > 8);
+
+    return hasLargeTables || hasWideContent ? 'landscape' : 'portrait';
+  }, [autoDetectOrientation, reportOrientation]);
+
+  // Generate empty report structure with real data structure but zero values
+  const generateEmptyReportStructure = useCallback(async (reportType) => {
+    const currentDate = new Date().toLocaleDateString();
+
+    switch (reportType) {
+      case 'sales':
+        return {
+          summary: {
+            totalSales: 0,
+            totalTransactions: 0,
+            averageOrderValue: 0,
+            topProduct: 'No sales data available',
+            totalQuantity: 0,
+            uniqueCustomers: 0,
+            avgQuantityPerSale: 0
+          },
+          salesData: [],
+          mandatoryFields: [
+            'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
+            'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
+            'Payment Mode', 'Remarks'
+          ]
+        };
+      case 'inventory':
+        return {
+          summary: {
+            totalProducts: 0,
+            totalValue: 0,
+            lowStockItems: 0,
+            outOfStockItems: 0,
+            expiringItems: 0
+          },
+          inventoryData: [],
+          mandatoryFields: [
+            'Product Name', 'Batch No.', 'Unit (Kg/L)', 'Opening Stock', 'Purchases',
+            'Sales', 'Closing Stock', 'Reorder Level', 'Expiry Date', 'Supplier Name', 'Remarks'
+          ]
+        };
+      case 'financial':
+        return {
+          summary: {
+            totalSalesRevenue: 0,
+            totalCOGS: 0,
+            grossProfit: 0,
+            grossProfitMargin: 0,
+            operatingExpenses: 0,
+            netProfit: 0,
+            netProfitMargin: 0
+          },
+          monthlyFinancialData: [],
+          mandatoryFields: [
+            'Period', 'Total Sales', 'COGS', 'Gross Profit', 'Expenses', 'Net Profit', 'Profit Margin (%)'
+          ]
+        };
+      default:
+        return {
+          summary: { message: `No data available for ${reportType} report` },
+          data: [],
+          mandatoryFields: ['No Data']
+        };
+    }
+  }, []);
+
+  // Real data fetching functions - Fertilizer Industry Specific
+  const generateSalesReport = useCallback(async (dateFilter) => {
+    try {
+      console.log('🔄 Starting sales report generation...');
+      console.log('📅 Date filter:', dateFilter);
+      console.log('🔧 Sales service:', salesService);
+
+      if (!salesService || typeof salesService.getAll !== 'function') {
+        throw new Error('Sales service is not available or not properly imported');
+      }
+
+      // Fetch sales data
+      const salesData = await salesService.getAll();
+      console.log('📊 Raw sales data fetched:', salesData.length, 'records');
+
+      if (!salesData || salesData.length === 0) {
+        console.warn('No sales data found, returning empty structure');
+        return await generateEmptyReportStructure('sales');
+      }
+
+      // Filter sales data by date range if provided
+      let filteredSales = salesData;
+      if (dateFilter && dateFilter.start && dateFilter.end) {
+        filteredSales = salesData.filter(sale => {
+          const saleDate = new Date(sale.created_at || sale.date);
+          const startDate = new Date(dateFilter.start);
+          const endDate = new Date(dateFilter.end);
+          return saleDate >= startDate && saleDate <= endDate;
+        });
+        console.log('📅 Filtered sales data:', filteredSales.length, 'records');
+      }
+
+      // Calculate summary metrics
+      const totalSales = filteredSales.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0);
+      const totalTransactions = filteredSales.length;
+      const averageOrderValue = totalTransactions > 0 ? totalSales / totalTransactions : 0;
+      const totalQuantity = filteredSales.reduce((sum, sale) => sum + (sale.quantity || 0), 0);
+      const avgQuantityPerSale = totalTransactions > 0 ? totalQuantity / totalTransactions : 0;
+
+      // Get unique customers
+      const uniqueCustomers = new Set(filteredSales.map(sale => sale.customerName || sale.customer_name || 'Unknown')).size;
+
+      // Find top product
+      const productSales = {};
+      filteredSales.forEach(sale => {
+        const productName = sale.productName || sale.product_name || 'Unknown Product';
+        productSales[productName] = (productSales[productName] || 0) + (sale.quantity || 0);
+      });
+      const topProduct = Object.keys(productSales).length > 0
+        ? Object.keys(productSales).reduce((a, b) => productSales[a] > productSales[b] ? a : b)
+        : 'No sales data';
+
+      // Format sales data for display
+      const formattedSalesData = filteredSales.map(sale => ({
+        date: new Date(sale.created_at || sale.date).toLocaleDateString(),
+        invoiceNo: sale.invoiceNumber || sale.invoice_number || `INV-${sale.id}`,
+        productName: sale.productName || sale.product_name || 'Unknown Product',
+        batchNo: sale.batchNo || sale.batch_no || 'N/A',
+        unit: sale.unit || 'Kg',
+        quantitySold: sale.quantity || 0,
+        unitPrice: sale.unitPrice || sale.unit_price || 0,
+        totalSales: sale.totalAmount || 0,
+        customerName: sale.customerName || sale.customer_name || 'Unknown',
+        paymentMode: sale.paymentMethod || sale.payment_method || 'Cash',
+        remarks: sale.remarks || sale.notes || '—'
+      }));
+
+      // Group by payment methods
+      const paymentMethods = {};
+      filteredSales.forEach(sale => {
+        const method = sale.paymentMethod || sale.payment_method || 'Cash';
+        paymentMethods[method] = (paymentMethods[method] || 0) + (sale.totalAmount || 0);
+      });
+
+      // Top products by quantity
+      const topProducts = Object.entries(productSales)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([name, quantity]) => ({ name, quantity }));
+
+      console.log('✅ Sales report generated successfully');
+      console.log('📈 Summary:', { totalSales, totalTransactions, averageOrderValue, uniqueCustomers });
+
+      return {
+        summary: {
+          totalSales: Math.round(totalSales),
+          totalTransactions,
+          averageOrderValue: Math.round(averageOrderValue),
+          topProduct,
+          totalQuantity: Math.round(totalQuantity),
+          uniqueCustomers,
+          avgQuantityPerSale: Math.round(avgQuantityPerSale * 100) / 100
+        },
+        salesData: formattedSalesData,
+        topProducts,
+        paymentMethods: Object.entries(paymentMethods).map(([method, amount]) => ({
+          method,
+          amount: Math.round(amount)
+        })),
+        mandatoryFields: [
+          'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
+          'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
+          'Payment Mode', 'Remarks'
+        ]
+      };
+    } catch (error) {
+      console.error('Error generating sales report:', error);
+      console.error('Error details:', error.message, error.stack);
+
+      // Return a meaningful error structure instead of throwing
+      return {
+        summary: {
+          totalSales: 0,
+          totalTransactions: 0,
+          averageOrderValue: 0,
+          topProduct: 'Error loading data',
+          totalQuantity: 0,
+          uniqueCustomers: 0,
+          avgQuantityPerSale: 0,
+          error: `Failed to load sales data: ${error.message}`
+        },
+        salesData: [],
+        topProducts: [],
+        paymentMethods: [],
+        mandatoryFields: [
+          'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
+          'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
+          'Payment Mode', 'Remarks'
+        ],
+        error: true,
+        errorMessage: error.message
+      };
+    }
+  }, [generateEmptyReportStructure]);
+
+  const generateInventoryReport = useCallback(async () => {
+    try {
+      // Fetch all products
+      const products = await productsService.getAll();
+      console.log('Fetched products for inventory report:', products.length);
+
+      // Fetch recent purchases for opening stock calculation
+      const purchasesData = await purchasesService.getAll();
+
+      // Fetch recent sales for stock movement
+      const salesData = await salesService.getAll();
+
+      if (!products || products.length === 0) {
+        console.warn('No products found, returning empty inventory structure');
+        return await generateEmptyReportStructure('inventory');
+      }
+
+      // Calculate inventory metrics for each product
+      const inventoryData = products.map(product => {
+        // Calculate purchases for this product
+        const productPurchases = purchasesData.filter(p =>
+          p.productName === product.name || p.product_name === product.name
+        );
+        const totalPurchases = productPurchases.reduce((sum, p) => sum + (p.quantity || 0), 0);
+
+        // Calculate sales for this product
+        const productSales = salesData.filter(s =>
+          s.productName === product.name || s.product_name === product.name
+        );
+        const totalSales = productSales.reduce((sum, s) => sum + (s.quantity || 0), 0);
+
+        // Calculate current stock
+        const openingStock = product.openingStock || 0;
+        const closingStock = openingStock + totalPurchases - totalSales;
+
+        return {
+          productName: product.name,
+          batchNo: product.batchNo || product.batch_no || 'N/A',
+          unit: product.unit || 'Kg',
+          openingStock,
+          purchases: totalPurchases,
+          sales: totalSales,
+          closingStock: Math.max(0, closingStock), // Ensure non-negative
+          reorderLevel: product.reorderLevel || product.reorder_level || 10,
+          expiryDate: product.expiryDate || product.expiry_date || 'N/A',
+          supplierName: product.supplierName || product.supplier_name || 'Unknown',
+          remarks: closingStock <= (product.reorderLevel || 10) ? 'Low Stock' : 'In Stock'
+        };
+      });
+
+      // Calculate summary metrics
+      const totalProducts = products.length;
+      const lowStockItems = inventoryData.filter(item =>
+        item.closingStock <= item.reorderLevel
+      ).length;
+      const outOfStockItems = inventoryData.filter(item =>
+        item.closingStock <= 0
+      ).length;
+      const totalValue = inventoryData.reduce((sum, item) =>
+        sum + (item.closingStock * (products.find(p => p.name === item.productName)?.unitPrice || 0)), 0
+      );
+
+      // Category breakdown
+      const categoryBreakdown = {};
+      products.forEach(product => {
+        const category = product.category || 'Uncategorized';
+        if (!categoryBreakdown[category]) {
+          categoryBreakdown[category] = { count: 0, value: 0 };
+        }
+        categoryBreakdown[category].count++;
+        categoryBreakdown[category].value += (product.unitPrice || 0) *
+          (inventoryData.find(i => i.productName === product.name)?.closingStock || 0);
+      });
+
+      const formattedInventoryData = inventoryData.map(item => ({
+        ...item,
+        openingStock: Math.round(item.openingStock * 100) / 100,
+        purchases: Math.round(item.purchases * 100) / 100,
+        sales: Math.round(item.sales * 100) / 100,
+        closingStock: Math.round(item.closingStock * 100) / 100
+      }));
+
+      console.log('✅ Inventory report generated successfully');
+
+      return {
+        summary: {
+          totalProducts,
+          totalValue: Math.round(totalValue),
+          lowStockItems,
+          outOfStockItems,
+          expiringItems: 0 // Could be calculated based on expiry dates
+        },
+        inventoryData: formattedInventoryData,
+        categoryBreakdown,
+        // Stock movement report data
+        stockMovementData: formattedInventoryData.map(item => ({
+          productName: item.productName,
+          batchNo: item.batchNo,
+          qtyIn: item.purchases,
+          qtyOut: item.sales,
+          balance: item.closingStock,
+          reason: 'Sales/Purchase',
+          transactionRef: 'Multiple'
+        })),
+        // Mandatory fields structure for export
+        mandatoryFields: [
+          'Product Name', 'Batch No.', 'Unit (Kg/L)', 'Opening Stock', 'Purchases',
+          'Sales', 'Closing Stock', 'Reorder Level', 'Expiry Date', 'Supplier Name', 'Remarks'
+        ],
+        stockMovementFields: [
+          'Date', 'Product Name', 'Batch No.', 'Qty In', 'Qty Out', 'Balance',
+          'Reason / Transaction', 'Ref'
+        ]
+      };
+    } catch (error) {
+      console.error('Error generating inventory report:', error);
+      return await generateEmptyReportStructure('inventory');
+    }
+  }, [generateEmptyReportStructure]);
+
+  const generateFinancialReport = useCallback(async (dateFilter) => {
+    try {
+      // Fetch sales data for financial calculations
+      const salesData = await salesService.getAll();
+
+      // Fetch purchases data for COGS calculation
+      const purchasesData = await purchasesService.getAll();
+
+      // Calculate financial metrics according to fertilizer industry standard
+      const totalSalesRevenue = salesData.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0);
+
+      // Calculate COGS from actual purchase costs
+      const totalCOGS = purchasesData.reduce((sum, purchase) => sum + (purchase.totalAmount || 0), 0);
+
+      // Calculate gross profit
+      const grossProfit = totalSalesRevenue - totalCOGS;
+      const grossProfitMargin = totalSalesRevenue > 0 ? (grossProfit / totalSalesRevenue) * 100 : 0;
+
+      // Estimate operating expenses (10% of gross profit or 5% of revenue)
+      const operatingExpenses = Math.max(grossProfit * 0.1, totalSalesRevenue * 0.05);
+      const netProfit = grossProfit - operatingExpenses;
+      const netProfitMargin = totalSalesRevenue > 0 ? (netProfit / totalSalesRevenue) * 100 : 0;
+
+      // Generate monthly breakdown
+      const monthlyData = {};
+      const currentYear = new Date().getFullYear();
+
+      // Initialize 12 months
+      for (let i = 0; i < 12; i++) {
+        const monthKey = `${currentYear}-${String(i + 1).padStart(2, '0')}`;
+        monthlyData[monthKey] = {
+          month: new Date(currentYear, i).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+          totalSalesRevenue: 0,
+          cogs: 0,
+          grossProfit: 0,
+          operatingExpenses: 0,
+          netProfit: 0,
+          remarks: '—'
+        };
+      }
+
+      // Populate with actual data
+      salesData.forEach(sale => {
+        const saleDate = new Date(sale.created_at || sale.date);
+        const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyData[monthKey]) {
+          monthlyData[monthKey].totalSalesRevenue += sale.totalAmount || 0;
+        }
+      });
+
+      purchasesData.forEach(purchase => {
+        const purchaseDate = new Date(purchase.created_at || purchase.date);
+        const monthKey = `${purchaseDate.getFullYear()}-${String(purchaseDate.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyData[monthKey]) {
+          monthlyData[monthKey].cogs += purchase.totalAmount || 0;
+        }
+      });
+
+      // Calculate derived metrics for each month
+      Object.values(monthlyData).forEach(month => {
+        month.grossProfit = month.totalSalesRevenue - month.cogs;
+        month.operatingExpenses = Math.max(month.grossProfit * 0.1, month.totalSalesRevenue * 0.05);
+        month.netProfit = month.grossProfit - month.operatingExpenses;
+      });
+
+      console.log('✅ Financial report generated successfully');
+
+      return {
+        summary: {
+          totalSalesRevenue: Math.round(totalSalesRevenue),
+          totalCOGS: Math.round(totalCOGS),
+          grossProfit: Math.round(grossProfit),
+          grossProfitMargin: Math.round(grossProfitMargin * 100) / 100,
+          operatingExpenses: Math.round(operatingExpenses),
+          netProfit: Math.round(netProfit),
+          netProfitMargin: Math.round(netProfitMargin * 100) / 100
+        },
+        monthlyFinancialData: Object.values(monthlyData).map(month => ({
+          ...month,
+          totalSalesRevenue: Math.round(month.totalSalesRevenue),
+          cogs: Math.round(totalCOGS),
+          grossProfit: Math.round(grossProfit),
+          expenses: Math.round(operatingExpenses),
+          netProfit: Math.round(netProfit),
+          profitMargin: Math.round(netProfitMargin * 100) / 100
+        })),
+        mandatoryFields: [
+          'Period', 'Total Sales', 'COGS', 'Gross Profit', 'Expenses', 'Net Profit', 'Profit Margin (%)'
+        ]
+      };
+    } catch (error) {
+      console.error('Error generating financial report:', error);
+      return await generateEmptyReportStructure('financial');
+    }
+  }, [generateEmptyReportStructure]);
+
+  const generateProfitReport = useCallback(async (dateFilter) => {
+    // Similar to financial report but focused on profit analysis
+    return await generateFinancialReport(dateFilter);
+  }, [generateFinancialReport]);
 
   // Print invoice function - simplified approach
   const handlePrint = () => {
@@ -298,8 +715,8 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
     });
   };
 
-  // Enhanced mock report data with comprehensive analytics
-  const mockReportData = {
+  // Enhanced mock report data with comprehensive analytics (prefixed with _ as unused)
+  const _mockReportData = {
     sales: {
       summary: {
         totalSales: 125000,
@@ -433,232 +850,18 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
     }
   };
 
-  useEffect(() => {
-    generateReport();
-  }, [reportType, dateRange]);
-
-  // Auto-detect orientation based on data complexity
-  const detectOptimalOrientation = (data) => {
-    if (!autoDetectOrientation || !data) return reportOrientation;
-
-    // Check for large tables or many columns
-    const hasLargeTables = data.salesData?.length > 20 ||
-                          data.inventoryData?.length > 30 ||
-                          data.mandatoryFields?.length > 8;
-
-    // Check for wide content
-    const hasWideContent = data.mandatoryFields?.length > 6 ||
-                          (data.summary && Object.keys(data.summary).length > 8);
-
-    return hasLargeTables || hasWideContent ? 'landscape' : 'portrait';
-  };
-
-  // Generate empty report structure with real data structure but zero values
-  const generateEmptyReportStructure = async (reportType) => {
-    const currentDate = new Date().toLocaleDateString();
-
-    switch (reportType) {
-      case 'sales':
-        return {
-          summary: {
-            totalSales: 0,
-            totalTransactions: 0,
-            averageOrderValue: 0,
-            topProduct: 'No sales data available',
-            totalQuantity: 0,
-            uniqueCustomers: 0,
-            avgQuantityPerSale: 0
-          },
-          salesData: [],
-          mandatoryFields: [
-            'Date', 'Invoice No', 'Product Name', 'Batch No', 'Unit',
-            'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
-            'Payment Mode', 'Remarks'
-          ],
-          paymentMethods: [],
-          topProducts: [],
-          period: `No data for ${dateRange}`,
-          generatedDate: currentDate
-        };
-
-      case 'inventory':
-        return {
-          summary: {
-            totalProducts: 0,
-            lowStockProducts: 0,
-            outOfStockProducts: 0,
-            totalInventoryValue: 0,
-            nearExpiryProducts: 0
-          },
-          inventoryData: [],
-          mandatoryFields: [
-            'Product Name', 'Category', 'Current Stock', 'Unit', 'Unit Price',
-            'Total Value', 'Reorder Level', 'Supplier', 'Last Purchase Date',
-            'Expiry Date', 'Batch No', 'HSN Code'
-          ],
-          stockMovementData: [],
-          stockMovementFields: [
-            'Date', 'Product', 'Transaction Type', 'Quantity', 'Unit Price',
-            'Total Value', 'Balance Stock', 'Reason / Transaction', 'Ref'
-          ],
-          period: `No data for ${dateRange}`,
-          generatedDate: currentDate
-        };
-
-      case 'financial':
-      case 'profit':
-        return {
-          summary: {
-            totalRevenue: 0,
-            totalCosts: 0,
-            grossProfit: 0,
-            netProfit: 0,
-            profitMargin: 0
-          },
-          financialData: [],
-          mandatoryFields: [
-            'Period', 'Total Sales', 'COGS', 'Gross Profit', 'Expenses', 'Net Profit', 'Profit Margin (%)'
-          ],
-          period: `No data for ${dateRange}`,
-          generatedDate: currentDate
-        };
-
-      default:
-        return {
-          summary: { message: 'No data available' },
-          data: [],
-          period: `No data for ${dateRange}`,
-          generatedDate: currentDate
-        };
-    }
-  };
-
-  // Load sales list and system settings for invoice preview
-  const loadSales = async () => {
-    const list = await salesService.getAll();
-    setSalesList(list);
-    if (!selectedSaleId && list.length) setSelectedSaleId(list[0].id);
-  };
-
-  const loadSettings = async () => {
-    try {
-      const snap = await getDoc(doc(db, COLLECTIONS.SETTINGS, 'system-settings'));
-      if (snap.exists()) setSystemSettings(snap.data());
-    } catch (e) {
-      console.warn('No system settings found yet');
-    }
-  };
-
-  // Utility function to format Firestore timestamps
-  const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    if (timestamp.toDate) {
-      // Firestore timestamp
-      return timestamp.toDate().toLocaleDateString();
-    }
-    if (typeof timestamp === 'string') {
-      // Already a string
-      return timestamp;
-    }
-    if (timestamp instanceof Date) {
-      // JavaScript Date object
-      return timestamp.toLocaleDateString();
-    }
-    return 'N/A';
-  };
-
-  // Load company details for report headers
-  const loadCompanyDetails = async () => {
-    try {
-      const details = await shopDetailsService.getShopDetails();
-      setCompanyDetails(details);
-    } catch (error) {
-      console.error('Failed to load company details:', error);
-    }
-  };
-
-  // Enhanced report header component with logo
-  const renderReportHeader = (title, subtitle) => {
-    if (!companyDetails) return null;
-
-    const period = dateRange.replace('_', ' ').toUpperCase();
-
-    return (
-      <ReportHeader
-        reportTitle={title}
-        period={period}
-        companyDetails={companyDetails}
-        reportId={`RPT-${Date.now()}`}
-        systemName="KrishiSethu Inventory Management System"
-      />
-    );
-  };
-
-  // Test function to check sales data
-  const testSalesData = async () => {
-    try {
-      console.log('🧪 Testing sales data fetch...');
-      const sales = await salesService.getAll();
-      console.log('✅ Test successful - Sales data:', sales);
-      alert(`Sales data test successful! Found ${sales.length} sales records.`);
-    } catch (error) {
-      console.error('❌ Test failed:', error);
-      alert(`Sales data test failed: ${error.message}`);
-    }
-  };
-
-  useEffect(() => {
-    loadSales();
-    loadSettings();
-    loadCompanyDetails();
-  }, []);
-  // Load external script if not already loaded
-  const loadScript = (src, globalVar) => new Promise((resolve, reject) => {
-    if (window[globalVar]) return resolve(window[globalVar]);
-    const s = document.createElement('script');
-    s.src = src;
-    s.async = true;
-    s.onload = () => resolve(window[globalVar]);
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(s);
-  });
-
-
-  const openInvoicePreviewWindow = () => {
-    const el = document.getElementById('printable-invoice');
-    if (!el) return;
-    const w = window.open('', '_blank', 'width=900,height=1200');
-    if (!w) return;
-
-    // Copy current CSS (dev mode styles and linked CSS), plus add Tailwind CDN as fallback
-    const headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((node) => node.outerHTML)
-      .join('');
-
-    const pageCss = `
-      <style>
-        @page { size: A4 portrait; margin: 0; }
-        html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body * { box-sizing: border-box; }
-      </style>
-    `;
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>${headStyles}${pageCss}</head><body>${el.innerHTML}</body></html>`;
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  };
 
 
 
-  const generateReport = async () => {
+
+  const generateReport = useCallback(async () => {
     setLoading(true);
     try {
       let data = null;
       const dateFilter = getDateFilter(dateRange);
-      
+
       console.log(`Generating ${reportType} report for date range: ${dateRange}`);
-      
+
       switch (reportType) {
         case 'sales':
           data = await generateSalesReport(dateFilter);
@@ -675,7 +878,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
         default:
           data = await generateEmptyReportStructure(reportType);
       }
-      
+
       if (!data || Object.keys(data).length === 0) {
         console.warn('No data returned, generating empty report structure');
         data = await generateEmptyReportStructure(reportType);
@@ -714,470 +917,124 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [reportType, dateRange, autoDetectOrientation, detectOptimalOrientation, getDateFilter, generateEmptyReportStructure, generateSalesReport, generateInventoryReport, generateFinancialReport, generateProfitReport]);
 
-  // Helper function to get date filter based on selected range
-  const getDateFilter = (range) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (range) {
-      case 'today':
-        return {
-          start: Timestamp.fromDate(today),
-          end: Timestamp.fromDate(new Date(today.getTime() + 24 * 60 * 60 * 1000))
-        };
-      case 'this_week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        return {
-          start: Timestamp.fromDate(weekStart),
-          end: Timestamp.fromDate(now)
-        };
-      case 'this_month':
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        return {
-          start: Timestamp.fromDate(monthStart),
-          end: Timestamp.fromDate(now)
-        };
-      case 'last_month':
-        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-        return {
-          start: Timestamp.fromDate(lastMonthStart),
-          end: Timestamp.fromDate(lastMonthEnd)
-        };
-      case 'this_year':
-        const yearStart = new Date(now.getFullYear(), 0, 1);
-        return {
-          start: Timestamp.fromDate(yearStart),
-          end: Timestamp.fromDate(now)
-        };
-      default:
-        return {
-          start: Timestamp.fromDate(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)),
-          end: Timestamp.fromDate(now)
-        };
-    }
-  };
+  useEffect(() => {
+    generateReport();
+  }, [reportType, dateRange, generateReport]);
 
-  // Real data fetching functions - Fertilizer Industry Specific
-  const generateSalesReport = async (dateFilter) => {
+
+
+  // Load sales list and system settings for invoice preview
+  const loadSales = useCallback(async () => {
+    const list = await salesService.getAll();
+    setSalesList(list);
+    if (!selectedSaleId && list.length) setSelectedSaleId(list[0].id);
+  }, [selectedSaleId]);
+
+  const loadSettings = useCallback(async () => {
     try {
-      console.log('🔄 Starting sales report generation...');
-      console.log('📅 Date filter:', dateFilter);
-      console.log('🔧 Sales service:', salesService);
-
-      if (!salesService || typeof salesService.getAll !== 'function') {
-        throw new Error('Sales service is not available or not properly imported');
-      }
-
-      console.log('📡 Fetching sales data from Firestore...');
-      const allSales = await salesService.getAll();
-      console.log('✅ Successfully fetched sales:', allSales.length, 'records');
-
-      if (!Array.isArray(allSales)) {
-        console.error('❌ Sales data is not an array:', typeof allSales, allSales);
-        throw new Error('Sales data is not in expected format (not an array)');
-      }
-
-      // For now, use all sales data to avoid date filtering issues
-      // TODO: Implement proper date filtering later
-      const salesData = allSales;
-
-      console.log('Using sales data:', salesData.length);
-
-      // Handle case where there's no sales data
-      if (salesData.length === 0) {
-        console.log('No sales data found, returning empty structure');
-        return {
-          summary: {
-            totalSales: 0,
-            totalTransactions: 0,
-            averageOrderValue: 0,
-            topProduct: 'No sales data available',
-            totalQuantity: 0,
-            uniqueCustomers: 0,
-            avgQuantityPerSale: 0
-          },
-          salesData: [],
-          topProducts: [],
-          paymentMethods: [],
-          mandatoryFields: [
-            'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
-            'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
-            'Payment Mode', 'Remarks'
-          ],
-          period: `${dateRange.replace('_', ' ').toUpperCase()}`,
-          generatedDate: new Date().toLocaleDateString()
-        };
-      }
-      
-      // Format sales data according to fertilizer industry standard
-      const formattedSalesData = salesData.map(sale => {
-        const saleDate = sale.saleDate?.toDate?.() || new Date(sale.saleDate);
-        return {
-          date: saleDate.toISOString().split('T')[0],
-          invoiceNo: sale.saleNumber || sale.id,
-          productName: sale.items?.[0]?.productName || 'N/A',
-          batchNo: sale.items?.[0]?.batchNo || 'B' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
-          unit: sale.items?.[0]?.unit || 'Kg',
-          quantitySold: sale.items?.[0]?.quantity || 0,
-          unitPrice: sale.items?.[0]?.price || 0,
-          totalSales: sale.totalAmount || 0,
-          customerName: sale.customerName || 'Walk-in Customer',
-          paymentMode: sale.paymentMethod || 'Cash',
-          remarks: sale.notes || '—'
-        };
-      });
-      
-      // Calculate summary metrics
-      const totalSales = salesData.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0);
-      const totalTransactions = salesData.length;
-      const totalQuantity = formattedSalesData.reduce((sum, sale) => sum + sale.quantitySold, 0);
-      const averageOrderValue = totalTransactions > 0 ? totalSales / totalTransactions : 0;
-      
-      // Payment method breakdown
-      const paymentStats = {};
-      formattedSalesData.forEach(sale => {
-        const method = sale.paymentMode;
-        if (!paymentStats[method]) {
-          paymentStats[method] = { transactions: 0, amount: 0 };
-        }
-        paymentStats[method].transactions += 1;
-        paymentStats[method].amount += sale.totalSales;
-      });
-      
-      const paymentMethods = Object.entries(paymentStats).map(([method, stats]) => ({
-        method,
-        transactions: stats.transactions,
-        amount: Math.round(stats.amount),
-        percentage: totalSales > 0 ? ((stats.amount / totalSales) * 100).toFixed(1) : 0
-      }));
-      
-      // Product performance analysis
-      const productStats = {};
-      formattedSalesData.forEach(sale => {
-        if (!productStats[sale.productName]) {
-          productStats[sale.productName] = {
-            name: sale.productName,
-            totalQuantity: 0,
-            totalRevenue: 0,
-            transactions: 0,
-            avgPrice: 0
-          };
-        }
-        productStats[sale.productName].totalQuantity += sale.quantitySold;
-        productStats[sale.productName].totalRevenue += sale.totalSales;
-        productStats[sale.productName].transactions += 1;
-      });
-      
-      Object.values(productStats).forEach(product => {
-        product.avgPrice = product.totalQuantity > 0 ? product.totalRevenue / product.totalQuantity : 0;
-      });
-      
-      const topProducts = Object.values(productStats)
-        .sort((a, b) => b.totalRevenue - a.totalRevenue)
-        .slice(0, 10);
-      
-      return {
-        summary: {
-          totalSales: Math.round(totalSales),
-          totalTransactions,
-          totalQuantity: Math.round(totalQuantity),
-          averageOrderValue: Math.round(averageOrderValue),
-          topProduct: topProducts[0]?.name || 'N/A',
-          uniqueCustomers: new Set(formattedSalesData.map(s => s.customerName)).size,
-          avgQuantityPerSale: totalTransactions > 0 ? Math.round(totalQuantity / totalTransactions) : 0
-        },
-        salesData: formattedSalesData,
-        topProducts,
-        paymentMethods,
-        // Mandatory fields structure for export
-        mandatoryFields: [
-          'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)', 
-          'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name', 
-          'Payment Mode', 'Remarks'
-        ]
-      };
-    } catch (error) {
-      console.error('Error generating sales report:', error);
-      console.error('Error details:', error.message, error.stack);
-
-      // Return a meaningful error structure instead of throwing
-      return {
-        summary: {
-          totalSales: 0,
-          totalTransactions: 0,
-          averageOrderValue: 0,
-          topProduct: 'Error loading data',
-          totalQuantity: 0,
-          uniqueCustomers: 0,
-          avgQuantityPerSale: 0,
-          error: `Failed to load sales data: ${error.message}`
-        },
-        salesData: [],
-        topProducts: [],
-        paymentMethods: [],
-        mandatoryFields: [
-          'Date', 'Invoice No.', 'Product Name', 'Batch No.', 'Unit (Kg/L)',
-          'Quantity Sold', 'Unit Price', 'Total Sales', 'Customer Name',
-          'Payment Mode', 'Remarks'
-        ],
-        error: true,
-        errorMessage: error.message
-      };
+      const settings = await settingsOperations.getById('system-settings');
+      if (settings) setSystemSettings(settings);
+    } catch (e) {
+      console.warn('No system settings found yet');
     }
+  }, []);
+
+  // Utility function to format timestamps (Supabase compatible)
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    if (typeof timestamp === 'string') {
+      // ISO string from Supabase
+      return new Date(timestamp).toLocaleDateString();
+    }
+    if (timestamp instanceof Date) {
+      // JavaScript Date object
+      return timestamp.toLocaleDateString();
+    }
+    return 'N/A';
   };
 
-  const generateInventoryReport = async () => {
+  // Load company details for report headers
+  const loadCompanyDetails = useCallback(async () => {
     try {
-      // Fetch all products
-      const products = await productsService.getAll();
-      console.log('Fetched products for inventory report:', products.length);
-      
-      // Fetch recent purchases for opening stock calculation
-      const purchasesQuery = query(
-        collection(db, COLLECTIONS.PURCHASES),
-        orderBy('purchaseDate', 'desc'),
-        limit(100)
-      );
-      const purchasesSnapshot = await getDocs(purchasesQuery);
-      const purchasesData = purchasesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // Fetch recent sales for stock movement
-      const salesQuery = query(
-        collection(db, COLLECTIONS.SALES),
-        orderBy('saleDate', 'desc'),
-        limit(100)
-      );
-      const salesSnapshot = await getDocs(salesQuery);
-      const salesData = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // Format inventory data according to fertilizer industry standard
-      const formattedInventoryData = products.map(product => {
-        // Calculate purchases for this product
-        const productPurchases = purchasesData.filter(purchase => 
-          purchase.items?.some(item => item.productName === product.name)
-        );
-        const totalPurchases = productPurchases.reduce((sum, purchase) => {
-          const item = purchase.items?.find(item => item.productName === product.name);
-          return sum + (item?.quantity || 0);
-        }, 0);
-        
-        // Calculate sales for this product
-        const productSales = salesData.filter(sale => 
-          sale.items?.some(item => item.productName === product.name)
-        );
-        const totalSales = productSales.reduce((sum, sale) => {
-          const item = sale.items?.find(item => item.productName === product.name);
-          return sum + (item?.quantity || 0);
-        }, 0);
-        
-        // Calculate opening stock (current + sales - purchases)
-        const openingStock = (product.stock || 0) + totalSales - totalPurchases;
-        
-        return {
-          productName: product.name || 'N/A',
-          batchNo: product.batchNo || 'B' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
-          unit: product.unit || 'Kg',
-          openingStock: Math.max(openingStock, 0),
-          purchases: totalPurchases,
-          sales: totalSales,
-          closingStock: product.stock || 0,
-          reorderLevel: product.minStock || 100,
-          expiryDate: product.expiryDate || '2026-12-31',
-          supplierName: product.supplier || 'N/A',
-          remarks: product.stock <= (product.minStock || 100) ? 'Low Stock' : '—'
-        };
-      });
-      
-      // Calculate summary metrics
-      const totalProducts = products.length;
-      const totalValue = products.reduce((sum, product) => sum + ((product.stock || 0) * (product.price || 0)), 0);
-      const lowStockItems = formattedInventoryData.filter(item => item.closingStock <= item.reorderLevel).length;
-      const outOfStockItems = formattedInventoryData.filter(item => item.closingStock === 0).length;
-      
-      // Near expiry analysis (within 6 months)
-      const sixMonthsFromNow = new Date();
-      sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6);
-      const nearExpiryItems = formattedInventoryData.filter(item => {
-        const expiryDate = new Date(item.expiryDate);
-        return expiryDate <= sixMonthsFromNow && expiryDate > new Date();
-      }).length;
-      
-      // Category breakdown
-      const categoryStats = {};
-      products.forEach(product => {
-        const category = product.category || 'Uncategorized';
-        if (!categoryStats[category]) {
-          categoryStats[category] = { category, products: 0, value: 0, stock: 0 };
-        }
-        categoryStats[category].products += 1;
-        categoryStats[category].value += (product.stock || 0) * (product.price || 0);
-        categoryStats[category].stock += product.stock || 0;
-      });
-      
-      const categoryBreakdown = Object.values(categoryStats);
-      
-      return {
-        summary: {
-          totalProducts,
-          totalValue: Math.round(totalValue),
-          lowStockItems,
-          nearExpiryItems,
-          outOfStockItems,
-          totalClosingStock: formattedInventoryData.reduce((sum, item) => sum + item.closingStock, 0),
-          totalPurchases: formattedInventoryData.reduce((sum, item) => sum + item.purchases, 0),
-          totalSales: formattedInventoryData.reduce((sum, item) => sum + item.sales, 0)
-        },
-        inventoryData: formattedInventoryData,
-        categoryBreakdown,
-        // Stock movement report data
-        stockMovementData: formattedInventoryData.map(item => ({
-          productName: item.productName,
-          batchNo: item.batchNo,
-          qtyIn: item.purchases,
-          qtyOut: item.sales,
-          balance: item.closingStock,
-          reason: 'Sales/Purchase',
-          transactionRef: 'Multiple'
-        })),
-        // Mandatory fields structure for export
-        mandatoryFields: [
-          'Product Name', 'Batch No.', 'Unit (Kg/L)', 'Opening Stock', 'Purchases', 
-          'Sales', 'Closing Stock', 'Reorder Level', 'Expiry Date', 'Supplier Name', 'Remarks'
-        ],
-        stockMovementFields: [
-          'Date', 'Product Name', 'Batch No.', 'Qty In', 'Qty Out', 'Balance', 
-          'Reason / Transaction', 'Ref'
-        ]
-      };
+      const details = await shopDetailsService.getShopDetails();
+      setCompanyDetails(details);
     } catch (error) {
-      console.error('Error generating inventory report:', error);
-      return await generateEmptyReportStructure('inventory');
+      console.error('Failed to load company details:', error);
     }
+  }, []);
+
+  // Enhanced report header component with logo
+  const renderReportHeader = (title, subtitle) => {
+    if (!companyDetails) return null;
+
+    const period = dateRange.replace('_', ' ').toUpperCase();
+
+    return (
+      <ReportHeader
+        reportTitle={title}
+        period={period}
+        companyDetails={companyDetails}
+        reportId={`RPT-${Date.now()}`}
+        systemName="KrishiSethu Inventory Management System"
+      />
+    );
   };
 
-  const generateFinancialReport = async (dateFilter) => {
+  // Test function to check sales data
+  const testSalesData = async () => {
     try {
-      // Fetch sales data for financial calculations
-      const salesQuery = query(
-        collection(db, COLLECTIONS.SALES),
-        where('saleDate', '>=', dateFilter.start),
-        where('saleDate', '<=', dateFilter.end)
-      );
-      
-      const salesSnapshot = await getDocs(salesQuery);
-      const salesData = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // Fetch purchases data for COGS calculation
-      const purchasesQuery = query(
-        collection(db, COLLECTIONS.PURCHASES),
-        where('purchaseDate', '>=', dateFilter.start),
-        where('purchaseDate', '<=', dateFilter.end)
-      );
-      
-      const purchasesSnapshot = await getDocs(purchasesQuery);
-      const purchasesData = purchasesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      // Calculate financial metrics according to fertilizer industry standard
-      const totalSalesRevenue = salesData.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0);
-      
-      // Calculate COGS from actual purchase costs
-      const totalCOGS = purchasesData.reduce((sum, purchase) => sum + (purchase.totalAmount || 0), 0);
-      
-      const grossProfit = totalSalesRevenue - totalCOGS;
-      const grossProfitMargin = totalSalesRevenue > 0 ? (grossProfit / totalSalesRevenue) * 100 : 0;
-      
-      // Estimate operating expenses (10% of gross profit or 5% of revenue)
-      const operatingExpenses = Math.max(grossProfit * 0.1, totalSalesRevenue * 0.05);
-      const netProfit = grossProfit - operatingExpenses;
-      const netProfitMargin = totalSalesRevenue > 0 ? (netProfit / totalSalesRevenue) * 100 : 0;
-      
-      // Group data by month for monthly breakdown
-      const monthlyData = {};
-      salesData.forEach(sale => {
-        const date = sale.saleDate?.toDate?.() || new Date(sale.saleDate);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const monthName = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-        
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = {
-            month: monthName,
-            totalSalesRevenue: 0,
-            cogs: 0,
-            grossProfit: 0,
-            operatingExpenses: 0,
-            netProfit: 0,
-            remarks: '—'
-          };
-        }
-        
-        monthlyData[monthKey].totalSalesRevenue += sale.totalAmount || 0;
-      });
-      
-      // Add COGS to monthly data
-      purchasesData.forEach(purchase => {
-        const date = purchase.purchaseDate?.toDate?.() || new Date(purchase.purchaseDate);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        
-        if (monthlyData[monthKey]) {
-          monthlyData[monthKey].cogs += purchase.totalAmount || 0;
-        }
-      });
-      
-      // Calculate monthly profits
-      Object.values(monthlyData).forEach(month => {
-        month.grossProfit = month.totalSalesRevenue - month.cogs;
-        month.operatingExpenses = Math.max(month.grossProfit * 0.1, month.totalSalesRevenue * 0.05);
-        month.netProfit = month.grossProfit - month.operatingExpenses;
-      });
-      
-      const monthlyFinancialData = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month));
-      
-      return {
-        summary: {
-          totalSalesRevenue: Math.round(totalSalesRevenue),
-          totalCOGS: Math.round(totalCOGS),
-          grossProfit: Math.round(grossProfit),
-          grossProfitMargin: Math.round(grossProfitMargin * 100) / 100,
-          operatingExpenses: Math.round(operatingExpenses),
-          netProfit: Math.round(netProfit),
-          netProfitMargin: Math.round(netProfitMargin * 100) / 100,
-          totalTransactions: salesData.length,
-          avgTransactionValue: salesData.length > 0 ? Math.round(totalSalesRevenue / salesData.length) : 0
-        },
-        monthlyFinancialData,
-        // Quarterly summary for P&L format
-        quarterlyData: {
-          period: `${dateRange.replace('_', ' ').toUpperCase()}`,
-          totalSales: Math.round(totalSalesRevenue),
-          cogs: Math.round(totalCOGS),
-          grossProfit: Math.round(grossProfit),
-          expenses: Math.round(operatingExpenses),
-          netProfit: Math.round(netProfit),
-          profitMargin: Math.round(netProfitMargin * 100) / 100
-        },
-        // Mandatory fields structure for export
-        mandatoryFields: [
-          'Month', 'Total Sales Revenue', 'Cost of Goods Sold (COGS)', 'Gross Profit', 
-          'Operating Expenses', 'Net Profit', 'Remarks'
-        ],
-        profitLossFields: [
-          'Period', 'Total Sales', 'COGS', 'Gross Profit', 'Expenses', 'Net Profit', 'Profit Margin (%)'
-        ]
-      };
+      console.log('🧪 Testing sales data fetch...');
+      const sales = await salesService.getAll();
+      console.log('✅ Test successful - Sales data:', sales);
+      alert(`Sales data test successful! Found ${sales.length} sales records.`);
     } catch (error) {
-      console.error('Error generating financial report:', error);
-      return await generateEmptyReportStructure('financial');
+      console.error('❌ Test failed:', error);
+      alert(`Sales data test failed: ${error.message}`);
     }
   };
 
-  const generateProfitReport = async (dateFilter) => {
-    // Similar to financial report but focused on profit analysis
-    return await generateFinancialReport(dateFilter);
+  useEffect(() => {
+    loadSales();
+    loadSettings();
+    loadCompanyDetails();
+  }, [loadSales, loadSettings, loadCompanyDetails]);
+
+
+
+  const openInvoicePreviewWindow = () => {
+    const el = document.getElementById('printable-invoice');
+    if (!el) return;
+    const w = window.open('', '_blank', 'width=900,height=1200');
+    if (!w) return;
+
+    // Copy current CSS (dev mode styles and linked CSS), plus add Tailwind CDN as fallback
+    const headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map((node) => node.outerHTML)
+      .join('');
+
+    const pageCss = `
+      <style>
+        @page { size: A4 portrait; margin: 0; }
+        html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body * { box-sizing: border-box; }
+      </style>
+    `;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>${headStyles}${pageCss}</head><body>${el.innerHTML}</body></html>`;
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
+
+
+
+
+
+
+
+
 
   // Advanced reporting functions
   const exportReport = async (format) => {
@@ -1232,7 +1089,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
   };
 
   const generatePrintableHTML = (reportContent) => {
-    const { title, dateRange, generatedAt, data } = reportContent;
+    const { title, dateRange, generatedAt: _generatedAt, data } = reportContent;
     
     let tableContent = '';
     
@@ -1554,13 +1411,13 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
   };
 
   const exportToCSV = (reportContent, isExcel = false) => {
-    const { title, dateRange, generatedAt, data } = reportContent;
+    const { title, dateRange, generatedAt: _generatedAt, data } = reportContent;
     let csvContent = '';
     
     // Add header information
     csvContent += `${title}\n`;
     csvContent += `Date Range: ${dateRange.replace('_', ' ').toUpperCase()}\n`;
-    csvContent += `Generated: ${new Date(generatedAt).toLocaleString()}\n\n`;
+    csvContent += `Generated: ${new Date(_generatedAt).toLocaleString()}\n\n`;
     
     // Add summary if available
     if (data.summary) {
@@ -1673,7 +1530,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const calculateKPIProgress = (actual, target) => {
+  const _calculateKPIProgress = (actual, target) => {
     return Math.min((actual / target) * 100, 100);
   };
 
@@ -1684,7 +1541,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
     if (reportData.error) {
       return (
         <div className="text-center py-8">
-          <div className="text-red-600 mb-4">
+          <div className="mb-4" style={{ color: 'var(--destructive)' }}>
             <h3 className="text-lg font-semibold">Error Loading Sales Report</h3>
             <p className="text-sm">{reportData.errorMessage}</p>
           </div>
@@ -1702,38 +1559,38 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
 
         {/* Sales Summary - Fertilizer Industry Specific */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 print-summary-grid print-avoid-break">
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Total Sales</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Total Sales</div>
             <div className="text-xl font-bold">₹{reportData.summary.totalSales.toLocaleString()}</div>
           </div>
 
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Total Transactions</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Total Transactions</div>
             <div className="text-xl font-bold">{reportData.summary.totalTransactions}</div>
           </div>
 
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Total Quantity</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Total Quantity</div>
             <div className="text-xl font-bold">{reportData.summary.totalQuantity.toLocaleString()}</div>
           </div>
 
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Average Order Value</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Average Order Value</div>
             <div className="text-xl font-bold">₹{reportData.summary.averageOrderValue.toLocaleString()}</div>
           </div>
 
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Top Product</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Top Product</div>
             <div className="text-lg font-bold">{reportData.summary.topProduct}</div>
           </div>
 
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Unique Customers</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Unique Customers</div>
             <div className="text-lg font-bold">{reportData.summary.uniqueCustomers}</div>
           </div>
 
-          <div className="border border-black p-3 text-center bg-white">
-            <div className="text-sm text-gray-600 mb-1">Avg Quantity Per Sale</div>
+          <div className="border p-3 text-center" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
+            <div className="text-sm mb-1" style={{ color: 'var(--muted-foreground)' }}>Avg Quantity Per Sale</div>
             <div className="text-lg font-bold">{reportData.summary.avgQuantityPerSale}</div>
           </div>
         </div>
@@ -1751,11 +1608,11 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className={`w-full border-collapse border border-black ${reportData.salesData?.length > 15 ? 'large-table' : ''}`}>
+              <table className={`w-full border-collapse border ${reportData.salesData?.length > 15 ? 'large-table' : ''}`} style={{ borderColor: 'var(--border)' }}>
                 <thead>
-                  <tr className="bg-gray-50">
+                  <tr style={{ backgroundColor: 'var(--muted)' }}>
                     {reportData.mandatoryFields && reportData.mandatoryFields.map((field, index) => (
-                      <th key={index} className="border border-black px-2 py-2 text-center text-sm font-medium">
+                      <th key={index} className="border px-2 py-2 text-center text-sm font-medium" style={{ borderColor: 'var(--border)' }}>
                         {field}
                       </th>
                     ))}
@@ -1763,24 +1620,24 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                 </thead>
                 <tbody>
                   {reportData.salesData && reportData.salesData.slice(0, 10).map((sale, index) => (
-                    <tr key={index} className="bg-white">
-                      <td className="border border-black px-2 py-2 text-sm text-center">{formatTimestamp(sale.date)}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.invoiceNo}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.productName}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.batchNo}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.unit}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.quantitySold}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">₹{sale.unitPrice.toLocaleString()}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center font-medium">₹{sale.totalSales.toLocaleString()}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.customerName}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.paymentMode}</td>
-                      <td className="border border-black px-2 py-2 text-sm text-center">{sale.remarks}</td>
+                    <tr key={index} style={{ backgroundColor: 'var(--background)' }}>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{formatTimestamp(sale.date)}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.invoiceNo}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.productName}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.batchNo}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.unit}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.quantitySold}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>₹{sale.unitPrice.toLocaleString()}</td>
+                      <td className="border px-2 py-2 text-sm text-center font-medium" style={{ borderColor: 'var(--border)' }}>₹{sale.totalSales.toLocaleString()}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.customerName}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.paymentMode}</td>
+                      <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{sale.remarks}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {reportData.salesData && reportData.salesData.length > 10 && (
-                <p className="text-sm text-gray-500 mt-2">
+                <p className="text-sm mt-2" style={{ color: 'var(--muted-foreground)' }}>
                   Showing first 10 of {reportData.salesData.length} transactions. Export for complete data.
                 </p>
               )}
@@ -1792,22 +1649,22 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
         <div className="bg-white">
           <h3 className="text-lg font-semibold mb-4">Payment Method Breakdown</h3>
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse border border-black">
+            <table className="w-full border-collapse border" style={{ borderColor: 'var(--border)' }}>
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="border border-black px-2 py-2 text-center text-sm font-medium">Payment Method</th>
-                  <th className="border border-black px-2 py-2 text-center text-sm font-medium">Transactions</th>
-                  <th className="border border-black px-2 py-2 text-center text-sm font-medium">Amount</th>
-                  <th className="border border-black px-2 py-2 text-center text-sm font-medium">Percentage</th>
+                <tr style={{ backgroundColor: 'var(--muted)' }}>
+                  <th className="border px-2 py-2 text-center text-sm font-medium" style={{ borderColor: 'var(--border)' }}>Payment Method</th>
+                  <th className="border px-2 py-2 text-center text-sm font-medium" style={{ borderColor: 'var(--border)' }}>Transactions</th>
+                  <th className="border px-2 py-2 text-center text-sm font-medium" style={{ borderColor: 'var(--border)' }}>Amount</th>
+                  <th className="border px-2 py-2 text-center text-sm font-medium" style={{ borderColor: 'var(--border)' }}>Percentage</th>
                 </tr>
               </thead>
               <tbody>
                 {reportData.paymentMethods && reportData.paymentMethods.map((method, index) => (
-                  <tr key={index} className="bg-white">
-                    <td className="border border-black px-2 py-2 text-sm text-center">{method.method}</td>
-                    <td className="border border-black px-2 py-2 text-sm text-center">{method.transactions}</td>
-                    <td className="border border-black px-2 py-2 text-sm text-center">₹{method.amount.toLocaleString()}</td>
-                    <td className="border border-black px-2 py-2 text-sm text-center">{method.percentage}%</td>
+                  <tr key={index} style={{ backgroundColor: 'var(--background)' }}>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.method}</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.transactions}</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>₹{method.amount.toLocaleString()}</td>
+                    <td className="border px-2 py-2 text-sm text-center" style={{ borderColor: 'var(--border)' }}>{method.percentage}%</td>
                   </tr>
                 ))}
               </tbody>
@@ -1824,19 +1681,19 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
           <CardContent>
             <div className="space-y-4">
               {reportData.topProducts && reportData.topProducts.map((product, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div key={index} className="flex items-center justify-between p-4 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
                   <div className="flex items-center space-x-4">
-                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-bold text-green-600">{index + 1}</span>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--success-bg)' }}>
+                      <span className="text-sm font-bold" style={{ color: 'var(--success)' }}>{index + 1}</span>
                     </div>
                     <div>
                       <div className="font-medium">{product.name}</div>
-                      <div className="text-sm text-gray-500">{product.totalQuantity} units • {product.transactions} transactions</div>
+                      <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{product.totalQuantity} units • {product.transactions} transactions</div>
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold">₹{product.totalRevenue.toLocaleString()}</div>
-                    <div className="text-sm text-green-600">₹{product.avgPrice.toFixed(2)}/unit avg</div>
+                    <div className="text-sm" style={{ color: 'var(--success)' }}>₹{product.avgPrice.toFixed(2)}/unit avg</div>
                   </div>
                 </div>
               ))}
@@ -1845,13 +1702,14 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
         </Card>
 
         {/* Print Controls */}
-        <div className="no-print flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+        <div className="no-print flex justify-between items-center p-4 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
           <div className="flex items-center gap-4">
             <span className="text-sm font-medium">Page Layout:</span>
             <select
               value={reportOrientation}
               onChange={(e) => setReportOrientation(e.target.value)}
-              className="border border-gray-300 rounded px-3 py-1 text-sm"
+              className="border rounded px-3 py-1 text-sm"
+              style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
             >
               <option value="portrait">Portrait (A4)</option>
               <option value="landscape">Landscape (A4)</option>
@@ -1867,7 +1725,13 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
           </div>
           <button
             onClick={handlePrint}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2"
+            className="px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center gap-2 text-white"
+            style={{
+              backgroundColor: 'var(--primary)',
+              '&:hover': { backgroundColor: 'var(--primary-hover)' }
+            }}
+            onMouseEnter={(e) => e.target.style.backgroundColor = 'var(--primary-hover)'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = 'var(--primary)'}
           >
             <Printer className="h-4 w-4" />
             Print Report
@@ -1963,7 +1827,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <CardTitle className="text-sm font-medium">Low Stock Items</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{lowStockItems}</div>
+              <div className="text-2xl font-bold" style={{ color: 'var(--warning)' }}>{lowStockItems}</div>
               <p className="text-xs text-muted-foreground">need restocking</p>
             </CardContent>
           </Card>
@@ -1973,7 +1837,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <CardTitle className="text-sm font-medium">Near Expiry</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{nearExpiryItems}</div>
+              <div className="text-2xl font-bold" style={{ color: 'var(--destructive)' }}>{nearExpiryItems}</div>
               <p className="text-xs text-muted-foreground">expiring in 6 months</p>
             </CardContent>
           </Card>
@@ -1986,7 +1850,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-red-600">{outOfStockItems}</div>
+              <div className="text-2xl font-bold" style={{ color: 'var(--destructive)' }}>{outOfStockItems}</div>
               <p className="text-xs text-muted-foreground">products unavailable</p>
             </CardContent>
           </Card>
@@ -2006,7 +1870,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <CardTitle className="text-sm font-medium">Stock Health</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold" style={{ color: 'var(--success)' }}>
                 {totalProducts > 0 ? Math.round(((totalProducts - lowStockItems - outOfStockItems) / totalProducts) * 100) : 0}%
               </div>
               <p className="text-xs text-muted-foreground">healthy stock levels</p>
@@ -2027,11 +1891,11 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse border border-gray-300">
+              <table className="w-full border-collapse border" style={{ borderColor: 'var(--border)' }}>
                 <thead>
-                  <tr className="bg-gray-50">
+                  <tr style={{ backgroundColor: 'var(--muted)' }}>
                     {reportData.mandatoryFields && reportData.mandatoryFields.map((field, index) => (
-                      <th key={index} className="border border-gray-300 px-3 py-2 text-left text-sm font-medium">
+                      <th key={index} className="border px-3 py-2 text-left text-sm font-medium" style={{ borderColor: 'var(--border)' }}>
                         {field}
                       </th>
                     ))}
@@ -2039,18 +1903,18 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                 </thead>
                 <tbody>
                   {reportData.inventoryData && reportData.inventoryData.slice(0, 10).map((item, index) => (
-                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.productName || 'N/A'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.batchNo || 'N/A'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.unit || 'Kg'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right">{item.openingStock || 0}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right text-green-600">{item.purchases || 0}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right text-red-600">{item.sales || 0}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium">{item.closingStock || 0}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right">{item.reorderLevel || 0}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{formatTimestamp(item.expiryDate)}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">{item.supplierName || 'N/A'}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm">
+                    <tr key={index} style={{ backgroundColor: index % 2 === 0 ? 'var(--background)' : 'var(--muted)' }}>
+                      <td className="border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>{item.productName || 'N/A'}</td>
+                      <td className="border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>{item.batchNo || 'N/A'}</td>
+                      <td className="border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>{item.unit || 'Kg'}</td>
+                      <td className="border px-3 py-2 text-sm text-right" style={{ borderColor: 'var(--border)' }}>{item.openingStock || 0}</td>
+                      <td className="border px-3 py-2 text-sm text-right" style={{ borderColor: 'var(--border)', color: 'var(--success)' }}>{item.purchases || 0}</td>
+                      <td className="border px-3 py-2 text-sm text-right" style={{ borderColor: 'var(--border)', color: 'var(--destructive)' }}>{item.sales || 0}</td>
+                      <td className="border px-3 py-2 text-sm text-right font-medium" style={{ borderColor: 'var(--border)' }}>{item.closingStock || 0}</td>
+                      <td className="border px-3 py-2 text-sm text-right" style={{ borderColor: 'var(--border)' }}>{item.reorderLevel || 0}</td>
+                      <td className="border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>{formatTimestamp(item.expiryDate)}</td>
+                      <td className="border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>{item.supplierName || 'N/A'}</td>
+                      <td className="border px-3 py-2 text-sm" style={{ borderColor: 'var(--border)' }}>
                         <Badge variant={item.remarks === 'Low Stock' ? 'destructive' : 'secondary'}>
                           {item.remarks || '—'}
                         </Badge>
@@ -2078,17 +1942,20 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             <CardContent>
               <div className="space-y-4">
                 {reportData.categoryBreakdown.map((category, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div key={index} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
                     <div>
                       <div className="font-medium">{category.category || 'Uncategorized'}</div>
-                      <div className="text-sm text-gray-500">{category.products || 0} products • {(category.stock || 0).toLocaleString()} Kg/L</div>
+                      <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>{category.products || 0} products • {(category.stock || 0).toLocaleString()} Kg/L</div>
                     </div>
                     <div className="text-right">
                       <div className="text-lg font-bold">₹{(category.value || 0).toLocaleString()}</div>
-                      <div className="w-32 bg-gray-200 rounded-full h-2">
+                      <div className="w-32 rounded-full h-2" style={{ backgroundColor: 'var(--muted-foreground)' }}>
                         <div
-                          className="bg-blue-600 h-2 rounded-full"
-                          style={{ width: `${totalValue > 0 ? ((category.value || 0) / totalValue) * 100 : 0}%` }}
+                          className="h-2 rounded-full"
+                          style={{
+                            width: `${totalValue > 0 ? ((category.value || 0) / totalValue) * 100 : 0}%`,
+                            backgroundColor: 'var(--primary)'
+                          }}
                         ></div>
                       </div>
                     </div>
@@ -2124,8 +1991,8 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                         <td className="border border-gray-300 px-3 py-2 text-sm">{new Date().toISOString().split('T')[0]}</td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">{movement.productName || 'N/A'}</td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">{movement.batchNo || 'N/A'}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right text-green-600">{movement.qtyIn || 0}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-sm text-right text-red-600">{movement.qtyOut || 0}</td>
+                        <td className="border border-gray-300 px-3 py-2 text-sm text-right" style={{ color: 'var(--success)' }}>{movement.qtyIn || 0}</td>
+                        <td className="border border-gray-300 px-3 py-2 text-sm text-right" style={{ color: 'var(--destructive)' }}>{movement.qtyOut || 0}</td>
                         <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium">{movement.balance || 0}</td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">{movement.reason || 'N/A'}</td>
                         <td className="border border-gray-300 px-3 py-2 text-sm">{movement.transactionRef || 'N/A'}</td>
@@ -2171,7 +2038,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
     const totalCOGS = summary.totalCOGS || 0;
     const grossProfit = summary.grossProfit || 0;
     const grossProfitMargin = summary.grossProfitMargin || 0;
-    const operatingExpenses = summary.operatingExpenses || 0;
+    const _operatingExpenses = summary.operatingExpenses || 0;
     const netProfit = summary.netProfit || 0;
     const netProfitMargin = summary.netProfitMargin || 0;
 
@@ -2204,7 +2071,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <CardTitle className="text-sm font-medium">Gross Profit</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">₹{grossProfit.toLocaleString()}</div>
+              <div className="text-2xl font-bold" style={{ color: 'var(--success)' }}>₹{grossProfit.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">{grossProfitMargin.toFixed(1)}% margin</p>
             </CardContent>
           </Card>
@@ -2214,7 +2081,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">₹{netProfit.toLocaleString()}</div>
+              <div className="text-2xl font-bold" style={{ color: 'var(--success)' }}>₹{netProfit.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">{netProfitMargin.toFixed(1)}% net margin</p>
             </CardContent>
           </Card>
@@ -2249,9 +2116,9 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                       <td className="border border-gray-300 px-3 py-2 text-sm">{month.month || 'N/A'}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(month.totalSalesRevenue || 0).toLocaleString()}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(month.cogs || 0).toLocaleString()}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium text-green-600">₹{(month.grossProfit || 0).toLocaleString()}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium" style={{ color: 'var(--success)' }}>₹{(month.grossProfit || 0).toLocaleString()}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(month.operatingExpenses || 0).toLocaleString()}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium text-green-600">₹{(month.netProfit || 0).toLocaleString()}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium" style={{ color: 'var(--success)' }}>₹{(month.netProfit || 0).toLocaleString()}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm">{month.remarks || '—'}</td>
                     </tr>
                   ))}
@@ -2290,9 +2157,9 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
                       <td className="border border-gray-300 px-3 py-2 text-sm font-medium">{reportData.quarterlyData.period || 'N/A'}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(reportData.quarterlyData.totalSales || 0).toLocaleString()}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(reportData.quarterlyData.cogs || 0).toLocaleString()}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right text-green-600">₹{(reportData.quarterlyData.grossProfit || 0).toLocaleString()}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm text-right" style={{ color: 'var(--success)' }}>₹{(reportData.quarterlyData.grossProfit || 0).toLocaleString()}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-right">₹{(reportData.quarterlyData.expenses || 0).toLocaleString()}</td>
-                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium text-green-600">₹{(reportData.quarterlyData.netProfit || 0).toLocaleString()}</td>
+                      <td className="border border-gray-300 px-3 py-2 text-sm text-right font-medium" style={{ color: 'var(--success)' }}>₹{(reportData.quarterlyData.netProfit || 0).toLocaleString()}</td>
                       <td className="border border-gray-300 px-3 py-2 text-sm text-center">{(reportData.quarterlyData.profitMargin || 0).toFixed(1)}%</td>
                     </tr>
                   </tbody>
@@ -2343,15 +2210,18 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">₹{grossProfit.toLocaleString()}</div>
-              <div className="text-sm text-gray-500 mt-1">
+              <div className="text-2xl font-bold" style={{ color: 'var(--success)' }}>₹{grossProfit.toLocaleString()}</div>
+              <div className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
                 Margin: {grossProfitMargin.toFixed(1)}%
               </div>
               <div className="mt-2">
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className="bg-green-600 h-2 rounded-full"
-                    style={{ width: `${Math.min(grossProfitMargin, 100)}%` }}
+                    className="h-2 rounded-full"
+                    style={{
+                      width: `${Math.min(grossProfitMargin, 100)}%`,
+                      backgroundColor: 'var(--success)'
+                    }}
                   ></div>
                 </div>
               </div>
@@ -2366,8 +2236,8 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">₹{netProfit.toLocaleString()}</div>
-              <div className="text-sm text-gray-500 mt-1">
+              <div className="text-2xl font-bold" style={{ color: 'var(--primary)' }}>₹{netProfit.toLocaleString()}</div>
+              <div className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
                 After expenses ({netProfitMargin.toFixed(1)}%)
               </div>
               <div className="mt-2 text-xs">
@@ -2387,8 +2257,8 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">{(netProfitMargin * 0.5).toFixed(1)}%</div>
-              <div className="text-sm text-gray-500 mt-1">
+              <div className="text-2xl font-bold" style={{ color: 'var(--accent)' }}>{(netProfitMargin * 0.5).toFixed(1)}%</div>
+              <div className="text-sm mt-1" style={{ color: 'var(--muted-foreground)' }}>
                 Return on Investment
               </div>
               <div className="mt-2">
@@ -2455,36 +2325,36 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border-l-4 border-green-500">
+                <div className="flex items-center justify-between p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--success-bg)', borderLeftColor: 'var(--success)' }}>
                   <div>
-                    <div className="font-medium text-green-800">Gross Profit</div>
-                    <div className="text-sm text-green-600">Revenue - COGS</div>
+                    <div className="font-medium" style={{ color: 'var(--success-text)' }}>Gross Profit</div>
+                    <div className="text-sm" style={{ color: 'var(--success)' }}>Revenue - COGS</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xl font-bold text-green-800">₹{grossProfit.toLocaleString()}</div>
-                    <div className="text-sm text-green-600">{grossProfitMargin.toFixed(1)}%</div>
+                    <div className="text-xl font-bold" style={{ color: 'var(--success-text)' }}>₹{grossProfit.toLocaleString()}</div>
+                    <div className="text-sm" style={{ color: 'var(--success)' }}>{grossProfitMargin.toFixed(1)}%</div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                <div className="flex items-center justify-between p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--primary-bg)', borderLeftColor: 'var(--primary)' }}>
                   <div>
-                    <div className="font-medium text-blue-800">Net Profit</div>
-                    <div className="text-sm text-blue-600">After all expenses</div>
+                    <div className="font-medium" style={{ color: 'var(--primary-text)' }}>Net Profit</div>
+                    <div className="text-sm" style={{ color: 'var(--primary)' }}>After all expenses</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xl font-bold text-blue-800">₹{netProfit.toLocaleString()}</div>
-                    <div className="text-sm text-blue-600">{netProfitMargin.toFixed(1)}%</div>
+                    <div className="text-xl font-bold" style={{ color: 'var(--primary-text)' }}>₹{netProfit.toLocaleString()}</div>
+                    <div className="text-sm" style={{ color: 'var(--primary)' }}>{netProfitMargin.toFixed(1)}%</div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg border-l-4 border-yellow-500">
+                <div className="flex items-center justify-between p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--warning-bg)', borderLeftColor: 'var(--warning)' }}>
                   <div>
-                    <div className="font-medium text-yellow-800">Operating Expenses</div>
-                    <div className="text-sm text-yellow-600">Total operational costs</div>
+                    <div className="font-medium" style={{ color: 'var(--warning-text)' }}>Operating Expenses</div>
+                    <div className="text-sm" style={{ color: 'var(--warning)' }}>Total operational costs</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xl font-bold text-yellow-800">₹{(summary.operatingExpenses || 0).toLocaleString()}</div>
-                    <div className="text-sm text-yellow-600">{summary.totalSalesRevenue > 0 ? (((summary.operatingExpenses || 0) / summary.totalSalesRevenue) * 100).toFixed(1) : 0}%</div>
+                    <div className="text-xl font-bold" style={{ color: 'var(--warning-text)' }}>₹{(summary.operatingExpenses || 0).toLocaleString()}</div>
+                    <div className="text-sm" style={{ color: 'var(--warning)' }}>{summary.totalSalesRevenue > 0 ? (((summary.operatingExpenses || 0) / summary.totalSalesRevenue) * 100).toFixed(1) : 0}%</div>
                   </div>
                 </div>
               </div>
@@ -2501,38 +2371,41 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
                   <div>
                     <div className="font-medium">Total Transactions</div>
-                    <div className="text-sm text-gray-500">Number of sales</div>
+                    <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Number of sales</div>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold">{(summary.totalTransactions || 0).toLocaleString()}</div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: 'var(--muted)' }}>
                   <div>
                     <div className="font-medium">Average Transaction</div>
-                    <div className="text-sm text-gray-500">Per sale value</div>
+                    <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Per sale value</div>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold">₹{(summary.avgTransactionValue || 0).toLocaleString()}</div>
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                  <div className="text-sm font-medium text-blue-800 mb-2">Profit Health Score</div>
+                <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: 'var(--primary-bg)' }}>
+                  <div className="text-sm font-medium mb-2" style={{ color: 'var(--primary-text)' }}>Profit Health Score</div>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-blue-200 rounded-full h-3">
+                    <div className="flex-1 rounded-full h-3" style={{ backgroundColor: 'var(--muted)' }}>
                       <div
-                        className="bg-blue-600 h-3 rounded-full"
-                        style={{ width: `${Math.min((netProfitMargin / 30) * 100, 100)}%` }}
+                        className="h-3 rounded-full"
+                        style={{
+                          width: `${Math.min((netProfitMargin / 30) * 100, 100)}%`,
+                          backgroundColor: 'var(--primary)'
+                        }}
                       ></div>
                     </div>
-                    <span className="text-sm font-medium text-blue-800">
-                      {netProfitMargin > 25 ? "Excellent" : 
-                       netProfitMargin > 15 ? "Good" : 
+                    <span className="text-sm font-medium" style={{ color: 'var(--primary-text)' }}>
+                      {netProfitMargin > 25 ? "Excellent" :
+                       netProfitMargin > 15 ? "Good" :
                        netProfitMargin > 10 ? "Average" : "Poor"}
                     </span>
                   </div>
@@ -2554,45 +2427,45 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {netProfitMargin < 15 && (
-                <div className="p-4 bg-red-50 rounded-lg border-l-4 border-red-500">
+                <div className="p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--destructive-bg)', borderLeftColor: 'var(--destructive)' }}>
                   <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle className="h-4 w-4 text-red-600" />
-                    <span className="font-medium text-red-800">Low Profit Margin</span>
+                    <AlertTriangle className="h-4 w-4" style={{ color: 'var(--destructive)' }} />
+                    <span className="font-medium" style={{ color: 'var(--destructive-text)' }}>Low Profit Margin</span>
                   </div>
-                  <p className="text-sm text-red-700">
+                  <p className="text-sm" style={{ color: 'var(--destructive-text)' }}>
                     Consider reviewing fertilizer pricing or reducing operational costs to improve margins.
                   </p>
                 </div>
               )}
 
               {netProfitMargin >= 15 && (
-                <div className="p-4 bg-green-50 rounded-lg border-l-4 border-green-500">
+                <div className="p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--success-bg)', borderLeftColor: 'var(--success)' }}>
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span className="font-medium text-green-800">Healthy Margins</span>
+                    <CheckCircle className="h-4 w-4" style={{ color: 'var(--success)' }} />
+                    <span className="font-medium" style={{ color: 'var(--success-text)' }}>Healthy Margins</span>
                   </div>
-                  <p className="text-sm text-green-700">
+                  <p className="text-sm" style={{ color: 'var(--success-text)' }}>
                     Your profit margins are healthy. Focus on scaling fertilizer operations to increase absolute profits.
                   </p>
                 </div>
               )}
 
-              <div className="p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+              <div className="p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--primary-bg)', borderLeftColor: 'var(--primary)' }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <Database className="h-4 w-4 text-blue-600" />
-                  <span className="font-medium text-blue-800">Inventory Optimization</span>
+                  <Database className="h-4 w-4" style={{ color: 'var(--primary)' }} />
+                  <span className="font-medium" style={{ color: 'var(--primary-text)' }}>Inventory Optimization</span>
                 </div>
-                <p className="text-sm text-blue-700">
+                <p className="text-sm" style={{ color: 'var(--primary-text)' }}>
                   Focus on fast-moving fertilizer products to improve inventory turnover and cash flow.
                 </p>
               </div>
 
-              <div className="p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+              <div className="p-4 rounded-lg border-l-4" style={{ backgroundColor: 'var(--accent-bg)', borderLeftColor: 'var(--accent)' }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="h-4 w-4 text-purple-600" />
-                  <span className="font-medium text-purple-800">Growth Opportunities</span>
+                  <TrendingUp className="h-4 w-4" style={{ color: 'var(--accent)' }} />
+                  <span className="font-medium" style={{ color: 'var(--accent-text)' }}>Growth Opportunities</span>
                 </div>
-                <p className="text-sm text-purple-700">
+                <p className="text-sm" style={{ color: 'var(--accent-text)' }}>
                   Consider expanding high-margin fertilizer categories to boost overall profitability.
                 </p>
               </div>
@@ -2608,9 +2481,9 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
       return (
         <div className="flex items-center justify-center h-64">
           <div className="flex flex-col items-center gap-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--primary)' }}></div>
             <div className="text-lg">Generating report...</div>
-            <div className="text-sm text-gray-500">Fetching data from database</div>
+            <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>Fetching data from database</div>
           </div>
         </div>
       );
@@ -2637,10 +2510,10 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
       <div className="no-print flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <BarChart3 className="h-8 w-8 text-blue-600" />
+            <BarChart3 className="h-8 w-8" style={{ color: 'var(--primary)' }} />
             Reports & Analytics
           </h1>
-          <p className="text-gray-600">
+          <p style={{ color: 'var(--muted-foreground)' }}>
             Comprehensive business insights and performance metrics
           </p>
         </div>
@@ -2663,7 +2536,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
 
           {/* Page Orientation Controls */}
           <div className="flex items-center gap-2 border rounded-lg px-3 py-1">
-            <Printer className="h-4 w-4 text-gray-500" />
+            <Printer className="h-4 w-4" style={{ color: 'var(--muted-foreground)' }} />
             <Select value={reportOrientation} onValueChange={setReportOrientation}>
               <SelectTrigger className="w-32 border-0 shadow-none">
                 <SelectValue />
@@ -2684,7 +2557,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
               onChange={(e) => setAutoDetectOrientation(e.target.checked)}
               className="rounded"
             />
-            <label htmlFor="auto-detect" className="text-sm text-gray-600">
+            <label htmlFor="auto-detect" className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
               Auto-detect
             </label>
           </div>
@@ -2815,7 +2688,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             </Button>
           </div>
           {reportType === 'sales' ? renderSalesReport() : 
-            <div className="text-center py-8 text-gray-500">Click "Generate Sales Report" to view sales analytics</div>
+            <div className="text-center py-8" style={{ color: 'var(--muted-foreground)' }}>Click "Generate Sales Report" to view sales analytics</div>
           }
         </TabsContent>
 
@@ -2830,7 +2703,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             </Button>
           </div>
           {reportType === 'inventory' ? renderInventoryReport() : 
-            <div className="text-center py-8 text-gray-500">Click "Generate Inventory Report" to view inventory analytics</div>
+            <div className="text-center py-8" style={{ color: 'var(--muted-foreground)' }}>Click "Generate Inventory Report" to view inventory analytics</div>
           }
         </TabsContent>
 
@@ -2845,7 +2718,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             </Button>
           </div>
           {reportType === 'financial' ? renderFinancialReport() : 
-            <div className="text-center py-8 text-gray-500">Click "Generate Financial Report" to view financial analytics</div>
+            <div className="text-center py-8" style={{ color: 'var(--muted-foreground)' }}>Click "Generate Financial Report" to view financial analytics</div>
           }
         </TabsContent>
 
@@ -2860,7 +2733,7 @@ const Reports = ({ onNavigate, defaultTab = "overview" }) => {
             </Button>
           </div>
           {reportType === 'profit' ? renderProfitAnalysisReport() : 
-            <div className="text-center py-8 text-gray-500">Click "Generate Profit Analysis" to view detailed profit analytics</div>
+            <div className="text-center py-8" style={{ color: 'var(--muted-foreground)' }}>Click "Generate Profit Analysis" to view detailed profit analytics</div>
           }
         </TabsContent>
 

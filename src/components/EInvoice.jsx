@@ -6,7 +6,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { customersService, productsService, einvoicesService, utilityService, customerBalanceService } from '../lib/firestore';
+import { customersService, productsService, einvoicesService, utilityService, customerBalanceService } from '../lib/supabaseDb';
 import InvoicePreview from './InvoicePreview';
 import {
   FileText,
@@ -159,9 +159,9 @@ const EInvoice = ({ onNavigate }) => {
         setInvoiceData(prev => ({
           ...prev,
           invoiceNumber: generateInvoiceNumber(),
-          ackNo: '112525754315713',
+          ackNo: utilityService.generateAckNo(),
           ackDate: new Date().toISOString().split('T')[0],
-          irn: '76652a80d75c144cd3691aec0d7c8b0ae6cc1b3c12739791afdb08381b3b2c2e'
+          irn: utilityService.generateIRN()
         }));
       } else {
         console.error('Services not available, component may not work properly');
@@ -223,7 +223,7 @@ const EInvoice = ({ onNavigate }) => {
       console.log('Product dialog opened but no products loaded, reloading...');
       loadProducts();
     }
-  }, [showProductDialog]);
+  }, [showProductDialog, products.length]);
 
   // Handle customer selection
   const handleCustomerSelect = async (customer) => {

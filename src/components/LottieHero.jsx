@@ -9,7 +9,7 @@ const LottieHero = () => {
     const loadLottie = async () => {
       try {
         const lottie = await import('lottie-web');
-        
+
         if (containerRef.current && !animationRef.current) {
           animationRef.current = lottie.default.loadAnimation({
             container: containerRef.current,
@@ -51,12 +51,6 @@ const LottieHero = () => {
       {/* Dark Glass Effect Background */}
       <div className="absolute inset-0 bg-black/5 backdrop-blur-sm"></div>
 
-
-
-
-
-
-
       {/* Lottie Animation Container */}
       <div
         ref={containerRef}
@@ -80,7 +74,15 @@ const LottieHero = () => {
         </div>
       </div>
 
-
+      {/* Overlay Text */}
+      <div className="absolute bottom-8 left-8 right-8 text-center text-white z-20">
+        <h2 className="text-4xl font-bold mb-4" style={{
+          animation: 'fadeInUp 1s ease-out'
+        }}>Welcome to Krishisethu</h2>
+        <p className="text-xl opacity-90" style={{
+          animation: 'fadeInUp 1s ease-out 0.5s both'
+        }}>Modern Inventory Management for Agriculture</p>
+      </div>
 
       {/* Bottom gradient overlay */}
       <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/40 to-transparent z-5"></div>
@@ -88,6 +90,20 @@ const LottieHero = () => {
       {/* Corner accent lights */}
       <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/20 to-transparent rounded-bl-full"></div>
       <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-tr-full"></div>
+
+      {/* Custom CSS for animations */}
+      <style>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -6,7 +6,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { einvoicesService, customerPaymentsService, customerBalanceService } from '../lib/firestore';
+import { salesService, einvoicesService, customerPaymentsService } from '../lib/supabaseDb';
 import InvoicePreview from './InvoicePreview';
 import {
   FileText,
@@ -81,17 +81,7 @@ const EInvoiceHistory = ({ onNavigate }) => {
     }
   });
 
-  // Load E-Invoices on component mount
-  useEffect(() => {
-    loadEInvoices();
-  }, []);
-
-  // Filter invoices based on search and filters
-  useEffect(() => {
-    filterInvoices();
-  }, [einvoices, searchTerm, statusFilter, dateFilter]);
-
-  // Load all E-Invoices
+  // Load all E-Invoices - defined before useEffect to avoid hoisting issues
   const loadEInvoices = async () => {
     try {
       setIsLoading(true);
@@ -105,8 +95,8 @@ const EInvoiceHistory = ({ onNavigate }) => {
     }
   };
 
-  // Filter invoices based on search term and filters
-  const filterInvoices = () => {
+  // Filter invoices based on search term and filters - defined before useEffect
+  const filterInvoices = useCallback(() => {
     let filtered = [...einvoices];
 
     // Search filter
@@ -150,11 +140,24 @@ const EInvoiceHistory = ({ onNavigate }) => {
             return invoiceDate >= filterDate;
           });
           break;
+        default:
+          // No date filtering for 'all' or unknown values
+          break;
       }
     }
 
     setFilteredInvoices(filtered);
-  };
+  }, [einvoices, searchTerm, statusFilter, dateFilter]);
+
+  // Load E-Invoices on component mount
+  useEffect(() => {
+    loadEInvoices();
+  }, []);
+
+  // Filter invoices based on search and filters
+  useEffect(() => {
+    filterInvoices();
+  }, [einvoices, searchTerm, statusFilter, dateFilter, filterInvoices]);
 
   // Get status badge
   const getStatusBadge = (status) => {
@@ -327,16 +330,6 @@ const EInvoiceHistory = ({ onNavigate }) => {
       const paymentAmountNum = parseFloat(paymentAmount);
       const invoiceTotal = selectedInvoice.grandTotal || 0;
 
-      if (paymentAmountNum > invoiceTotal) {
-        setOverpaymentData({
-          paymentAmount: paymentAmountNum,
-          invoiceTotal: invoiceTotal,
-          paymentData: paymentData
-        });
-        setShowOverpaymentDialog(true);
-        return;
-      }
-
       const paymentData = {
         customerId: selectedInvoice.customerId,
         customerName: selectedInvoice.customerName,
@@ -349,6 +342,16 @@ const EInvoiceHistory = ({ onNavigate }) => {
         notes: `Payment for invoice ${selectedInvoice.invoiceNumber}`,
         createdBy: 'current-user-id'
       };
+
+      if (paymentAmountNum > invoiceTotal) {
+        setOverpaymentData({
+          paymentAmount: paymentAmountNum,
+          invoiceTotal: invoiceTotal,
+          paymentData: paymentData
+        });
+        setShowOverpaymentDialog(true);
+        return;
+      }
 
       await customerPaymentsService.add(paymentData);
 

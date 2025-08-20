@@ -24,7 +24,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
-import { salesService } from '../lib/firestore';
+import { salesService } from '../lib/supabaseDb';
 
 const SalesHistory = ({ onNavigate }) => {
   const [sales, setSales] = useState([]);
@@ -45,25 +45,52 @@ const SalesHistory = ({ onNavigate }) => {
     const loadSales = async () => {
       try {
         setIsLoading(true);
-        // Use real Firebase data
-        const firebaseSales = await salesService.getAll();
-        
-        // Convert Firebase data to expected format
-        const processedSales = firebaseSales.map(sale => ({
-          ...sale,
-          // Convert saleDate (Firestore Timestamp) to date (JavaScript Date)
-          date: sale.saleDate ? (sale.saleDate.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate)) : new Date(),
-          // Ensure other required fields have defaults
-          customer: sale.customer || 'Unknown Customer',
-          paymentMethod: sale.paymentMethod || 'cash',
-          status: sale.status || 'completed',
-          total: sale.total || 0
-        }));
-        
+        console.log('🔄 Loading sales data from Supabase...');
+
+        // Use real Supabase database data
+        const databaseSales = await salesService.getAll();
+        console.log('📊 Raw sales data from Supabase:', databaseSales);
+        console.log('📊 First sale structure:', databaseSales[0]);
+        console.log('📊 Total sales count:', databaseSales.length);
+
+        // Convert Supabase data to expected format
+        const processedSales = databaseSales.map(sale => {
+          console.log('🔍 Processing sale:', sale);
+          return {
+            ...sale,
+            // Handle different date field names and formats from Supabase
+            date: sale.saleDate ? new Date(sale.saleDate) :
+                  sale.sale_date ? new Date(sale.sale_date) :
+                  sale.createdAt ? new Date(sale.createdAt) :
+                  sale.created_at ? new Date(sale.created_at) :
+                  new Date(),
+
+            // Map Supabase fields to expected format (using mapped field names)
+            customer: sale.customerName || sale.customer_name || sale.customer || 'Unknown Customer',
+            customerName: sale.customerName || sale.customer_name || sale.customer || 'Unknown Customer',
+            paymentMethod: sale.paymentMethod || sale.payment_method || 'cash',
+            status: sale.status || 'completed',
+            total: sale.totalAmount || sale.total_amount || sale.total || 0,
+            totalAmount: sale.totalAmount || sale.total_amount || sale.total || 0,
+            saleNumber: sale.saleNumber || sale.sale_number || sale.id,
+
+            // Add time for display
+            time: sale.createdAt ? new Date(sale.createdAt).toLocaleTimeString() :
+                  sale.created_at ? new Date(sale.created_at).toLocaleTimeString() :
+                  new Date().toLocaleTimeString(),
+
+            // Ensure items array exists
+            items: sale.items || []
+          };
+        });
+
+        console.log('✅ Processed Supabase sales data:', processedSales);
+        console.log('💰 Amount check - first sale total:', processedSales[0]?.total);
+
         setSales(processedSales);
 
-        // If no sales, use mock data for demo
-        if (firebaseSales.length === 0) {
+        // If no sales in Supabase, use mock data for demo
+        if (databaseSales.length === 0) {
           const mockSales = [
       {
         id: 'SALE001',
@@ -290,6 +317,10 @@ const SalesHistory = ({ onNavigate }) => {
           case 'month':
             const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
             matchesDate = saleDate >= monthAgo;
+            break;
+          default:
+            // No date filtering for 'all' or unknown values
+            matchesDate = true;
             break;
         }
       }
@@ -687,7 +718,11 @@ const SalesHistory = ({ onNavigate }) => {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-sm">{sale.customer}</span>
+                      <span className="text-sm">{
+                        typeof sale.customer === 'object'
+                          ? sale.customer?.name || sale.customerName || 'Unknown Customer'
+                          : sale.customer || sale.customerName || 'Unknown Customer'
+                      }</span>
                     </td>
                     <td className="py-3 px-4">
                       <div className="text-sm">
@@ -752,15 +787,19 @@ const SalesHistory = ({ onNavigate }) => {
                     <p><strong>Sale ID:</strong> {selectedSale.id}</p>
                     <p><strong>Date:</strong> {selectedSale.date.toLocaleDateString()}</p>
                     <p><strong>Time:</strong> {selectedSale.time}</p>
-                    <p><strong>Customer:</strong> {selectedSale.customer}</p>
+                    <p><strong>Customer:</strong> {
+                      typeof selectedSale.customer === 'object'
+                        ? selectedSale.customer?.name || selectedSale.customerName || 'Unknown Customer'
+                        : selectedSale.customer || selectedSale.customerName || 'Unknown Customer'
+                    }</p>
                   </div>
                 </div>
                 <div>
                   <h4 className="font-medium mb-2">Payment Info</h4>
                   <div className="space-y-1 text-sm">
                     <p><strong>Method:</strong> {getPaymentMethodIcon(selectedSale.paymentMethod)} {selectedSale.paymentMethod}</p>
-                    <p><strong>Amount Paid:</strong> ₹{selectedSale.amountPaid}</p>
-                    <p><strong>Change:</strong> ₹{selectedSale.change}</p>
+                    <p><strong>Amount Paid:</strong> ₹{selectedSale.amountPaid || selectedSale.amount_paid || selectedSale.total || 0}</p>
+                    <p><strong>Change:</strong> ₹{selectedSale.change || 0}</p>
                     <p><strong>Status:</strong> {getStatusBadge(selectedSale.status)}</p>
                   </div>
                 </div>
@@ -796,19 +835,19 @@ const SalesHistory = ({ onNavigate }) => {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span>Subtotal:</span>
-                    <span>₹{selectedSale.subtotal}</span>
+                    <span>₹{selectedSale.subtotal || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Discount:</span>
-                    <span>₹{selectedSale.discount}</span>
+                    <span>₹{selectedSale.discount || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Tax:</span>
-                    <span>₹{selectedSale.tax}</span>
+                    <span>₹{selectedSale.tax || selectedSale.taxAmount || selectedSale.tax_amount || 0}</span>
                   </div>
                   <div className="flex justify-between font-bold border-t pt-2">
                     <span>Total:</span>
-                    <span>₹{selectedSale.total}</span>
+                    <span>₹{selectedSale.total || selectedSale.totalAmount || selectedSale.total_amount || 0}</span>
                   </div>
                 </div>
               </div>

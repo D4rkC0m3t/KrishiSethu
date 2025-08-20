@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { categoriesService } from '../lib/firestore';
+import { categoriesService } from '../lib/supabaseDb';
 import {
   Plus,
   Edit,
@@ -93,12 +93,15 @@ const CategoriesManagement = ({ onNavigate }) => {
 
   // Handle edit
   const handleEdit = (category) => {
+    console.log('🔄 Editing category:', category);
     setSelectedCategory(category);
     setFormData({
       name: category.name || '',
       description: category.description || '',
-      isActive: category.isActive !== false
+      // Handle both camelCase and snake_case field names
+      isActive: category.isActive !== false && category.is_active !== false
     });
+    console.log('📋 Category form populated with isActive:', category.isActive || category.is_active);
     setShowEditDialog(true);
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -36,10 +36,16 @@ import {
   FileText,
   QrCode
 } from 'lucide-react';
-import { productsService, seedData } from '../lib/firestore';
+import { supabase } from '../lib/supabase';
+import { productsService, productOperations } from '../lib/supabaseDb';
 import { EmptyInventory, EmptySearch, LoadingState, ErrorState } from './EmptyState';
+import { normalizeProductsArray, validateNormalizedProduct } from '../utils/productNormalizer';
 
 const Inventory = ({ onNavigate }) => {
+  console.log('🏗️ [INVENTORY] Component render started');
+  console.log('🏗️ [INVENTORY] onNavigate prop:', typeof onNavigate);
+  console.log('🏗️ [INVENTORY] Component mounting/re-rendering');
+  
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -100,12 +106,15 @@ const Inventory = ({ onNavigate }) => {
       const matchesCategory = filterCategory === 'all' || product.category === filterCategory;
       const matchesType = filterType === 'all' || product.type === filterType;
 
+      // Handle null quantities by treating them as 0
+      const quantity = product.quantity ?? 0;
+      
       const matchesStatus =
         filterStatus === 'all' ||
-        (filterStatus === 'low-stock' && product.quantity <= 10) ||
-        (filterStatus === 'out-of-stock' && product.quantity === 0) ||
+        (filterStatus === 'low-stock' && quantity <= 10 && quantity > 0) ||
+        (filterStatus === 'out-of-stock' && quantity === 0) ||
         (filterStatus === 'near-expiry' && product.expiryDate && isNearExpiry(product.expiryDate)) ||
-        (filterStatus === 'in-stock' && product.quantity > 10);
+        (filterStatus === 'in-stock' && quantity > 10);
 
       return matchesSearch && matchesCategory && matchesType && matchesStatus;
     });
@@ -137,53 +146,31 @@ const Inventory = ({ onNavigate }) => {
     setCurrentPage(1);
   }, [products, searchTerm, filterCategory, filterType, filterStatus, sortBy, sortOrder]);
 
-  // Generate alerts when products change
-  useEffect(() => {
-    if (products.length > 0) {
-      generateAlerts(products);
+  // Helper function for expiry status - moved before generateAlerts to avoid initialization error
+  const getExpiryStatus = useCallback((product) => {
+    if (!product || !product.expiryDate) return 'no-expiry';
+    try {
+      const today = new Date();
+      const expiry = new Date(product.expiryDate);
+
+      // Check if the date is valid
+      if (isNaN(expiry.getTime())) return 'no-expiry';
+
+      const diffTime = expiry - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) return 'expired';
+      if (diffDays <= 7) return 'critical';
+      if (diffDays <= 30) return 'warning';
+      return 'good';
+    } catch (error) {
+      console.warn('Error calculating expiry status:', error);
+      return 'no-expiry';
     }
-  }, [products]);
+  }, []);
 
-  // Pagination logic
-  const getPaginatedProducts = () => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    return filteredProducts.slice(startIndex, endIndex);
-  };
-
-  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
-  const paginatedProducts = getPaginatedProducts();
-
-  // Utility functions
-  const isNearExpiry = (expiryDate) => {
-    const today = new Date();
-    const expiry = new Date(expiryDate);
-    const diffTime = expiry - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 30 && diffDays > 0;
-  };
-
-  const getStockStatus = (quantity) => {
-    if (quantity === 0) return { status: 'Out of Stock', color: 'bg-red-500' };
-    if (quantity <= 10) return { status: 'Low Stock', color: 'bg-yellow-500' };
-    return { status: 'In Stock', color: 'bg-green-500' };
-  };
-
-  // Advanced inventory functions
-  const getExpiryStatus = (product) => {
-    if (!product.expiryDate) return 'no-expiry';
-    const today = new Date();
-    const expiry = new Date(product.expiryDate);
-    const diffTime = expiry - today;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return 'expired';
-    if (diffDays <= 7) return 'critical';
-    if (diffDays <= 30) return 'warning';
-    return 'good';
-  };
-
-  const generateAlerts = (products) => {
+  // Generate alerts function - moved before useEffect to avoid initialization error
+  const generateAlerts = useCallback((products) => {
     // Skip alert generation if too many products (performance optimization)
     if (products.length > 100) {
       setExpiryAlerts([]);
@@ -223,7 +210,44 @@ const Inventory = ({ onNavigate }) => {
 
     setExpiryAlerts(expiry);
     setReorderAlerts(reorder);
+  }, [getExpiryStatus]);
+
+  // Generate alerts when products change
+  useEffect(() => {
+    if (products.length > 0) {
+      generateAlerts(products);
+    }
+  }, [products, generateAlerts]);
+
+  // Pagination logic
+  const getPaginatedProducts = () => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredProducts.slice(startIndex, endIndex);
   };
+
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const paginatedProducts = getPaginatedProducts();
+
+  // Utility functions
+  const isNearExpiry = (expiryDate) => {
+    const today = new Date();
+    const expiry = new Date(expiryDate);
+    const diffTime = expiry - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 30 && diffDays > 0;
+  };
+
+  const getStockStatus = (quantity) => {
+    const qty = quantity || 0;
+    if (qty === 0) return { status: 'Out of Stock', color: 'bg-red-500' };
+    if (qty <= 10) return { status: 'Low Stock', color: 'bg-yellow-500' };
+    return { status: 'In Stock', color: 'bg-green-500' };
+  };
+
+
+
+
 
   const handleBatchAdd = () => {
     if (!selectedProduct || !batchData.batchNumber || !batchData.quantity) {
@@ -303,50 +327,166 @@ const Inventory = ({ onNavigate }) => {
   };
 
   const loadProducts = async () => {
+    let isComponentMounted = true;
+    
     try {
-      setLoading(true);
-      console.log('Loading products from Firebase...');
+      if (isComponentMounted) setLoading(true);
+      console.log('🔄 [INVENTORY] Loading products from Supabase...');
 
-      // Use real Firebase data
-      const products = await productsService.getAll();
-      console.log(`Loaded ${products.length} products from Firebase`);
+      // Skip connection test for faster loading
+      console.log('✅ Proceeding directly to product loading...');
 
-      if (products.length > 0) {
-        setProducts(products);
-        return; // Exit early if we have real data
+      // Try normalized product loading with robust error handling
+      let rawProducts = [];
+      let normalizedProducts = [];
+      
+      try {
+        // Attempt enhanced query with joins first
+        console.log('🔄 Attempting enhanced query with joins...');
+        rawProducts = await productOperations.getAllProducts();
+        console.log(`✅ Enhanced query successful: ${rawProducts.length} raw products loaded`);
+        
+        // Normalize products with consistent data structure
+        normalizedProducts = normalizeProductsArray(rawProducts);
+        console.log(`🔄 Normalized ${normalizedProducts.length} products`);
+        
+      } catch (joinError) {
+        console.warn('⚠️ Enhanced query failed, attempting fallback query:', joinError.message);
+        
+        // Fallback to simple query without joins
+        try {
+          const { data: simpleProducts, error: simpleError } = await supabase
+            .from('products')
+            .select('*')
+            .order('name', { ascending: true });
+
+          if (simpleError) {
+            throw simpleError;
+          }
+
+          console.log(`✅ Simple query successful: ${(simpleProducts || []).length} raw products loaded`);
+          
+          // Normalize simple products
+          normalizedProducts = normalizeProductsArray(simpleProducts || []);
+          console.log(`🔄 Normalized ${normalizedProducts.length} products from simple query`);
+          
+        } catch (fallbackError) {
+          console.error('❌ Both enhanced and simple queries failed:', fallbackError);
+          throw new Error(`Failed to load products: ${fallbackError.message}`);
+        }
       }
 
-      // Handle empty inventory database
-      console.log('📦 No products found in inventory database');
-      setProducts([]);
+      // Validate normalized products
+      const validProducts = normalizedProducts.filter(product => {
+        const isValid = validateNormalizedProduct(product);
+        if (!isValid) {
+          console.warn('⚠️ Invalid normalized product:', product);
+        }
+        return isValid;
+      });
 
-      // Show helpful message for empty inventory
+      if (isComponentMounted) {
+        if (validProducts.length > 0) {
+          console.log(`✅ ${validProducts.length} valid products after normalization and validation`);
+          setProducts(validProducts);
+          
+          // Show success notification
+          showNotification({
+            type: 'success',
+            title: 'Inventory Loaded',
+            message: `Successfully loaded ${validProducts.length} products from database.`,
+            duration: 3000
+          });
+        } else {
+          // Handle empty inventory
+          console.log('📦 No valid products found in inventory database');
+          setProducts([]);
+          
+          showNotification({
+            type: 'info',
+            title: 'Empty Inventory',
+            message: 'Your inventory is empty. Click "Add Product" to start adding items.',
+            duration: 5000
+          });
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Error loading products:', error);
+      
+      if (isComponentMounted) {
+        // Set empty array on error to prevent UI crashes
+        setProducts([]);
+        
+        // Show contextual error notification
+        let errorMessage = 'Failed to load inventory from database.';
+        let solution = 'Please check your internet connection and try again.';
+        
+        if (error.message.includes('RLS') || error.message.includes('policy')) {
+          errorMessage = 'Database access denied.';
+          solution = 'Please contact your administrator to fix database permissions.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorMessage = 'Network connection failed.';
+          solution = 'Please check your internet connection.';
+        } else if (error.message.includes('auth')) {
+          errorMessage = 'Authentication failed.';
+          solution = 'Please log out and log back in.';
+        }
+        
+        showNotification({
+          type: 'error',
+          title: errorMessage,
+          message: `${solution} Error: ${error.message}`,
+          duration: 15000
+        });
+      }
+    } finally {
+      // Always ensure loading is set to false if component is still mounted
+      if (isComponentMounted) {
+        console.log('🔄 Setting loading to false');
+        setLoading(false);
+      }
+    }
+  };
+
+  // Helper function for consistent notifications
+  const showNotification = ({ type, title, message, duration = 5000 }) => {
+    try {
       const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-blue-500 text-white p-4 rounded-lg shadow-lg z-50 max-w-sm';
+      const bgColor = {
+        success: 'bg-green-500',
+        error: 'bg-red-500', 
+        info: 'bg-blue-500',
+        warning: 'bg-yellow-500'
+      }[type] || 'bg-gray-500';
+      
+      const icon = {
+        success: '✅',
+        error: '❌',
+        info: '📦',
+        warning: '⚠️'
+      }[type] || 'ℹ️';
+      
+      notification.className = `fixed top-4 right-4 ${bgColor} text-white p-4 rounded-lg shadow-lg z-50 max-w-sm`;
       notification.innerHTML = `
         <div class="flex items-start gap-3">
-          <span class="text-2xl">📦</span>
+          <span class="text-2xl">${icon}</span>
           <div>
-            <div class="font-medium mb-1">Empty Inventory</div>
-            <div class="text-sm">
-              Your inventory is empty. Click "Add Product" to start adding items to your inventory.
-            </div>
+            <div class="font-medium mb-1">${title}</div>
+            <div class="text-sm">${message}</div>
           </div>
         </div>
       `;
+      
       document.body.appendChild(notification);
 
       setTimeout(() => {
         if (document.body.contains(notification)) {
           document.body.removeChild(notification);
         }
-      }, 10000);
-    } catch (error) {
-      console.error('Error loading products:', error);
-      // Fallback to empty array on error
-      setProducts([]);
-    } finally {
-      setLoading(false);
+      }, duration);
+    } catch (notificationError) {
+      console.warn('⚠️ Failed to show notification:', notificationError);
     }
   };
 
@@ -667,12 +807,25 @@ const Inventory = ({ onNavigate }) => {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-lg flex items-center justify-center">
-                            <Package className="h-5 w-5 text-white" />
+                          <div className="w-10 h-10 rounded-lg overflow-hidden flex items-center justify-center bg-gradient-to-br from-green-400 to-green-600">
+                            {product.imageUrls && product.imageUrls.length > 0 ? (
+                              <img
+                                src={product.imageUrls[0]}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'flex';
+                                }}
+                              />
+                            ) : null}
+                            <div className={`w-full h-full flex items-center justify-center ${product.imageUrls && product.imageUrls.length > 0 ? 'hidden' : ''}`}>
+                              <Package className="h-5 w-5 text-white" />
+                            </div>
                           </div>
                           <div>
-                            <div className="font-semibold text-foreground">{product.name}</div>
-                            <div className="text-sm text-gray-500">{product.brand}</div>
+                            <div className="font-semibold text-foreground">{product.name || 'Unnamed Product'}</div>
+                            <div className="text-sm text-gray-500">{product.brand || 'No Brand'}</div>
                             {product.description && (
                               <div className="text-xs text-gray-400 mt-1">{product.description}</div>
                             )}
@@ -682,18 +835,18 @@ const Inventory = ({ onNavigate }) => {
                       <td className="py-3 px-4">
                         <div className="space-y-1">
                           <Badge variant="secondary" className="text-xs">
-                            {product.type}
+                            {product.type || 'No Type'}
                           </Badge>
-                          <div className="text-sm text-muted-foreground">{product.category}</div>
+                          <div className="text-sm text-muted-foreground">{product.category || 'No Category'}</div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
                         <div className="space-y-1">
-                          <div className="text-sm font-mono">{product.batchNo}</div>
+                          <div className="text-sm font-mono">{product.batchNo || 'N/A'}</div>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-3 w-3 text-gray-400" />
                             <span className="text-xs text-muted-foreground">
-                              {new Date(product.expiryDate).toLocaleDateString()}
+                              {product.expiryDate ? new Date(product.expiryDate).toLocaleDateString() : 'No expiry date'}
                             </span>
                           </div>
                           <Badge variant="outline" className={`text-xs ${
@@ -712,7 +865,7 @@ const Inventory = ({ onNavigate }) => {
                       <td className="py-3 px-4">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-lg font-bold">{product.quantity}</span>
+                            <span className="text-lg font-bold">{product.quantity || 0}</span>
                             <span className="text-sm text-gray-500">units</span>
                           </div>
                           <Badge className={`text-xs ${stockStatus.color}`}>
@@ -729,14 +882,14 @@ const Inventory = ({ onNavigate }) => {
                       <td className="py-3 px-4">
                         <div className="space-y-1">
                           <div className="text-sm">
-                            <span className="font-semibold text-green-600">₹{product.salePrice.toLocaleString()}</span>
+                            <span className="font-semibold text-green-600">₹{(product.salePrice || 0).toLocaleString()}</span>
                             <span className="text-gray-500 ml-1">sale</span>
                           </div>
                           <div className="text-xs text-gray-500">
-                            Cost: ₹{product.purchasePrice.toLocaleString()}
+                            Cost: ₹{(product.purchasePrice || 0).toLocaleString()}
                           </div>
                           <div className="text-xs text-blue-600">
-                            Margin: ₹{(product.salePrice - product.purchasePrice).toLocaleString()}
+                            Margin: ₹{((product.salePrice || 0) - (product.purchasePrice || 0)).toLocaleString()}
                           </div>
                         </div>
                       </td>

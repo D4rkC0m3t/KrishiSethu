@@ -29,7 +29,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import SidebarNew from './SidebarNew';
+import Sidebar from './Sidebar';
 import Inventory from './Inventory';
 import AddProduct from './AddProduct';
 import BulkAddProductTable from './BulkAddProductTable';
@@ -42,8 +42,9 @@ import AlertsPanel from './AlertsPanel';
 import Purchases from './Purchases';
 import PurchaseEntry from './PurchaseEntry';
 import CustomerManagement from './CustomerManagement';
-import ReportsDashboard from './ReportsDashboard';
 import Reports from './Reports';
+import ReportsDashboard from './ReportsDashboard';
+import GSTReports from './reports/GSTReports';
 import InvoiceManagement from './InvoiceManagement';
 import Settings from './Settings';
 import UserManagement from './UserManagement';
@@ -52,20 +53,28 @@ import EnhancedAlertsSystem from './EnhancedAlertsSystem';
 import BackupDataManagement from './BackupDataManagement';
 import EInvoice from './EInvoice';
 import EInvoiceHistory from './EInvoiceHistory';
-import { formatCurrency, formatNumber, safeParseNumber } from '../utils/numberUtils';
+import { formatCurrency } from '../utils/numberUtils';
 import CategoriesManagement from './CategoriesManagement';
 import BrandsManagement from './BrandsManagement';
 import StockMovementsHistory from './StockMovementsHistory';
 import Documentation from './Documentation';
 import Support from './Support';
+import AdminControlPanel from './admin/AdminControlPanel';
+import DatabaseSyncTest from './DatabaseSyncTest';
+import StorageTest from './StorageTest';
 import AnimatedTitle from './AnimatedTitle';
+// Removed ErrorPage404 import since offline sync handles connectivity gracefully
+import ErrorBoundary from './ErrorBoundary';
+import useNetworkStatus from '../hooks/useNetworkStatus';
 // import ThemeTest from './ThemeTest';
 
 import DatabaseSetup from './DatabaseSetup';
-import { productsService, salesService, customersService, suppliersService } from '../lib/firestore';
+import NotificationDropdown from './NotificationDropdown';
+import { productsService, salesService, customersService, suppliersService } from '../lib/supabaseDb';
 
 const Dashboard = () => {
   const { currentUser, userProfile } = useAuth();
+  const { isOnline, retryConnection } = useNetworkStatus();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [darkMode, setDarkMode] = useState(() => {
     // Check localStorage first, then system preference
@@ -140,7 +149,21 @@ const Dashboard = () => {
       const lowStockProducts = products.filter(p => p.quantity <= 10);
       const nearExpiryProducts = products.filter(p => {
         if (!p.expiryDate) return false;
-        const expiryDate = p.expiryDate instanceof Date ? p.expiryDate : p.expiryDate.toDate();
+
+        // Handle different date formats safely
+        let expiryDate;
+        if (p.expiryDate instanceof Date) {
+          expiryDate = p.expiryDate;
+        } else if (typeof p.expiryDate === 'string') {
+          expiryDate = new Date(p.expiryDate);
+        } else if (p.expiryDate && typeof p.expiryDate.toDate === 'function') {
+          expiryDate = p.expiryDate.toDate(); // Firestore Timestamp
+        } else {
+          return false; // Invalid date format
+        }
+
+        if (isNaN(expiryDate.getTime())) return false; // Invalid date
+
         const today = new Date();
         const diffTime = expiryDate - today;
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -148,7 +171,22 @@ const Dashboard = () => {
       });
 
       const todaysSales = sales.filter(sale => {
-        const saleDate = sale.saleDate instanceof Date ? sale.saleDate : sale.saleDate.toDate();
+        if (!sale.saleDate) return false;
+
+        // Handle different date formats safely
+        let saleDate;
+        if (sale.saleDate instanceof Date) {
+          saleDate = sale.saleDate;
+        } else if (typeof sale.saleDate === 'string') {
+          saleDate = new Date(sale.saleDate);
+        } else if (sale.saleDate && typeof sale.saleDate.toDate === 'function') {
+          saleDate = sale.saleDate.toDate(); // Firestore Timestamp
+        } else {
+          return false; // Invalid date format
+        }
+
+        if (isNaN(saleDate.getTime())) return false; // Invalid date
+
         const today = new Date();
         return saleDate.toDateString() === today.toDateString();
       });
@@ -241,8 +279,16 @@ const Dashboard = () => {
   }, [darkMode]);
 
   const handleNavigation = (page, product = null) => {
+    console.log('🧭 Dashboard handleNavigation called with:', page);
+    console.log('📍 Current page before navigation:', currentPage);
     setCurrentPage(page);
+    console.log('📍 Setting current page to:', page);
     if (page === 'edit-product' && product) {
+      console.log('🔄 Setting product to edit:', product);
+      console.log('🔍 Product keys:', Object.keys(product));
+      console.log('🔍 Product name:', product.name);
+      console.log('🔍 Product categoryId/category_id:', product.categoryId, product.category_id);
+      console.log('🔍 Product brandId/brand_id:', product.brandId, product.brand_id);
       setProductToEdit(product);
       setCurrentPage('add-product'); // Use the same component for editing
     } else if (page === 'add-product') {
@@ -744,6 +790,9 @@ const Dashboard = () => {
   };
 
   const renderCurrentPage = () => {
+    console.log('🎯 Rendering page:', currentPage);
+    console.log('🎯 Available cases:', ['pos', 'inventory', 'add-product', 'bulk-add-products', 'stock-movement', 'sales', 'purchases', 'purchase-entry', 'suppliers', 'customers', 'e-invoice', 'e-invoice-history', 'categories', 'brands', 'stock-movements', 'alerts', 'alerts-system', 'reports', 'reports-dashboard', 'reports-advanced', 'reports-sales', 'reports-inventory', 'reports-financial', 'reports-profit', 'reports-gst', 'invoices', 'settings', 'admin-panel', 'user-management', 'data-import-export', 'backup-data-management', 'documentation', 'support', 'database-sync-test', 'storage-test']);
+    console.log('🎯 Is inventory case:', currentPage === 'inventory');
     switch (currentPage) {
       case 'pos':
         return <POS onNavigate={handleNavigation} />;
@@ -770,8 +819,10 @@ const Dashboard = () => {
       case 'e-invoice-history':
         return <EInvoiceHistory onNavigate={handleNavigation} />;
       case 'categories':
+        console.log('✅ Rendering CategoriesManagement component');
         return <CategoriesManagement onNavigate={handleNavigation} />;
       case 'brands':
+        console.log('✅ Rendering BrandsManagement component');
         return <BrandsManagement onNavigate={handleNavigation} />;
       case 'stock-movements':
         return <StockMovementsHistory onNavigate={handleNavigation} />;
@@ -791,10 +842,16 @@ const Dashboard = () => {
         return <Reports onNavigate={handleNavigation} defaultTab="inventory" />;
       case 'reports-financial':
         return <Reports onNavigate={handleNavigation} defaultTab="financial" />;
+      case 'reports-profit':
+        return <Reports onNavigate={handleNavigation} defaultTab="profit" />;
+      case 'reports-gst':
+        return <GSTReports onNavigate={handleNavigation} />;
       case 'invoices':
         return <InvoiceManagement onNavigate={handleNavigation} />;
       case 'settings':
         return <Settings onNavigate={handleNavigation} />;
+      case 'admin-panel':
+        return <AdminControlPanel onNavigate={handleNavigation} />;
       case 'user-management':
         return <UserManagement onNavigate={handleNavigation} />;
       case 'data-import-export':
@@ -805,9 +862,14 @@ const Dashboard = () => {
         return <Documentation onNavigate={handleNavigation} />;
       case 'support':
         return <Support onNavigate={handleNavigation} />;
+      case 'database-sync-test':
+        return <DatabaseSyncTest onNavigate={handleNavigation} />;
+      case 'storage-test':
+        return <StorageTest onNavigate={handleNavigation} />;
       // case 'theme-test':
         // return <ThemeTest onNavigate={handleNavigation} />;
       default:
+        console.log('❌ No matching route found for:', currentPage, '- rendering dashboard');
         return renderDashboard();
     }
   };
@@ -856,7 +918,7 @@ const Dashboard = () => {
                }}>
             {/* Inner Card */}
             <Card className="rounded-xl overflow-hidden border-none">
-              <div className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500
+              <div className="bg-gradient-to-r from-gray-900 via-black to-gray-800
                              bg-[length:200%_200%] animate-gradient
                              text-white p-6 rounded-xl relative">
                 {/* Background Pattern */}
@@ -985,7 +1047,7 @@ const Dashboard = () => {
               description="This Month"
               icon={<DollarSign className="h-6 w-6 text-white" />}
               trend={stats.todaysSalesChange}
-              bgGradient="from-green-500 to-emerald-600"
+              bgGradient="from-blue-500 to-blue-600"
               onClick={() => handleNavigation('reports')}
               subItems={[
                 { label: "Sales", value: formatCurrency((stats.totalRevenue || 0) * 0.7), color: "bg-green-400" },
@@ -1323,11 +1385,15 @@ const Dashboard = () => {
     </main>
   );
 
+  // Note: Removed 404 error page for offline state since we have offline sync feature
+  // Users can continue working offline with automatic sync when connection is restored
+
   return (
+    <ErrorBoundary onNavigate={handleNavigation}>
     <div className="h-screen flex transition-colors duration-300 bg-background">
       {/* Sidebar - Hide for POS */}
       {currentPage !== 'pos' && (
-        <SidebarNew
+        <Sidebar
           theme={darkMode ? 'dark' : 'light'}
           currentPage={currentPage}
           onNavigate={handleNavigation}
@@ -1370,19 +1436,11 @@ const Dashboard = () => {
                   {darkMode ? '☀️' : '🌙'}
                 </Button>
 
-                {/* Alerts Notification */}
-                <Button
-                  variant="ghost"
-                  onClick={() => handleNavigation('alerts-system')}
-                  className="relative text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
-                >
-                  🔔 Alerts
-                  {alerts.filter(a => !a.isRead).length > 0 && (
-                    <Badge className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-[20px] h-5 rounded-full flex items-center justify-center animate-pulse">
-                      {alerts.filter(a => !a.isRead).length}
-                    </Badge>
-                  )}
-                </Button>
+                {/* Notifications Dropdown */}
+                <NotificationDropdown
+                  alerts={alerts}
+                  onNavigate={handleNavigation}
+                />
               </div>
             </div>
           </div>
@@ -1395,6 +1453,7 @@ const Dashboard = () => {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 };
 

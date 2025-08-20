@@ -26,8 +26,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { shopDetailsService } from '../lib/shopDetails';
-import { storage } from '../lib/firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { storageService } from '../lib/storage';
 
 const Settings = ({ onNavigate }) => {
   const { currentUser, userProfile } = useAuth();
@@ -144,21 +143,51 @@ const Settings = ({ onNavigate }) => {
     dataEncryption: true
   });
 
-  // Load shop details on component mount
+  // Load all settings on component mount
   useEffect(() => {
-    loadShopDetails();
+    loadAllSettings();
   }, []);
 
-  // Load shop details from service
-  const loadShopDetails = async () => {
+  // Load all settings from database
+  const loadAllSettings = async () => {
     try {
+      // Load company info from shop details service
       const details = await shopDetailsService.getShopDetails();
       console.log('Loaded shop details:', details);
       setCompanyInfo(details);
-      // Clear any preview since we're loading from database
       setLogoPreview(null);
+
+      // Load other settings from database
+      const { settingsOperations } = await import('../lib/supabaseDb');
+      const systemSettings = await settingsOperations.getSystemSettings();
+      console.log('Loaded system settings:', systemSettings);
+
+      // Apply loaded settings to state
+      if (systemSettings.taxSettings) {
+        setTaxSettings(prev => ({ ...prev, ...systemSettings.taxSettings }));
+      }
+      if (systemSettings.inventorySettings) {
+        setInventorySettings(prev => ({ ...prev, ...systemSettings.inventorySettings }));
+      }
+      if (systemSettings.salesSettings) {
+        setSalesSettings(prev => ({ ...prev, ...systemSettings.salesSettings }));
+      }
+      if (systemSettings.purchaseSettings) {
+        setPurchaseSettings(prev => ({ ...prev, ...systemSettings.purchaseSettings }));
+      }
+      if (systemSettings.notificationSettings) {
+        setNotificationSettings(prev => ({ ...prev, ...systemSettings.notificationSettings }));
+      }
+      if (systemSettings.userSettings) {
+        setUserPreferences(prev => ({ ...prev, ...systemSettings.userSettings }));
+      }
+      if (systemSettings.securitySettings) {
+        setSecuritySettings(prev => ({ ...prev, ...systemSettings.securitySettings }));
+      }
+
+      console.log('All settings loaded successfully');
     } catch (error) {
-      console.error('Failed to load shop details:', error);
+      console.error('Failed to load settings:', error);
     }
   };
 
@@ -171,19 +200,39 @@ const Settings = ({ onNavigate }) => {
         await shopDetailsService.updateShopDetails(companyInfo);
         console.log('Company information saved to shop details service');
       } else {
-        // Simulate API call for other settings
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Save other settings to database using settings service
+        const { settingsOperations } = await import('../lib/supabaseDb');
 
-        // In a real app, save to Firebase/backend
-        console.log(`Saving ${section} settings:`, {
-          taxSettings,
-          inventorySettings,
-          salesSettings,
-          purchaseSettings,
-          notificationSettings,
-          userPreferences,
-          securitySettings
-        });
+        let settingsData;
+        switch (section) {
+          case 'tax':
+            settingsData = taxSettings;
+            break;
+          case 'inventory':
+            settingsData = inventorySettings;
+            break;
+          case 'sales':
+            settingsData = salesSettings;
+            break;
+          case 'purchase':
+            settingsData = purchaseSettings;
+            break;
+          case 'notifications':
+            settingsData = notificationSettings;
+            break;
+          case 'user':
+            settingsData = userPreferences;
+            break;
+          case 'security':
+            settingsData = securitySettings;
+            break;
+          default:
+            throw new Error(`Unknown settings section: ${section}`);
+        }
+
+        console.log(`Saving ${section} settings to database:`, settingsData);
+        await settingsOperations.updateSettingSection(`${section}Settings`, settingsData);
+        console.log(`${section} settings saved to database successfully`);
       }
 
       alert(`${section} settings saved successfully!`);
@@ -221,27 +270,17 @@ const Settings = ({ onNavigate }) => {
       const previewUrl = URL.createObjectURL(file);
       setLogoPreview(previewUrl);
 
-      console.log('Uploading to Firebase Storage...');
-      // Upload to Firebase Storage with timeout
+      console.log('Uploading to Supabase Storage...');
+      // Upload to Supabase Storage
       const fileName = `logo_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-      const logoRef = ref(storage, `company/${fileName}`);
 
-      console.log('Upload reference created:', logoRef.fullPath);
-
-      // Create a timeout promise
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Upload timeout after 30 seconds')), 30000);
+      console.log('Starting upload...');
+      const uploadResult = await storageService.uploadFile(file, 'company/', (progress) => {
+        console.log('Upload progress:', progress);
       });
 
-      // Race between upload and timeout
-      const uploadResult = await Promise.race([
-        uploadBytes(logoRef, file),
-        timeoutPromise
-      ]);
-      console.log('Upload completed:', uploadResult);
-
-      console.log('Getting download URL...');
-      const downloadURL = await getDownloadURL(logoRef);
+      console.log('Upload completed, getting download URL...');
+      const downloadURL = uploadResult.url;
       console.log('Download URL obtained:', downloadURL);
 
       // Update company info with logo URL
@@ -360,52 +399,97 @@ const Settings = ({ onNavigate }) => {
             sgstRate: 9
           });
           break;
-        // Add other cases as needed
+        default:
+          console.warn(`Unknown section: ${section}`);
+          break;
       }
     }
   };
 
-  const exportSettings = () => {
-    const settings = {
-      companyInfo,
-      taxSettings,
-      inventorySettings,
-      salesSettings,
-      purchaseSettings,
-      notificationSettings,
-      userPreferences,
-      securitySettings,
-      exportedAt: new Date().toISOString(),
-      exportedBy: currentUser?.email
-    };
-    
-    const dataStr = JSON.stringify(settings, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `krishisethu-settings-${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
+  const exportSettings = async () => {
+    try {
+      // Get fresh data from database
+      const { settingsOperations } = await import('../lib/supabaseDb');
+      const systemSettings = await settingsOperations.getSystemSettings();
+      const companyDetails = await shopDetailsService.getShopDetails();
+
+      const settings = {
+        companyInfo: companyDetails,
+        ...systemSettings,
+        exportedAt: new Date().toISOString(),
+        exportedBy: currentUser?.email,
+        version: '1.0'
+      };
+
+      const dataStr = JSON.stringify(settings, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `krishisethu-settings-${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+
+      console.log('Settings exported successfully');
+    } catch (error) {
+      console.error('Error exporting settings:', error);
+      alert('Error exporting settings. Please try again.');
+    }
   };
 
   const importSettings = (event) => {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const settings = JSON.parse(e.target.result);
-          // Validate and apply settings
-          if (settings.companyInfo) setCompanyInfo(settings.companyInfo);
-          if (settings.taxSettings) setTaxSettings(settings.taxSettings);
-          if (settings.inventorySettings) setInventorySettings(settings.inventorySettings);
-          if (settings.salesSettings) setSalesSettings(settings.salesSettings);
-          if (settings.purchaseSettings) setPurchaseSettings(settings.purchaseSettings);
-          if (settings.notificationSettings) setNotificationSettings(settings.notificationSettings);
-          if (settings.userPreferences) setUserPreferences(settings.userPreferences);
-          if (settings.securitySettings) setSecuritySettings(settings.securitySettings);
-          alert('Settings imported successfully!');
+          const { settingsOperations } = await import('../lib/supabaseDb');
+
+          // Import and save each section to database
+          if (settings.companyInfo) {
+            setCompanyInfo(settings.companyInfo);
+            await shopDetailsService.updateShopDetails(settings.companyInfo);
+          }
+
+          if (settings.taxSettings) {
+            setTaxSettings(settings.taxSettings);
+            await settingsOperations.updateSettingSection('taxSettings', settings.taxSettings);
+          }
+
+          if (settings.inventorySettings) {
+            setInventorySettings(settings.inventorySettings);
+            await settingsOperations.updateSettingSection('inventorySettings', settings.inventorySettings);
+          }
+
+          if (settings.salesSettings) {
+            setSalesSettings(settings.salesSettings);
+            await settingsOperations.updateSettingSection('salesSettings', settings.salesSettings);
+          }
+
+          if (settings.purchaseSettings) {
+            setPurchaseSettings(settings.purchaseSettings);
+            await settingsOperations.updateSettingSection('purchaseSettings', settings.purchaseSettings);
+          }
+
+          if (settings.notificationSettings) {
+            setNotificationSettings(settings.notificationSettings);
+            await settingsOperations.updateSettingSection('notificationSettings', settings.notificationSettings);
+          }
+
+          if (settings.userPreferences) {
+            setUserPreferences(settings.userPreferences);
+            await settingsOperations.updateSettingSection('userSettings', settings.userPreferences);
+          }
+
+          if (settings.securitySettings) {
+            setSecuritySettings(settings.securitySettings);
+            await settingsOperations.updateSettingSection('securitySettings', settings.securitySettings);
+          }
+
+          alert('Settings imported and saved to database successfully!');
+          console.log('Settings imported successfully');
         } catch (error) {
+          console.error('Error importing settings:', error);
           alert('Error importing settings. Please check the file format.');
         }
       };

@@ -4,59 +4,26 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import {
   Database,
   Download,
-  Upload,
   RefreshCw,
-  Calendar,
   Clock,
   CheckCircle,
   XCircle,
-  AlertTriangle,
   Archive,
   Trash2,
   Settings,
   Shield,
   HardDrive,
   Cloud,
-  Server,
-  FileText,
-  FolderOpen,
-  History,
-  Target,
-  Zap,
-  Activity,
-  BarChart3,
-  PieChart,
-  TrendingUp,
-  Users,
-  Package,
-  ShoppingCart,
-  Truck,
-  DollarSign,
-  Eye,
-  Play,
-  Pause,
-  RotateCcw,
-  Save,
-  Copy,
-  ExternalLink,
-  AlertCircle,
-  Info,
-  Plus,
-  Edit,
-  Search,
-  Filter,
-  MoreHorizontal
+  RotateCcw
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const BackupDataManagement = ({ onNavigate }) => {
-  const { currentUser, userProfile, hasPermission, isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState('backups');
+  const { userProfile, hasPermission, isAdmin } = useAuth();
   const [backups, setBackups] = useState([]);
   const [archives, setArchives] = useState([]);
   const [backupSettings, setBackupSettings] = useState({
@@ -84,24 +51,8 @@ const BackupDataManagement = ({ onNavigate }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
-  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-
-  // Data archiving settings
-  const [archiveSettings, setArchiveSettings] = useState({
-    autoArchiveEnabled: true,
-    archiveAfterDays: 365,
-    archiveOldSales: true,
-    archiveOldPurchases: true,
-    archiveOldReports: true,
-    archiveInactiveCustomers: false,
-    compressionLevel: 'high',
-    verifyIntegrity: true
-  });
 
   // Backup types and collections
   const BACKUP_TYPES = {
@@ -122,7 +73,7 @@ const BackupDataManagement = ({ onNavigate }) => {
     selective: {
       name: 'Selective Backup',
       description: 'Choose specific collections to backup',
-      icon: Target,
+      icon: Database,
       collections: [],
       estimatedSize: 'Variable'
     },
@@ -333,15 +284,7 @@ const BackupDataManagement = ({ onNavigate }) => {
     }
   };
 
-  const handleRestoreBackup = async (backup) => {
-    if (!isAdmin()) {
-      alert('Only administrators can restore backups');
-      return;
-    }
 
-    setSelectedBackup(backup);
-    setShowRestoreDialog(true);
-  };
 
   const confirmRestoreBackup = async () => {
     if (!selectedBackup) return;
@@ -402,42 +345,7 @@ const BackupDataManagement = ({ onNavigate }) => {
     }
   };
 
-  const handleArchiveData = async (type, period) => {
-    if (!hasPermission('manager')) {
-      alert('You do not have permission to archive data');
-      return;
-    }
 
-    setIsProcessing(true);
-    try {
-      // Simulate archiving process
-      await new Promise(resolve => setTimeout(resolve, 4000));
-
-      const newArchive = {
-        id: Date.now().toString(),
-        name: `${type}_archive_${period.replace(/\s+/g, '_').toLowerCase()}`,
-        type,
-        period,
-        size: `${Math.floor(Math.random() * 200) + 50}.${Math.floor(Math.random() * 9)} MB`,
-        status: 'completed',
-        createdAt: new Date(),
-        recordCount: Math.floor(Math.random() * 2000) + 500,
-        compressed: true,
-        location: 'cloud',
-        accessCount: 0,
-        lastAccessed: null
-      };
-
-      setArchives(prev => [newArchive, ...prev]);
-      alert(`${type} data archived successfully for ${period}!`);
-      setShowArchiveDialog(false);
-    } catch (error) {
-      console.error('Error archiving data:', error);
-      alert('Error archiving data');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const saveBackupSettings = () => {
     localStorage.setItem('backupSettings', JSON.stringify(backupSettings));
@@ -479,14 +387,7 @@ const BackupDataManagement = ({ onNavigate }) => {
     );
   };
 
-  const filteredBackups = backups.filter(backup => {
-    const matchesSearch = backup.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         backup.createdBy.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'all' || backup.type === filterType;
-    const matchesStatus = filterStatus === 'all' || backup.status === filterStatus;
-    
-    return matchesSearch && matchesType && matchesStatus;
-  });
+  const filteredBackups = backups;
 
   // Check permissions
   if (!hasPermission('staff')) {

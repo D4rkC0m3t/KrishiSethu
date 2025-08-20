@@ -32,7 +32,7 @@ const InvoiceTemplate = ({ invoiceData }) => {
   return (
     <div className="bg-white text-gray-900 min-h-screen print:min-h-0">
       {/* Print Styles */}
-      <style jsx>{`
+      <style>{`
         @media print {
           body { margin: 0; }
           .no-print { display: none !important; }

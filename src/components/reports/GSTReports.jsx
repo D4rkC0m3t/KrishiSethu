@@ -20,12 +20,12 @@ import {
   Eye,
   ExternalLink
 } from 'lucide-react';
-import { salesService, purchasesService } from '../../lib/firestore';
+import { salesService, purchasesService } from '../../lib/supabaseDb';
 import { shopDetailsService } from '../../lib/shopDetails';
 import { gstService } from '../../lib/gstService';
 import ReportHeader from './ReportHeader';
 
-const GSTReports = () => {
+const GSTReports = ({ onNavigate }) => {
   const [loading, setLoading] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -40,11 +40,7 @@ const GSTReports = () => {
   const [detailedPurchaseData, setDetailedPurchaseData] = useState([]);
   const [gstSummaryData, setGstSummaryData] = useState(null);
 
-  useEffect(() => {
-    loadCompanyDetails();
-    generateGSTReport();
-  }, [selectedMonth, selectedYear]);
-
+  // Load company details - defined before useEffect to avoid hoisting issues
   const loadCompanyDetails = async () => {
     try {
       const details = await shopDetailsService.getShopDetails();
@@ -54,6 +50,7 @@ const GSTReports = () => {
     }
   };
 
+  // Generate GST report - defined before useEffect to avoid hoisting issues
   const generateGSTReport = async () => {
     setLoading(true);
     try {
@@ -715,6 +712,12 @@ const GSTReports = () => {
       printWindow.print();
     }, 500);
   };
+
+  // Load data on component mount - useEffect placed after function definitions
+  useEffect(() => {
+    loadCompanyDetails();
+    generateGSTReport();
+  }, [selectedMonth, selectedYear]);
 
   if (loading) {
     return (

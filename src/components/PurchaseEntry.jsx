@@ -22,54 +22,42 @@ const PurchaseEntry = ({ onNavigate }) => {
     notes: ''
   });
 
-  // Load mock data
+  // Load real data from database
   useEffect(() => {
-    const mockSuppliers = [
-      { id: 'sup1', name: 'Tata Chemicals Ltd', phone: '+91-9876543210' },
-      { id: 'sup2', name: 'IFFCO Distributors', phone: '+91-9876543211' },
-      { id: 'sup3', name: 'Green Gold Organics', phone: '+91-9876543212' }
-    ];
+    const loadData = async () => {
+      try {
+        // Import the services
+        const { suppliersService, productsService } = await import('../lib/supabaseDb');
 
-    const mockProducts = [
-      { id: 'prod1', name: 'NPK 10:26:26', type: 'Chemical Fertilizer', currentStock: 50 },
-      { id: 'prod2', name: 'Urea 46%', type: 'Chemical Fertilizer', currentStock: 75 },
-      { id: 'prod3', name: 'Organic Compost', type: 'Organic Fertilizer', currentStock: 30 }
-    ];
+        // Load real suppliers
+        const suppliersData = await suppliersService.getAll();
+        setSuppliers(suppliersData || []);
 
-    const mockPurchases = [
-      {
-        id: 'pur1',
-        supplierId: 'sup1',
-        supplierName: 'Tata Chemicals Ltd',
-        productId: 'prod1',
-        productName: 'NPK 10:26:26',
-        quantity: 100,
-        costPerUnit: 45,
-        totalCost: 4500,
-        invoiceNumber: 'INV-2024-001',
-        purchaseDate: '2024-01-15',
-        status: 'Received',
-        createdAt: new Date('2024-01-15')
-      },
-      {
-        id: 'pur2',
-        supplierId: 'sup2',
-        supplierName: 'IFFCO Distributors',
-        productId: 'prod2',
-        productName: 'Urea 46%',
-        quantity: 200,
-        costPerUnit: 25,
-        totalCost: 5000,
-        invoiceNumber: 'INV-2024-002',
-        purchaseDate: '2024-01-20',
-        status: 'Pending',
-        createdAt: new Date('2024-01-20')
+        // Load real products
+        const productsData = await productsService.getAll();
+
+        // Map products to match the expected format
+        const mappedProducts = (productsData || []).map(product => ({
+          id: product.id,
+          name: product.name,
+          type: product.type || 'Unknown',
+          currentStock: product.quantity || 0
+        }));
+
+        setProducts(mappedProducts);
+
+      } catch (error) {
+        console.error('❌ Error loading data in PurchaseEntry:', error);
+        // Fallback to empty arrays
+        setSuppliers([]);
+        setProducts([]);
       }
-    ];
+    };
 
-    setSuppliers(mockSuppliers);
-    setProducts(mockProducts);
-    setPurchases(mockPurchases);
+    loadData();
+
+        // Initialize with empty purchases array
+        setPurchases([]);
   }, []);
 
   // Calculate total cost when quantity or cost per unit changes
@@ -195,17 +183,33 @@ const PurchaseEntry = ({ onNavigate }) => {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">Product *</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Product *</label>
+                    <span className="text-xs text-muted-foreground">
+                      ({products.length} available)
+                    </span>
+                  </div>
                   <Select value={formData.productId} onValueChange={(value) => handleSelectChange('productId', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select product" />
                     </SelectTrigger>
-                    <SelectContent>
-                      {products.map(product => (
-                        <SelectItem key={product.id} value={product.id}>
-                          {product.name} (Stock: {product.currentStock})
-                        </SelectItem>
-                      ))}
+                    <SelectContent className="max-h-[300px] overflow-y-auto">
+                      {products.length > 0 ? (
+                        <>
+                          <div className="px-2 py-1 text-xs text-blue-600 font-semibold border-b">
+                            {products.length} products available
+                          </div>
+                          {products.map(product => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name} (Stock: {product.currentStock})
+                            </SelectItem>
+                          ))}
+                        </>
+                      ) : (
+                        <div className="px-2 py-1 text-sm text-gray-500">
+                          No products found. Loading...
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

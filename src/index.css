@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global focus ring removal */
+@layer base {
+  :focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  :focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Clean focus styles - no glow, no layout shift */
+@layer components {
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: none !important;
+    box-shadow: none !important;
+    border-width: 2px !important; /* keep layout stable */
+    border-color: rgb(156 163 175) !important; /* gray-400 */
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

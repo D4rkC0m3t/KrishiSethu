@@ -5,7 +5,6 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { customersService } from '../lib/supabaseDb';
-import { realtimeService } from '../lib/realtime';
 import { useDebouncedSearch, usePerformanceMonitor } from '../hooks/usePerformance';
 import {
   Users,
@@ -35,146 +34,148 @@ const CustomerManagement = ({ onNavigate }) => {
     email: '',
     address: '',
     city: '',
+    state: '',
     pincode: '',
-    creditLimit: '',
-    notes: ''
+    creditLimit: ''
   });
 
-  // Load customers from Firebase with performance monitoring
+  // Load customers from database
   const loadCustomers = useCallback(async () => {
-    return measureAsync('loadCustomers', async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        console.log('Loading customers from Firebase...');
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔄 Loading customers...');
 
       const firebaseCustomers = await customersService.getAll();
-      console.log('Loaded customers:', firebaseCustomers);
+      console.log('✅ Loaded customers:', firebaseCustomers?.length || 0);
 
       if (firebaseCustomers && firebaseCustomers.length > 0) {
+        console.log('📋 Setting customers from database');
         setCustomers(firebaseCustomers);
       } else {
+        console.log('📝 No customers found, creating sample data...');
         // If no customers exist, create some sample data
         await createSampleCustomers();
       }
     } catch (error) {
-      console.error('Error loading customers:', error);
+      console.error('❌ Error loading customers:', error);
       setError('Failed to load customers. Please try again.');
       // Fallback to empty array
       setCustomers([]);
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [measureAsync]);
+    } finally {
+      setLoading(false);
+    }
+  }, []); // Empty dependency array to prevent infinite loops
 
   // Create sample customers for demo
-  const createSampleCustomers = async () => {
+  const createSampleCustomers = useCallback(async () => {
     const sampleCustomers = [
       {
         name: 'Rajesh Kumar',
         phone: '+91-9876543210',
         email: 'rajesh@email.com',
-        address: '123 Farm Road, Village Khetpur',
-        city: 'Khetpur',
-        pincode: '123456',
+        address: {
+          street: '123 Farm Road, Village Khetpur',
+          city: 'Khetpur',
+          state: 'Uttar Pradesh',
+          pincode: '123456',
+          country: 'India'
+        },
         creditLimit: 50000,
-        currentCredit: 15000,
+        outstandingAmount: 15000,
         totalPurchases: 125000,
-        lastPurchase: '2024-01-20',
-        status: 'Active',
-        joinDate: '2023-06-15',
-        purchaseHistory: [
-          { date: '2024-01-20', amount: 5000, items: 'NPK Fertilizer, Urea' },
-          { date: '2024-01-10', amount: 3500, items: 'Organic Compost' },
-          { date: '2023-12-25', amount: 7500, items: 'Bio Fertilizer Mix' }
-        ]
+        isActive: true
       },
       {
         name: 'Priya Sharma',
         phone: '+91-9876543211',
         email: 'priya@email.com',
-        address: '456 Green Valley, Sector 12',
-        city: 'Farmville',
-        pincode: '654321',
+        address: {
+          street: '456 Green Valley, Sector 12',
+          city: 'Farmville',
+          state: 'Maharashtra',
+          pincode: '654321',
+          country: 'India'
+        },
         creditLimit: 30000,
-        currentCredit: 5000,
+        outstandingAmount: 5000,
         totalPurchases: 85000,
-        lastPurchase: '2024-01-18',
-        status: 'Active',
-        joinDate: '2023-08-20',
-        purchaseHistory: [
-          { date: '2024-01-18', amount: 4200, items: 'Chemical Fertilizer' },
-          { date: '2024-01-05', amount: 2800, items: 'Seeds, Pesticides' }
-        ]
+        isActive: true
       },
       {
         name: 'Amit Patel',
         phone: '+91-9876543212',
         email: 'amit@email.com',
-        address: '789 Agriculture Lane',
-        city: 'Croptown',
-        pincode: '789012',
+        address: {
+          street: '789 Agriculture Lane',
+          city: 'Croptown',
+          state: 'Gujarat',
+          pincode: '789012',
+          country: 'India'
+        },
         creditLimit: 75000,
-        currentCredit: 45000,
+        outstandingAmount: 45000,
         totalPurchases: 200000,
-        lastPurchase: '2024-01-15',
-        status: 'VIP',
-        joinDate: '2023-03-10',
-        purchaseHistory: [
-          { date: '2024-01-15', amount: 12000, items: 'Bulk NPK Order' },
-          { date: '2024-01-01', amount: 8500, items: 'Organic Fertilizers' }
-        ]
+        isActive: true
       }
     ];
 
     try {
+      console.log('🔄 Creating sample customers...');
+      const createdCustomers = [];
+
       for (const customer of sampleCustomers) {
-        await customersService.create(customer);
+        try {
+          const created = await customersService.create(customer);
+          createdCustomers.push(created);
+          console.log('✅ Created customer:', created.name);
+        } catch (error) {
+          console.error('❌ Failed to create customer:', customer.name, error);
+        }
       }
-      // Reload customers after creating samples
-      const newCustomers = await customersService.getAll();
-      setCustomers(newCustomers);
+
+      // Set customers directly instead of reloading
+      if (createdCustomers.length > 0) {
+        console.log('📋 Setting sample customers:', createdCustomers.length);
+        setCustomers(createdCustomers);
+      }
     } catch (error) {
-      console.error('Error creating sample customers:', error);
+      console.error('❌ Error creating sample customers:', error);
+      setCustomers([]); // Set empty array on error
     }
-  };
+  }, []); // Empty dependency array
 
   useEffect(() => {
-    // Set up real-time subscription for customers
-    const unsubscribe = realtimeService.subscribeToCustomers((data, error) => {
-      if (error) {
-        console.error('Real-time customers error:', error);
-        setError('Failed to sync customer data. Please refresh.');
-        // Fallback to manual loading
-        loadCustomers();
-      } else if (data) {
-        console.log('Real-time customers update:', data);
-        setCustomers(data);
-        setLoading(false);
-      }
-    });
-
-    // Initial load if real-time fails
+    // Load customers on component mount
     loadCustomers();
-
-    // Cleanup subscription on unmount
-    return () => {
-      unsubscribe();
-    };
-  }, []);
+  }, []); // Empty dependency array - only run once on mount
 
   // Memoized filtered customers for performance
   const filteredCustomers = useMemo(() => {
     if (!debouncedSearchTerm) return customers;
 
     const searchLower = debouncedSearchTerm.toLowerCase();
-    return customers.filter(customer =>
-      customer.name.toLowerCase().includes(searchLower) ||
-      customer.phone.includes(debouncedSearchTerm) ||
-      customer.email.toLowerCase().includes(searchLower) ||
-      customer.city.toLowerCase().includes(searchLower)
-    );
+    return customers.filter(customer => {
+      // Safe string checks with fallbacks
+      const name = (customer.name || '').toLowerCase();
+      const phone = customer.phone || '';
+      const email = (customer.email || '').toLowerCase();
+
+      // Handle address object or string
+      let city = '';
+      if (customer.address && typeof customer.address === 'object') {
+        city = (customer.address.city || '').toLowerCase();
+      } else if (customer.city) {
+        city = (customer.city || '').toLowerCase();
+      }
+
+      return (
+        name.includes(searchLower) ||
+        phone.includes(debouncedSearchTerm) ||
+        email.includes(searchLower) ||
+        city.includes(searchLower)
+      );
+    });
   }, [debouncedSearchTerm, customers]);
 
   const handleInputChange = (e) => {
@@ -194,20 +195,34 @@ const CustomerManagement = ({ onNavigate }) => {
         return;
       }
 
+      // Format data to match database schema
       const newCustomer = {
-        ...formData,
+        name: formData.name?.trim(),
+        phone: formData.phone?.trim(),
+        email: formData.email?.trim() || null,
+
+        // Create address object for JSONB field
+        address: {
+          street: formData.address?.trim() || '',
+          city: formData.city?.trim() || '',
+          state: formData.state?.trim() || '',
+          pincode: formData.pincode?.trim() || '',
+          country: 'India'
+        },
+
+        // Map to database field names
         creditLimit: parseFloat(formData.creditLimit) || 0,
-        currentCredit: 0,
+        outstandingAmount: 0,
         totalPurchases: 0,
-        lastPurchase: null,
-        status: 'Active',
-        joinDate: new Date().toISOString().split('T')[0],
-        purchaseHistory: []
+        isActive: true
+
+        // Note: 'notes' field removed as it doesn't exist in database schema
       };
 
-      // Save to Firebase
+      // Save to database
+      console.log('🔄 Creating customer with data:', newCustomer);
       const createdCustomer = await customersService.create(newCustomer);
-      console.log('Customer created:', createdCustomer);
+      console.log('✅ Customer created successfully:', createdCustomer);
 
       // Refresh the customer list
       await loadCustomers();
@@ -219,17 +234,36 @@ const CustomerManagement = ({ onNavigate }) => {
         email: '',
         address: '',
         city: '',
+        state: '',
         pincode: '',
-        creditLimit: '',
-        notes: ''
+        creditLimit: ''
       });
 
       setShowAddDialog(false);
       alert('Customer added successfully!');
     } catch (error) {
-      console.error('Error adding customer:', error);
-      setError('Failed to add customer. Please try again.');
-      alert('Error adding customer');
+      console.error('❌ Error adding customer:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+
+      // More specific error messages
+      let errorMessage = 'Failed to add customer. ';
+      if (error.message?.includes('duplicate key')) {
+        errorMessage += 'A customer with this phone number already exists.';
+      } else if (error.message?.includes('violates check constraint')) {
+        errorMessage += 'Invalid data provided.';
+      } else if (error.message?.includes('not-null constraint')) {
+        errorMessage += 'Required fields are missing.';
+      } else {
+        errorMessage += `Error: ${error.message || 'Unknown error'}`;
+      }
+
+      setError(errorMessage);
+      alert(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -265,25 +299,37 @@ const CustomerManagement = ({ onNavigate }) => {
   };
 
   const getStatusBadge = (status) => {
+    const safeStatus = status || 'Active'; // Default to 'Active' if undefined
     const variants = {
       'Active': 'default',
       'VIP': 'secondary',
       'Inactive': 'outline'
     };
-    return <Badge variant={variants[status] || 'default'}>{status}</Badge>;
+    return <Badge variant={variants[safeStatus] || 'default'}>{safeStatus}</Badge>;
   };
 
   const getCreditStatus = (customer) => {
-    const utilization = (customer.currentCredit / customer.creditLimit) * 100;
+    // Use outstandingAmount instead of currentCredit to match database schema
+    const currentCredit = customer.outstandingAmount || customer.currentCredit || 0;
+    const creditLimit = customer.creditLimit || 0;
+    if (creditLimit === 0) return { color: 'text-gray-600', status: 'No Limit' };
+
+    const utilization = (currentCredit / creditLimit) * 100;
     if (utilization > 80) return { color: 'text-red-600', status: 'High' };
     if (utilization > 50) return { color: 'text-yellow-600', status: 'Medium' };
     return { color: 'text-green-600', status: 'Low' };
   };
 
+  // Helper function to safely format numbers
+  const formatNumber = (value) => {
+    const num = Number(value) || 0;
+    return num.toLocaleString();
+  };
+
   const totalCustomers = customers.length;
-  const activeCustomers = customers.filter(c => c.status === 'Active').length;
-  const vipCustomers = customers.filter(c => c.status === 'VIP').length;
-  const totalCreditOutstanding = customers.reduce((sum, c) => sum + c.currentCredit, 0);
+  const activeCustomers = customers.filter(c => (c.status || 'Active') === 'Active').length;
+  const vipCustomers = customers.filter(c => (c.status || '') === 'VIP').length;
+  const totalCreditOutstanding = customers.reduce((sum, c) => sum + (Number(c.outstandingAmount) || 0), 0);
 
   return (
     <div className="space-y-6 p-6 bg-background text-foreground min-h-screen">
@@ -372,13 +418,22 @@ const CustomerManagement = ({ onNavigate }) => {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-sm font-medium">City</label>
                     <Input
                       name="city"
                       placeholder="City"
                       value={formData.city}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">State</label>
+                    <Input
+                      name="state"
+                      placeholder="State"
+                      value={formData.state}
                       onChange={handleInputChange}
                     />
                   </div>
@@ -404,15 +459,7 @@ const CustomerManagement = ({ onNavigate }) => {
                   />
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium">Notes</label>
-                  <Input
-                    name="notes"
-                    placeholder="Additional notes..."
-                    value={formData.notes}
-                    onChange={handleInputChange}
-                  />
-                </div>
+
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
@@ -479,7 +526,7 @@ const CustomerManagement = ({ onNavigate }) => {
             <span className="text-2xl">💳</span>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalCreditOutstanding.toLocaleString()}</div>
+            <div className="text-2xl font-bold">₹{formatNumber(totalCreditOutstanding)}</div>
             <p className="text-xs text-muted-foreground">Total credit used</p>
           </CardContent>
         </Card>
@@ -539,11 +586,15 @@ const CustomerManagement = ({ onNavigate }) => {
                         📞 {customer.phone} • 📧 {customer.email || 'No email'}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        📍 {customer.city} • 💰 Total Purchases: ₹{customer.totalPurchases.toLocaleString()}
+                        📍 {
+                          customer.address && typeof customer.address === 'object'
+                            ? (customer.address.city || 'Unknown')
+                            : (customer.city || 'Unknown')
+                        } • 💰 Total Purchases: ₹{formatNumber(customer.totalPurchases)}
                       </p>
                       <div className="flex items-center space-x-4 mt-1">
                         <span className="text-sm">
-                          Credit: ₹{customer.currentCredit.toLocaleString()} / ₹{customer.creditLimit.toLocaleString()}
+                          Credit: ₹{formatNumber(customer.outstandingAmount || customer.currentCredit)} / ₹{formatNumber(customer.creditLimit)}
                         </span>
                         <span className={`text-sm ${creditStatus.color}`}>
                           {creditStatus.status} Usage
@@ -611,11 +662,11 @@ const CustomerManagement = ({ onNavigate }) => {
                   <h4 className="font-medium mb-2">Account Information</h4>
                   <div className="space-y-1 text-sm">
                     <p><strong>Status:</strong> {getStatusBadge(selectedCustomer.status)}</p>
-                    <p><strong>Join Date:</strong> {new Date(selectedCustomer.joinDate).toLocaleDateString()}</p>
-                    <p><strong>Credit Limit:</strong> ₹{selectedCustomer.creditLimit.toLocaleString()}</p>
-                    <p><strong>Current Credit:</strong> ₹{selectedCustomer.currentCredit.toLocaleString()}</p>
-                    <p><strong>Available Credit:</strong> ₹{(selectedCustomer.creditLimit - selectedCustomer.currentCredit).toLocaleString()}</p>
-                    <p><strong>Total Purchases:</strong> ₹{selectedCustomer.totalPurchases.toLocaleString()}</p>
+                    <p><strong>Join Date:</strong> {selectedCustomer.joinDate ? new Date(selectedCustomer.joinDate).toLocaleDateString() : 'Unknown'}</p>
+                    <p><strong>Credit Limit:</strong> ₹{formatNumber(selectedCustomer.creditLimit)}</p>
+                    <p><strong>Current Credit:</strong> ₹{formatNumber(selectedCustomer.currentCredit)}</p>
+                    <p><strong>Available Credit:</strong> ₹{formatNumber((Number(selectedCustomer.creditLimit) || 0) - (Number(selectedCustomer.currentCredit) || 0))}</p>
+                    <p><strong>Total Purchases:</strong> ₹{formatNumber(selectedCustomer.totalPurchases)}</p>
                     <p><strong>Last Purchase:</strong> {selectedCustomer.lastPurchase ? new Date(selectedCustomer.lastPurchase).toLocaleDateString() : 'Never'}</p>
                   </div>
                 </div>
@@ -625,17 +676,17 @@ const CustomerManagement = ({ onNavigate }) => {
               <div>
                 <h4 className="font-medium mb-2">Recent Purchase History</h4>
                 <div className="space-y-2">
-                  {selectedCustomer.purchaseHistory.length === 0 ? (
+                  {!selectedCustomer.purchaseHistory || selectedCustomer.purchaseHistory.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No purchase history available</p>
                   ) : (
                     selectedCustomer.purchaseHistory.map((purchase, index) => (
                       <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
                         <div>
-                          <p className="text-sm font-medium">₹{purchase.amount.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground">{purchase.items}</p>
+                          <p className="text-sm font-medium">₹{formatNumber(purchase.amount)}</p>
+                          <p className="text-xs text-muted-foreground">{purchase.items || 'No items listed'}</p>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(purchase.date).toLocaleDateString()}
+                          {purchase.date ? new Date(purchase.date).toLocaleDateString() : 'Unknown date'}
                         </span>
                       </div>
                     ))

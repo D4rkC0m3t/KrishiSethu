@@ -7,7 +7,7 @@ import ReportTemplate, {
   PrintButton 
 } from './ReportTemplate';
 import { reportsService } from '../../lib/reports';
-import { salesService } from '../../lib/firestore';
+import { salesService } from '../../lib/supabaseDb';
 import {
   ShoppingCart,
   DollarSign,
@@ -33,7 +33,7 @@ const SalesReport = () => {
 
   useEffect(() => {
     loadReportData();
-  }, []);
+  }, [loadReportData]);
 
   const loadReportData = async (customDateRange = null) => {
     try {

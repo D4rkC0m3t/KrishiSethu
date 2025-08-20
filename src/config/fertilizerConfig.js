@@ -59,6 +59,30 @@ export const FERTILIZER_CATEGORIES = {
     'NPK 13:40:13',
     'NPK 16:20:0',
     'NPK 28:28:0'
+  ],
+  'Pesticides': [
+    'Insecticide',
+    'Fungicide',
+    'Herbicide',
+    'Bactericide',
+    'Nematicide',
+    'Acaricide',
+    'Rodenticide',
+    'Plant Growth Regulator',
+    'Bio-Pesticide',
+    'Organic Pesticide'
+  ],
+  'Tools': [
+    'Hand Tools',
+    'Sprayers',
+    'Irrigation Equipment',
+    'Measuring Tools',
+    'Storage Equipment',
+    'Safety Equipment',
+    'Garden Tools',
+    'Farm Machinery Parts',
+    'Fertilizer Spreaders',
+    'Soil Testing Kits'
   ]
 };
 
@@ -147,6 +171,30 @@ export const COMMON_HSN_CODES = {
     'Soybean Seeds': '12019000',
     'Sunflower Seeds': '12060000',
     'Pulses Seeds (Gram, Lentil, Pea)': '07139000'
+  },
+  'Pesticides': {
+    'Insecticide': '38089100',
+    'Fungicide': '38089200',
+    'Herbicide': '38089300',
+    'Bactericide': '38089400',
+    'Nematicide': '38089500',
+    'Acaricide': '38089600',
+    'Rodenticide': '38089700',
+    'Plant Growth Regulator': '38089800',
+    'Bio-Pesticide': '38089900',
+    'Organic Pesticide': '38089900'
+  },
+  'Tools': {
+    'Hand Tools': '82019000',
+    'Sprayers': '84248100',
+    'Irrigation Equipment': '84248200',
+    'Measuring Tools': '90279000',
+    'Storage Equipment': '39269000',
+    'Safety Equipment': '39269100',
+    'Garden Tools': '82019100',
+    'Farm Machinery Parts': '84329000',
+    'Fertilizer Spreaders': '84248300',
+    'Soil Testing Kits': '90279100'
   }
 };
 
@@ -167,7 +215,9 @@ export const getSuggestedGSTRate = (category) => {
     'Organic Fertilizer': 0,
     'Bio Fertilizer': 0,
     'NPK Fertilizers': 5,
-    'Seeds': 0
+    'Seeds': 0,
+    'Pesticides': 18,
+    'Tools': 18
   };
   return gstRates[category] || 18;
 };

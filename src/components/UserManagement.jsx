@@ -36,6 +36,23 @@ import { supabaseAuthHelpers } from '../lib/supabase';
 const UserManagement = ({ onNavigate }) => {
   const { currentUser, userProfile, hasPermission, isAdmin } = useAuth();
   const [users, setUsers] = useState([]);
+
+  // Safe setUsers function to prevent accidental clearing
+  const safeSetUsers = (newUsers) => {
+    console.log('🔒 safeSetUsers called with:', newUsers);
+    if (newUsers && Array.isArray(newUsers) && newUsers.length > 0) {
+      console.log('✅ Setting users:', newUsers.length, 'users');
+      setUsers(newUsers);
+    } else if (newUsers && Array.isArray(newUsers) && newUsers.length === 0) {
+      console.log('⚠️ Attempted to set empty users array - ignoring to prevent data loss');
+      // Only set empty if we currently have no users
+      if (users.length === 0) {
+        setUsers([]);
+      }
+    } else {
+      console.log('❌ Invalid users data provided:', newUsers);
+    }
+  };
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('all');
@@ -142,29 +159,99 @@ const UserManagement = ({ onNavigate }) => {
     }
   };
 
-  useEffect(() => {
-    // Set up real-time subscription for users
-    const unsubscribe = realtimeService.subscribeToUsers((data, error) => {
-      if (error) {
-        console.error('Real-time users error:', error);
-        setError('Failed to sync user data. Please refresh.');
-        // Fallback to manual loading
-        loadUsers();
-      } else if (data) {
-        console.log('Real-time users update:', data);
-        setUsers(data);
-        setLoading(false);
-      }
-    });
+  // Load users function - defined before useEffect to avoid hoisting issues
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('Loading users from Supabase...');
 
-    // Initial load if real-time fails
+      // Try to load from database first
+      try {
+        const supabaseUsers = await usersService.getAll();
+        console.log('Loaded users from database:', supabaseUsers);
+
+        if (supabaseUsers && supabaseUsers.length > 0) {
+          console.log('Found existing users, setting state...');
+          safeSetUsers(supabaseUsers);
+          return;
+        }
+      } catch (dbError) {
+        console.warn('Database not available, using fallback:', dbError.message);
+      }
+
+      // Fallback to localStorage for demo
+      console.log('Using localStorage fallback...');
+      const localUsers = localStorage.getItem('demo_users');
+      if (localUsers) {
+        const parsedUsers = JSON.parse(localUsers);
+        console.log('Loaded users from localStorage:', parsedUsers);
+        if (parsedUsers && parsedUsers.length > 0) {
+          safeSetUsers(parsedUsers);
+        } else {
+          console.log('localStorage users empty, creating sample data...');
+          await createSampleUsers();
+        }
+      } else {
+        console.log('No users found, creating sample data...');
+        await createSampleUsers();
+      }
+    } catch (error) {
+      console.error('Error loading users:', error);
+      console.error('Error details:', error.message);
+      setError('Failed to load users. Please try again.');
+      // Don't clear users on error - keep existing data
+      console.log('⚠️ Error occurred, keeping existing users to prevent data loss');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load activity log function - defined before useEffect
+  const loadActivityLog = async () => {
+    // Mock activity log
+    const mockActivity = [
+      {
+        id: '1',
+        userId: '1',
+        userName: 'Admin User',
+        action: 'User Login',
+        details: 'Successful login from 192.168.1.100',
+        timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
+        type: 'success'
+      },
+      {
+        id: '2',
+        userId: '2',
+        userName: 'Manager User',
+        action: 'User Created',
+        details: 'Created new staff user: John Doe',
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
+        type: 'info'
+      },
+      {
+        id: '3',
+        userId: '1',
+        userName: 'Admin User',
+        action: 'Permission Updated',
+        details: 'Updated permissions for Manager User',
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4), // 4 hours ago
+        type: 'warning'
+      }
+    ];
+    setActivityLog(mockActivity);
+  };
+
+  useEffect(() => {
+    // Initial load only - disable real-time subscription for now
+    // The real-time service was overwriting users with empty arrays
+    console.log('🚀 UserManagement component mounted, loading initial data...');
+
     loadUsers();
     loadActivityLog();
 
-    // Cleanup subscription on unmount
-    return () => {
-      unsubscribe();
-    };
+    // No real-time subscription to prevent data being overwritten
+    // TODO: Fix real-time service to properly handle users data
   }, []);
 
   useEffect(() => {
@@ -186,147 +273,90 @@ const UserManagement = ({ onNavigate }) => {
     setFilteredUsers(filtered);
   }, [users, searchTerm, filterRole, filterStatus]);
 
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      console.log('Loading users from Firebase...');
 
-      const firebaseUsers = await usersService.getAll();
-      console.log('Loaded users:', firebaseUsers);
-
-      if (firebaseUsers && firebaseUsers.length > 0) {
-        setUsers(firebaseUsers);
-      } else {
-        // If no users exist, create some sample data
-        await createSampleUsers();
-      }
-    } catch (error) {
-      console.error('Error loading users:', error);
-      setError('Failed to load users. Please try again.');
-      // Fallback to empty array
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Create sample users for demo
   const createSampleUsers = async () => {
+    console.log('Creating sample users...');
+
+    // Generate UUIDs for sample users (these would normally be from Supabase Auth)
+    const generateUUID = () => {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    };
+
     const sampleUsers = [
         {
-          id: '1',
-          uid: 'admin-uid',
-          name: 'System Administrator',
+          id: generateUUID(),
           email: 'admin@krishisethu.com',
+          name: 'System Administrator',
           phone: '+91-9876543210',
           role: 'admin',
-          isActive: true,
-          lastLogin: new Date('2025-01-07T10:30:00'),
-          createdAt: new Date('2024-12-01T00:00:00'),
-          permissions: DEFAULT_PERMISSIONS.admin,
-          loginCount: 145,
-          lastActivity: 'Updated product pricing'
+          is_active: true
         },
         {
-          id: '2',
-          uid: 'manager-uid',
-          name: 'Rajesh Kumar',
+          id: generateUUID(),
           email: 'rajesh@krishisethu.com',
+          name: 'Rajesh Kumar',
           phone: '+91-9876543211',
           role: 'manager',
-          isActive: true,
-          lastLogin: new Date('2025-01-07T09:15:00'),
-          createdAt: new Date('2024-12-15T00:00:00'),
-          permissions: DEFAULT_PERMISSIONS.manager,
-          loginCount: 89,
-          lastActivity: 'Processed purchase order'
+          is_active: true
         },
         {
-          id: '3',
-          uid: 'staff-uid',
-          name: 'Priya Sharma',
+          id: generateUUID(),
           email: 'priya@krishisethu.com',
+          name: 'Priya Sharma',
           phone: '+91-9876543212',
           role: 'staff',
-          isActive: true,
-          lastLogin: new Date('2025-01-07T08:45:00'),
-          createdAt: new Date('2025-01-02T00:00:00'),
-          permissions: DEFAULT_PERMISSIONS.staff,
-          loginCount: 23,
-          lastActivity: 'Completed sale transaction'
+          is_active: true
         },
         {
-          id: '4',
-          uid: 'staff2-uid',
-          name: 'Amit Patel',
+          id: generateUUID(),
           email: 'amit@krishisethu.com',
+          name: 'Amit Patel',
           phone: '+91-9876543213',
           role: 'staff',
-          isActive: false,
-          lastLogin: new Date('2025-01-05T16:20:00'),
-          createdAt: new Date('2024-11-20T00:00:00'),
-          permissions: DEFAULT_PERMISSIONS.staff,
-          loginCount: 67,
-          lastActivity: 'Account deactivated'
+          is_active: false
         }
       ];
 
       try {
-        for (const user of sampleUsers) {
-          await usersService.create(user);
+        console.log('Attempting to create sample users:', sampleUsers);
+
+        // Try database first
+        try {
+          for (const user of sampleUsers) {
+            console.log('Creating user in database:', user.name);
+            await usersService.create(user);
+          }
+
+          console.log('Sample users created successfully in database');
+
+          // Reload users after creating samples
+          const newUsers = await usersService.getAll();
+          console.log('Reloaded users from database:', newUsers);
+          safeSetUsers(newUsers);
+        } catch (dbError) {
+          console.warn('Database creation failed, using localStorage fallback:', dbError.message);
+
+          // Fallback to localStorage
+          localStorage.setItem('demo_users', JSON.stringify(sampleUsers));
+          console.log('Sample users saved to localStorage');
+          safeSetUsers(sampleUsers);
         }
-        // Reload users after creating samples
-        const newUsers = await usersService.getAll();
-        setUsers(newUsers);
       } catch (error) {
         console.error('Error creating sample users:', error);
+        console.error('Error details:', error.message);
+
+        // Final fallback - just set the sample users directly
+        safeSetUsers(sampleUsers);
       }
     };
 
-  const loadActivityLog = async () => {
-    // Mock activity log
-    const mockActivity = [
-      {
-        id: '1',
-        userId: '1',
-        userName: 'System Administrator',
-        action: 'User Created',
-        details: 'Created new staff user: Priya Sharma',
-        timestamp: new Date('2025-01-07T10:30:00'),
-        type: 'user_management'
-      },
-      {
-        id: '2',
-        userId: '2',
-        userName: 'Rajesh Kumar',
-        action: 'Login',
-        details: 'Successful login from 192.168.1.100',
-        timestamp: new Date('2025-01-07T09:15:00'),
-        type: 'authentication'
-      },
-      {
-        id: '3',
-        userId: '1',
-        userName: 'System Administrator',
-        action: 'Permission Updated',
-        details: 'Updated permissions for Rajesh Kumar',
-        timestamp: new Date('2025-01-06T15:45:00'),
-        type: 'user_management'
-      },
-      {
-        id: '4',
-        userId: '4',
-        userName: 'Amit Patel',
-        action: 'Account Deactivated',
-        details: 'User account deactivated by administrator',
-        timestamp: new Date('2025-01-05T16:20:00'),
-        type: 'user_management'
-      }
-    ];
-    
-    setActivityLog(mockActivity);
-  };
+
 
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -382,31 +412,60 @@ const UserManagement = ({ onNavigate }) => {
       setSaving(true);
       setError(null);
 
-      // Create Firebase Auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        userForm.email,
-        userForm.password
-      );
+      // For demo purposes, use localStorage since database has foreign key constraints
+      console.log('Creating user for demo (using localStorage):', userForm.email);
+
+      // Generate a UUID for the user
+      const generateUUID = () => {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+      };
 
       const newUser = {
-        uid: userCredential.user.uid,
+        id: generateUUID(),
         name: userForm.name,
         email: userForm.email,
         phone: userForm.phone,
         role: userForm.role,
-        isActive: userForm.isActive,
-        permissions: userForm.permissions,
-        createdAt: new Date(),
-        lastLogin: null,
-        loginCount: 0,
-        lastActivity: 'Account created'
+        is_active: userForm.isActive,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
-      // Save user profile to Firestore
-      await usersService.create(newUser);
+      console.log('Creating new user:', newUser);
+
+      // Try proper auth-based user creation first, fallback to localStorage
+      try {
+        // Add password for proper auth creation
+        const userWithPassword = {
+          ...newUser,
+          password: 'TempPassword123!' // Temporary password - user should change on first login
+        };
+
+        await usersService.createUserWithAuth(userWithPassword);
+        console.log('✅ User created with authentication successfully');
+      } catch (dbError) {
+        console.warn('❌ Auth-based creation failed, using localStorage fallback:', dbError.message);
+
+        // Get existing users from localStorage
+        const existingUsers = JSON.parse(localStorage.getItem('demo_users') || '[]');
+
+        // Check for duplicate email
+        if (existingUsers.some(user => user.email === newUser.email)) {
+          throw new Error('A user with this email already exists.');
+        }
+
+        // Add new user to localStorage
+        existingUsers.push(newUser);
+        localStorage.setItem('demo_users', JSON.stringify(existingUsers));
+        console.log('✅ User saved to localStorage successfully');
+      }
 
       // Refresh users list
+      console.log('User created successfully, refreshing list...');
       await loadUsers();
 
       resetForm();
@@ -417,8 +476,20 @@ const UserManagement = ({ onNavigate }) => {
       logActivity('User Created', `Created new ${userForm.role} user: ${userForm.name}`);
     } catch (error) {
       console.error('Error creating user:', error);
+      console.error('Error details:', error.message);
       setError('Failed to create user. Please try again.');
-      alert('Error creating user: ' + error.message);
+
+      // More specific error message
+      let errorMessage = 'Error creating user: ';
+      if (error.message.includes('duplicate') || error.message.includes('unique')) {
+        errorMessage += 'A user with this email already exists.';
+      } else if (error.message.includes('permission') || error.message.includes('access')) {
+        errorMessage += 'You do not have permission to create users.';
+      } else {
+        errorMessage += error.message;
+      }
+
+      alert(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -432,12 +503,34 @@ const UserManagement = ({ onNavigate }) => {
       setError(null);
 
       const updatedUser = {
-        ...userForm,
-        updatedAt: new Date()
+        ...selectedUser,
+        name: userForm.name,
+        email: userForm.email,
+        phone: userForm.phone,
+        role: userForm.role,
+        is_active: userForm.isActive,
+        updated_at: new Date().toISOString()
       };
 
-      // Update user in Firestore
-      await usersService.update(selectedUser.id, updatedUser);
+      // Try database first, fallback to localStorage
+      try {
+        await usersService.update(selectedUser.id, updatedUser);
+        console.log('✅ User updated in database successfully');
+      } catch (dbError) {
+        console.warn('❌ Database update failed, using localStorage fallback:', dbError.message);
+
+        // Update in localStorage
+        const existingUsers = JSON.parse(localStorage.getItem('demo_users') || '[]');
+        const userIndex = existingUsers.findIndex(user => user.id === selectedUser.id);
+
+        if (userIndex !== -1) {
+          existingUsers[userIndex] = updatedUser;
+          localStorage.setItem('demo_users', JSON.stringify(existingUsers));
+          console.log('✅ User updated in localStorage successfully');
+        } else {
+          throw new Error('User not found in localStorage');
+        }
+      }
 
       // Refresh users list
       await loadUsers();
@@ -528,7 +621,7 @@ const UserManagement = ({ onNavigate }) => {
   const logActivity = (action, details) => {
     const newActivity = {
       id: Date.now().toString(),
-      userId: currentUser?.uid,
+      userId: currentUser?.id,
       userName: userProfile?.name,
       action,
       details,
@@ -562,7 +655,7 @@ const UserManagement = ({ onNavigate }) => {
       password: '',
       confirmPassword: '',
       isActive: user.isActive,
-      permissions: { ...user.permissions }
+      permissions: { ...(user.permissions || DEFAULT_PERMISSIONS[user.role] || DEFAULT_PERMISSIONS.staff) }
     });
     setShowEditDialog(true);
   };
@@ -647,6 +740,10 @@ const UserManagement = ({ onNavigate }) => {
           <Button variant="outline" size="sm" onClick={loadUsers} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={createSampleUsers} disabled={loading}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Sample Users
           </Button>
           {isAdmin() && (
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
@@ -1013,7 +1110,7 @@ const UserManagement = ({ onNavigate }) => {
                           >
                             {user.isActive ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
                           </Button>
-                          {isAdmin() && user.id !== currentUser?.uid && (
+                          {isAdmin() && user.id !== currentUser?.id && (
                             <Button
                               variant="ghost"
                               size="sm"

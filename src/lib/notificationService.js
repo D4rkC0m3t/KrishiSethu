@@ -24,13 +24,28 @@ class NotificationService {
     // Request permission
     await this.requestPermission();
     
-    // Get service worker registration
+    // Get service worker registration - handle protocol restrictions
     if (this.isPushSupported) {
       try {
-        this.registration = await navigator.serviceWorker.ready;
-        console.log('[Notifications] Service worker ready for push notifications');
+        // Check if we're on a secure context
+        const isSecureContext = window.location.protocol === 'https:' ||
+                               window.location.hostname === 'localhost' ||
+                               window.location.hostname === '127.0.0.1';
+
+        if (isSecureContext) {
+          this.registration = await navigator.serviceWorker.ready;
+          console.log('[Notifications] Service worker ready for push notifications');
+        } else {
+          console.warn('[Notifications] Service Worker requires secure context (HTTPS or localhost)');
+          console.warn('[Notifications] Current protocol:', window.location.protocol);
+          console.warn('[Notifications] Push notifications will use fallback mode');
+        }
       } catch (error) {
         console.error('[Notifications] Service worker not available:', error);
+        if (error.message.includes('protocol') || error.message.includes('SecurityError')) {
+          console.error('[Notifications] This is likely due to file:// protocol restrictions');
+          console.error('[Notifications] Please use an HTTP server for full functionality');
+        }
       }
     }
 

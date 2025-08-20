@@ -125,7 +125,7 @@ const ResponsiveLayout = ({ children, currentPage, onNavigate, alerts = [] }) =>
       <PWAInstallPrompt />
 
       {/* Mobile-specific styles */}
-      <style jsx global>{`
+      <style>{`
         /* Mobile viewport height fix */
         .mobile-layout {
           min-height: calc(var(--vh, 1vh) * 100);

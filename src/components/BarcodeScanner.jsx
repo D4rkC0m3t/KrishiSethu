@@ -3,8 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Camera, X, RotateCcw, Flashlight, FlashlightOff } from 'lucide-react';
-import { useBarcode } from '../lib/barcodeService';
-
 const BarcodeScanner = ({ onScan, onClose, isOpen }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState(null);
@@ -12,9 +10,8 @@ const BarcodeScanner = ({ onScan, onClose, isOpen }) => {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [flashEnabled, setFlashEnabled] = useState(false);
   const [scanHistory, setScanHistory] = useState([]);
-  
+
   const videoRef = useRef(null);
-  const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const codeReaderRef = useRef(null);
 

@@ -7,7 +7,7 @@ import ReportTemplate, {
   PrintButton 
 } from './ReportTemplate';
 import { reportsService } from '../../lib/reports';
-import { productsService, salesService, purchasesService } from '../../lib/firestore';
+import { productsService, salesService, purchasesService } from '../../lib/supabaseDb';
 import { 
   Package, 
   AlertTriangle, 

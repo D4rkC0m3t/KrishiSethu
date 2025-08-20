@@ -1,7 +1,7 @@
 // Shop Details Service - Centralized shop information for all invoices, exports, and reports
 
 import React from 'react';
-import { settingsService } from './firestore';
+import { settingsOperations as settingsService } from './supabaseDb';
 
 // Default shop details (fallback)
 const DEFAULT_SHOP_DETAILS = {

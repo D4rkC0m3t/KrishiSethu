@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { customersService, salesService, productsService } from '../lib/supabaseDb';
+import { supabase } from '../lib/supabase';
 import { shopDetailsService } from '../lib/shopDetails';
 import { imageService } from '../lib/imageService';
 import { barcodeService } from '../lib/barcodeService';
@@ -74,6 +75,8 @@ const POS = ({ onNavigate }) => {
   const [selectedCategory, setSelectedCategory] = useState('All Items');
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [loadingImages, setLoadingImages] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -257,7 +260,8 @@ const POS = ({ onNavigate }) => {
               pincode: '400001'
             },
             phone: '+91-9876543210',
-            gstNumber: '27AAAAA0000A1Z5'
+            gstNumber: '27AAAAA0000A1Z5',
+            logo: '/Logo.png'
           });
         }
       } catch (error) {
@@ -272,41 +276,129 @@ const POS = ({ onNavigate }) => {
             pincode: '400001'
           },
           phone: '+91-9876543210',
-          gstNumber: '27AAAAA0000A1Z5'
+          gstNumber: '27AAAAA0000A1Z5',
+          logo: '/Logo.png'
         });
       }
     };
 
     const loadProducts = async () => {
       try {
-        // Use real Firebase data
-        const firebaseProducts = await productsService.getAll();
-        const posProducts = firebaseProducts.map(product => ({
-          id: product.id,
-          name: product.name,
-          brand: product.brand,
-          price: product.salePrice,
-          mrp: product.mrp || product.salePrice,
-          stock: product.quantity,
-          category: product.category,
-          batchNo: product.batchNo || '',
-          hsn: product.hsn || '',
-          gstRate: product.gstRate ?? null,
-          unit: product.unit || 'PCS',
-          manufacturingDate: product.manufacturingDate || product.mfgDate || null,
-          expiryDate: product.expiryDate || null,
-          barcode: product.barcode || '',
-          image: product.image || product.imageUrl || null // Include image field
-        }));
+        // Use real Supabase data
+        const supabaseProducts = await productsService.getAll();
+        console.log('🔍 Raw products from database:', supabaseProducts);
+
+        const posProducts = supabaseProducts.map(product => {
+          // Handle category - resolve category name from loaded categories
+          let categoryName = product.categoryName || product.category || 'Unknown';
+
+          console.log(`🔍 Processing product: ${product.name}`);
+          console.log(`📋 Product category fields:`, {
+            category_id: product.category_id,
+            categoryId: product.categoryId,
+            category: product.category,
+            categoryName: product.categoryName
+          });
+          console.log(`📋 Available categories:`, categories.map(cat => `${cat.name} (ID: ${cat.id})`));
+
+          // If we have category_id, try to resolve it using loaded categories
+          if (product.category_id && categories.length > 0) {
+            const foundCategory = categories.find(cat => cat.id === product.category_id);
+            if (foundCategory) {
+              categoryName = foundCategory.name;
+              console.log(`✅ Resolved category_id ${product.category_id} -> ${categoryName}`);
+            } else {
+              console.log(`❌ Could not find category with ID: ${product.category_id}`);
+            }
+          }
+
+          // Fallback for categoryId field (legacy support)
+          if ((!categoryName || categoryName === 'Unknown') && product.categoryId && categories.length > 0) {
+            const foundCategory = categories.find(cat => cat.id === product.categoryId);
+            if (foundCategory) {
+              categoryName = foundCategory.name;
+              console.log(`✅ Resolved categoryId ${product.categoryId} -> ${categoryName}`);
+            } else {
+              console.log(`❌ Could not find category with ID: ${product.categoryId}`);
+            }
+          }
+
+          // If still no category name, try to map from old category names to new ones
+          if (!categoryName || categoryName === 'Unknown') {
+            const oldToNewCategoryMapping = {
+              'NPK Fertilizers': 'Chemical Fertilizer',
+              'Nitrogen Fertilizers': 'Chemical Fertilizer',
+              'Phosphorus Fertilizers': 'Chemical Fertilizer',
+              'Organic Fertilizers': 'Organic Fertilizer',
+              'Micronutrients': 'Chemical Fertilizer',
+              'Bio Fertilizers': 'Bio Fertilizer'
+            };
+
+            // Check if product has an old category name that needs mapping
+            const productCategoryField = product.category || product.categoryName || '';
+            if (oldToNewCategoryMapping[productCategoryField]) {
+              categoryName = oldToNewCategoryMapping[productCategoryField];
+              console.log(`🔄 Mapped old category "${productCategoryField}" -> "${categoryName}"`);
+            }
+          }
+
+          // Handle image URLs - get first image from array or single image field
+          let imageUrl = null;
+          if (product.imageUrls && Array.isArray(product.imageUrls) && product.imageUrls.length > 0) {
+            imageUrl = product.imageUrls[0];
+          } else if (product.image) {
+            imageUrl = product.image;
+          }
+
+          const mappedProduct = {
+            id: product.id,
+            name: product.name,
+            brand: product.brandName || product.brand || 'Unknown Brand',
+            price: product.salePrice,
+            mrp: product.mrp || product.salePrice,
+            stock: product.quantity,
+            category: categoryName, // Use resolved category name
+            batchNo: product.batchNo || '',
+            hsn: product.hsn || product.hsnCode || '',
+            gstRate: product.gstRate ?? null,
+            unit: product.unit || 'PCS',
+            manufacturingDate: product.manufacturingDate || product.mfgDate || null,
+            expiryDate: product.expiryDate || null,
+            barcode: product.barcode || '',
+            image: imageUrl // Use resolved image URL
+          };
+
+          console.log(`📦 Final mapped product: ${product.name} -> Category: ${categoryName}, Image: ${imageUrl}`);
+          console.log(`📊 Product mapping result:`, {
+            name: product.name,
+            originalCategory: product.category || product.categoryName,
+            resolvedCategory: categoryName,
+            category_id: product.category_id,
+            categoryId: product.categoryId
+          });
+
+          return mappedProduct;
+        });
         
+        // Log category distribution for debugging
+        const categoryDistribution = {};
+        posProducts.forEach(product => {
+          const category = product.category || 'Unknown';
+          categoryDistribution[category] = (categoryDistribution[category] || 0) + 1;
+        });
+
+        console.log('📊 POS Category Distribution:', categoryDistribution);
+        console.log('📋 Expected Categories:', categories.map(cat => cat.name));
+        console.log('✅ POS Products loaded and mapped:', posProducts.length);
+
         // Set products first, then load images asynchronously
         setProducts(posProducts);
-        
+
         // AUTOMATIC IMAGE LOADING DISABLED - Use manual upload only
         console.log('📁 Automatic image loading disabled. Products loaded without images.');
 
         // Handle empty product database
-        if (firebaseProducts.length === 0) {
+        if (supabaseProducts.length === 0) {
           console.log('📦 No products found in database');
           setProducts([]);
 
@@ -356,7 +448,61 @@ const POS = ({ onNavigate }) => {
       }
     };
 
-    loadProducts();
+    const loadCategories = async () => {
+      try {
+        setCategoriesLoading(true);
+        console.log('🔄 Loading categories for POS...');
+
+        // Load categories from database
+        const { data, error } = await supabase
+          .from('categories')
+          .select('*')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          console.log('✅ Setting POS categories:', data);
+          console.log('📋 POS Categories loaded:', data.map(cat => `${cat.name} (ID: ${cat.id})`));
+          setCategories(data);
+        } else {
+          console.log('📦 No categories found in database, using config fallback');
+          // Use the same config categories as AddProduct
+          const configCategories = [
+            { id: 'cat_1', name: 'Chemical Fertilizer', description: 'Chemical fertilizers and nutrients', is_active: true, sort_order: 1 },
+            { id: 'cat_2', name: 'Organic Fertilizer', description: 'Organic fertilizers and manures', is_active: true, sort_order: 2 },
+            { id: 'cat_3', name: 'Bio Fertilizer', description: 'Bio fertilizers and microbial products', is_active: true, sort_order: 3 },
+            { id: 'cat_4', name: 'Seeds', description: 'Seeds and planting materials', is_active: true, sort_order: 4 },
+            { id: 'cat_5', name: 'Pesticides', description: 'Pesticides and plant protection products', is_active: true, sort_order: 5 },
+            { id: 'cat_6', name: 'Tools & Equipment', description: 'Agricultural tools and equipment', is_active: true, sort_order: 6 }
+          ];
+          setCategories(configCategories);
+        }
+      } catch (error) {
+        console.error('❌ Error loading POS categories:', error);
+        // Use the same config categories as AddProduct
+        const configCategories = [
+          { id: 'cat_1', name: 'Chemical Fertilizer', description: 'Chemical fertilizers and nutrients', is_active: true, sort_order: 1 },
+          { id: 'cat_2', name: 'Organic Fertilizer', description: 'Organic fertilizers and manures', is_active: true, sort_order: 2 },
+          { id: 'cat_3', name: 'Bio Fertilizer', description: 'Bio fertilizers and microbial products', is_active: true, sort_order: 3 },
+          { id: 'cat_4', name: 'Seeds', description: 'Seeds and planting materials', is_active: true, sort_order: 4 },
+          { id: 'cat_5', name: 'Pesticides', description: 'Pesticides and plant protection products', is_active: true, sort_order: 5 },
+          { id: 'cat_6', name: 'Tools & Equipment', description: 'Agricultural tools and equipment', is_active: true, sort_order: 6 }
+        ];
+        setCategories(configCategories);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+
+    // Load categories first, then products (so we can resolve category names)
+    const initializePOS = async () => {
+      await loadCategories();
+      await loadProducts();
+    };
+
+    initializePOS();
     loadCustomers();
     loadShopDetails();
   }, []);
@@ -394,27 +540,58 @@ const POS = ({ onNavigate }) => {
 
   // Filter products based on search term and category
   useEffect(() => {
+    console.log('🔄 POS Filtering - Selected Category:', selectedCategory);
+    console.log('📦 POS Filtering - Total Products:', products.length);
+    console.log('📋 Available Categories:', categories.map(cat => cat.name));
+
     let filtered = products;
 
     // Filter by category first
     if (selectedCategory !== 'All Items') {
+      console.log('🔍 POS Filtering by category:', selectedCategory);
+
       filtered = filtered.filter(product => {
         const productCategory = (product.category || '').toLowerCase().trim();
         const selectedCat = selectedCategory.toLowerCase().trim();
 
-        // Exact match first
+        console.log(`🔍 Checking product "${product.name}" with category "${product.category}" against "${selectedCategory}"`);
+
+        // Exact match first (most reliable)
         if (productCategory === selectedCat) {
+          console.log(`✅ Exact match: "${productCategory}" === "${selectedCat}"`);
           return true;
         }
 
-        // For broader categories, check if product category contains the selected category
-        if (selectedCat === 'fertilizer' && productCategory.includes('fertilizer')) {
+        // Handle common variations and partial matches
+        const categoryVariations = {
+          'chemical fertilizer': ['chemical', 'fertilizer', 'npk', 'urea', 'dap'],
+          'organic fertilizer': ['organic', 'compost', 'manure', 'vermi'],
+          'bio fertilizer': ['bio', 'biological', 'microbial', 'rhizobium'],
+          'seeds': ['seed', 'grain', 'crop'],
+          'pesticides': ['pesticide', 'insecticide', 'fungicide', 'herbicide'],
+          'tools & equipment': ['tool', 'equipment', 'sprayer', 'implement']
+        };
+
+        // Check if product category matches any variation of selected category
+        const variations = categoryVariations[selectedCat] || [selectedCat];
+        const matchesVariation = variations.some(variation =>
+          productCategory.includes(variation) || variation.includes(productCategory)
+        );
+
+        if (matchesVariation) {
+          console.log(`✅ Variation match: "${productCategory}" matches variation of "${selectedCat}"`);
           return true;
         }
 
-        // For specific matches
-        return productCategory.includes(selectedCat);
+        // Fallback: partial match
+        const includesMatch = productCategory.includes(selectedCat) || selectedCat.includes(productCategory);
+        if (includesMatch) {
+          console.log(`✅ Partial match: "${productCategory}" includes "${selectedCat}"`);
+        }
+        return includesMatch;
       });
+
+      console.log(`📊 POS Filtered to ${filtered.length} products for category "${selectedCategory}"`);
     }
 
     // Then filter by search term
@@ -422,12 +599,16 @@ const POS = ({ onNavigate }) => {
       filtered = filtered.filter(product =>
         (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (product.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (product.category || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (product.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.hsn || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (product.barcode || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
+    console.log(`📊 POS Final filtered products: ${filtered.length}`);
+    console.log('📋 Filtered products:', filtered.map(p => `${p.name} (${p.category})`));
     setFilteredProducts(filtered);
-  }, [searchTerm, products, selectedCategory]);
+  }, [searchTerm, products, selectedCategory, categories]);
 
   // Add product to cart
   const addToCart = (product) => {
@@ -610,6 +791,9 @@ const POS = ({ onNavigate }) => {
 
   // Handle category selection
   const handleCategorySelect = (category) => {
+    console.log('🔄 POS Category selected:', category);
+    console.log('📊 Available categories:', categories.map(c => c.name));
+    console.log('📦 Total products:', products.length);
     setSelectedCategory(category);
     // Products will be filtered automatically by the useEffect above
   };
@@ -634,68 +818,120 @@ const POS = ({ onNavigate }) => {
     setIsProcessing(true);
 
     try {
-      // Prepare sale data
+      // Prepare sale data in database format
+      const customerName = selectedCustomer?.name || customerForm.name || 'Walk-in Customer';
+
+      // Transform data to match exact Supabase database schema
       const saleData = {
-        id: `sale_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        billNumber: currentBillNumber,
+        // Required fields only - let database handle defaults
+        sale_number: currentBillNumber,
+        customer_name: customerName,
+
+        // Financial fields with proper decimal formatting
+        subtotal: Number(subtotal.toFixed(2)),
+        discount: Number(discountAmount.toFixed(2)),
+        tax_amount: Number(taxAmount.toFixed(2)),
+        total_amount: Number(total.toFixed(2)),
+
+        // Payment fields
+        payment_method: paymentData.method || 'cash',
+        amount_paid: Number(total.toFixed(2)),
+        payment_status: 'completed',
+
+        // Optional fields
+        customer_id: selectedCustomer?.id || null,
+        status: 'completed',
+        notes: notes || '',
+        sale_date: new Date().toISOString().split('T')[0],
+        // Skip created_by for now - it's optional and references users table
+
+        // Items for sale_items table
         items: cart.map(item => ({
-          productId: item.id,
-          productName: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.price * item.quantity,
-          hsn: item.hsn || '',
-          gstRate: item.gstRate || 5
-        })),
-        customer: selectedCustomer || {
-          name: customerForm.name || 'Walk-in Customer',
-          phone: customerForm.phone || '',
-          address: customerForm.address || ''
-        },
-        subtotal,
-        discount: discountAmount,
-        discountType,
-        discountReason,
-        tax: taxAmount,
-        total,
-        paymentMethod: paymentData.method,
-        paymentStatus: 'completed',
-        notes,
-        timestamp: new Date(),
-        createdBy: 'POS_USER',
-        shopDetails
+          product_id: item.id,
+          product_name: item.name,
+          quantity: Number(item.quantity),
+          unit_price: Number(item.price.toFixed(2)),
+          total_price: Number((item.price * item.quantity).toFixed(2)),
+          gst_rate: Number((item.gstRate || 5).toFixed(2)),
+          batch_no: item.batchNo || null
+        }))
       };
 
-      // Try to save to Firebase first
-      let savedToFirebase = false;
-      try {
-        if (navigator.onLine) {
-          await salesService.create(saleData);
-          savedToFirebase = true;
-          console.log('Sale saved to Firebase successfully');
-        }
-      } catch (firebaseError) {
-        console.warn('Failed to save to Firebase, will store offline:', firebaseError);
+      console.log('🔄 Transformed sale data for database:', saleData);
+      console.log('💰 Amount details:', {
+        subtotal: subtotal,
+        discountAmount: discountAmount,
+        taxAmount: taxAmount,
+        total: total,
+        'saleData.total_amount': saleData.total_amount
+      });
+
+      // Validate required fields
+      if (!saleData.sale_number) {
+        throw new Error('Sale number is required');
+      }
+      if (!saleData.customer_name) {
+        throw new Error('Customer name is required');
+      }
+      if (!saleData.total_amount || saleData.total_amount <= 0) {
+        throw new Error('Valid total amount is required');
       }
 
-      // If Firebase failed or offline, store in IndexedDB
-      if (!savedToFirebase) {
+      // Try to save to Supabase database first
+      let savedToDatabase = false;
+      let savedSale = null;
+      try {
+        if (navigator.onLine) {
+          console.log('💾 Attempting to save sale to Supabase database...');
+          savedSale = await salesService.create(saleData);
+          savedToDatabase = true;
+          console.log('✅ Sale saved to Supabase successfully:', savedSale);
+          console.log('💰 Saved sale amount details:', {
+            'savedSale.total_amount': savedSale.total_amount,
+            'savedSale.subtotal': savedSale.subtotal,
+            'savedSale.tax_amount': savedSale.tax_amount
+          });
+        }
+      } catch (databaseError) {
+        console.error('❌ Failed to save to Supabase:', databaseError);
+        console.error('❌ Error details:', {
+          message: databaseError.message,
+          code: databaseError.code,
+          details: databaseError.details,
+          hint: databaseError.hint
+        });
+        console.error('❌ Sale data that failed:', saleData);
+        console.warn('Will store offline instead');
+      }
+
+      // If Supabase failed or offline, store in IndexedDB
+      if (!savedToDatabase) {
         try {
-          await offlineStorage.addOfflineSale(saleData);
-          console.log('Sale stored offline successfully');
+          // Add a temporary ID for offline storage
+          const offlineSaleData = {
+            ...saleData,
+            id: `offline_sale_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            timestamp: new Date(),
+            synced: false
+          };
+
+          await offlineStorage.addOfflineSale(offlineSaleData);
+          console.log('📱 Sale stored offline successfully - will sync to Supabase when online');
 
           // Show offline notification
           const notification = document.createElement('div');
           notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white p-3 rounded-lg shadow-lg z-50';
-          notification.textContent = '📱 Sale saved offline - will sync when online';
+          notification.textContent = '📱 Sale saved offline - will sync to Supabase when online';
           document.body.appendChild(notification);
 
           setTimeout(() => {
-            document.body.removeChild(notification);
+            if (document.body.contains(notification)) {
+              document.body.removeChild(notification);
+            }
           }, 5000);
         } catch (offlineError) {
-          console.error('Failed to store sale offline:', offlineError);
-          throw new Error('Failed to save sale both online and offline');
+          console.error('❌ Failed to store sale offline:', offlineError);
+          throw new Error('Failed to save sale both to Supabase and offline');
         }
       }
 
@@ -716,7 +952,7 @@ const POS = ({ onNavigate }) => {
                 type: 'sale',
                 quantityChange: -item.quantity,
                 newQuantity,
-                saleId: saleData.id,
+                saleId: savedSale?.id || saleData.id,
                 timestamp: new Date()
               });
             }
@@ -746,9 +982,9 @@ const POS = ({ onNavigate }) => {
       try {
         if (notificationService.isTypeEnabled('sales')) {
           notificationService.showSalesNotification({
-            id: saleData.id,
+            id: savedSale?.id || saleData.sale_number,
             total: total,
-            customerName: selectedCustomer?.name || customerForm.name || 'Walk-in Customer',
+            customerName: customerName,
             itemCount: cart.length,
             timestamp: new Date()
           });
@@ -1076,7 +1312,21 @@ const POS = ({ onNavigate }) => {
                   <strong>GSTIN: ${shopDetails?.gstNumber || '27AAAAA0000A1Z5'}</strong>
                 </div>
                 <div class="company-details">
-                  <h2>${shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
+                  <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+                    ${shopDetails?.logo ? `
+                      <div style="flex-shrink: 0;">
+                        <img src="${shopDetails.logo}" alt="${shopDetails.name} Logo"
+                             style="width: 50px; height: 50px; object-fit: contain; border: 1px solid #ccc; background: white; border-radius: 4px;" />
+                      </div>
+                    ` : `
+                      <div style="width: 50px; height: 50px; border: 1px solid #ccc; background: #f5f5f5; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #666; border-radius: 4px;">
+                        LOGO
+                      </div>
+                    `}
+                    <div>
+                      <h2>${shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
+                    </div>
+                  </div>
                   <p>${shopDetails?.address || '123 Agricultural Complex, Mumbai, Maharashtra - 400001'}</p>
                   <p>Mobile: ${shopDetails?.phone || '+91-9876543210'} | Email: ${shopDetails?.email || 'info@krishisethu.com'}</p>
                   <p>PAN No: ${shopDetails?.panNumber || 'AAAAA0000A'} | FSSAI Lic No: ${shopDetails?.fssaiNumber || 'RWMKTRP'}</p>
@@ -1091,7 +1341,7 @@ const POS = ({ onNavigate }) => {
                 <div class="buyer-details">
                   <p><strong>Buyer's Name and Address</strong></p>
                   <p><strong>${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</strong></p>
-                  ${(selectedCustomer?.address || customerForm.address) ? `<p>${selectedCustomer?.address || customerForm.address}</p>` : ''}
+                  ${(selectedCustomer?.address || customerForm.address) ? `<p>${formatAddress(selectedCustomer?.address || customerForm.address)}</p>` : ''}
                   <p>Contact No.: ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</p>
                   <p>GSTIN: ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</p>
                 </div>
@@ -1300,6 +1550,80 @@ const POS = ({ onNavigate }) => {
     setShowReceiptDialog(false);
   };
 
+  // Debug function to test sales retrieval from Supabase
+  const testSalesRetrieval = async () => {
+    try {
+      console.log('🧪 Testing Supabase sales retrieval...');
+      const allSales = await salesService.getAll();
+      console.log('📊 All sales in Supabase database:', allSales);
+
+      if (allSales.length === 0) {
+        console.warn('⚠️ No sales found in Supabase database');
+      } else {
+        console.log(`✅ Found ${allSales.length} sales in Supabase`);
+        console.log('Latest sale:', allSales[0]);
+      }
+    } catch (error) {
+      console.error('❌ Error retrieving sales from Supabase:', error);
+    }
+  };
+
+  // Test function to create a minimal sale matching exact schema
+  const testMinimalSale = async () => {
+    try {
+      console.log('🧪 Testing minimal sale creation with exact schema...');
+      const minimalSale = {
+        // Required fields only
+        sale_number: `TEST_${Date.now()}`,
+        customer_name: 'Test Customer',
+
+        // Financial fields as numbers
+        subtotal: 100.00,
+        discount: 0.00,
+        tax_amount: 18.00,
+        total_amount: 118.00,
+
+        // Payment fields
+        payment_method: 'cash',
+        amount_paid: 118.00,
+        payment_status: 'completed',
+
+        // Optional fields
+        status: 'completed',
+        notes: 'Test sale from POS - should show ₹118',
+        sale_date: new Date().toISOString().split('T')[0],
+
+        // Test items array
+        items: [
+          {
+            product_name: 'Test Product 1',
+            quantity: 2,
+            unit_price: 50.00,
+            total_price: 100.00,
+            gst_rate: 18.00
+          }
+        ]
+      };
+
+      console.log('📤 Sending minimal sale data:', minimalSale);
+      console.log('💰 Expected total_amount: ₹118');
+      const result = await salesService.create(minimalSale);
+      console.log('✅ Minimal sale created successfully:', result);
+      console.log('💰 Actual saved total_amount:', result.total_amount);
+
+      // Refresh sales history to see the new sale
+      alert(`✅ Test sale created! Check Sales History - should show ₹118 total`);
+    } catch (error) {
+      console.error('❌ Error creating minimal sale:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+    }
+  };
+
   return (
     <>
     <div className="h-screen w-full bg-background flex flex-col overflow-hidden">
@@ -1376,6 +1700,12 @@ const POS = ({ onNavigate }) => {
             <Button variant="outline" size="sm" onClick={() => onNavigate('sales')}>
               <Receipt className="h-4 w-4 mr-2" />
               Sales History
+            </Button>
+            <Button variant="outline" size="sm" onClick={testSalesRetrieval}>
+              🧪 Test Supabase
+            </Button>
+            <Button variant="outline" size="sm" onClick={testMinimalSale}>
+              🧪 Test Minimal Sale
             </Button>
             <Button variant="outline" size="sm" onClick={() => onNavigate('dashboard')}>
               ← Dashboard
@@ -1622,18 +1952,55 @@ const POS = ({ onNavigate }) => {
         <Card>
           <CardContent className="pt-4">
             <div className="flex gap-2 mb-4 overflow-x-auto">
-              {['All Items', 'Chemical Fertilizer', 'Organic Fertilizer', 'Bio Fertilizer', 'Seeds', 'NPK Fertilizers'].map((category) => (
-                <Button
-                  key={category}
-                  variant={category === selectedCategory ? 'default' : 'outline'}
-                  size="sm"
-                  className="whitespace-nowrap"
-                  onClick={() => handleCategorySelect(category)}
-                >
-                  {category}
-                </Button>
-              ))}
+              {categoriesLoading ? (
+                <div className="text-sm text-gray-500 px-3 py-2">
+                  Loading categories...
+                </div>
+              ) : (
+                <>
+                  <Button
+                    key="All Items"
+                    variant={'All Items' === selectedCategory ? 'default' : 'outline'}
+                    size="sm"
+                    className="whitespace-nowrap"
+                    onClick={() => handleCategorySelect('All Items')}
+                  >
+                    All Items ({products.length})
+                  </Button>
+                  {categories.map((category) => {
+                    // Count products for this category
+                    const categoryProducts = products.filter(product => {
+                      const productCategory = (product.category || '').toLowerCase().trim();
+                      const categoryName = category.name.toLowerCase().trim();
+                      return productCategory === categoryName ||
+                             productCategory.includes(categoryName) ||
+                             categoryName.includes(productCategory);
+                    });
+
+                    return (
+                      <Button
+                        key={category.id}
+                        variant={category.name === selectedCategory ? 'default' : 'outline'}
+                        size="sm"
+                        className="whitespace-nowrap"
+                        onClick={() => handleCategorySelect(category.name)}
+                      >
+                        {category.name} ({categoryProducts.length})
+                      </Button>
+                    );
+                  })}
+                </>
+              )}
             </div>
+
+            {/* Debug Info - Show category filtering status */}
+            {selectedCategory !== 'All Items' && (
+              <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
+                <strong>Filtering by:</strong> {selectedCategory} •
+                <strong> Found:</strong> {filteredProducts.length} products •
+                <strong> Total:</strong> {products.length} products
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1954,8 +2321,8 @@ const POS = ({ onNavigate }) => {
                     )}
                   </div>
 
-                    {/* Totals */}
-                    <div className="border-t pt-4 space-y-2">
+                  {/* Totals */}
+                  <div className="border-t pt-4 space-y-2">
                     <div className="flex justify-between">
                       <span>Subtotal:</span>
                       <span>₹{subtotal.toFixed(2)}</span>
@@ -1974,8 +2341,8 @@ const POS = ({ onNavigate }) => {
                     </div>
                   </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex space-x-2 pt-4">
+                  {/* Action Buttons */}
+                  <div className="flex space-x-2 pt-4">
                     <Button variant="outline" onClick={startNewSale} className="flex-1">
                       ← Cancel Sale
                     </Button>
@@ -2117,21 +2484,47 @@ const POS = ({ onNavigate }) => {
                   <span><strong>Original For Buyer</strong></span>
                 </div>
 
-                {/* Company Name and Details */}
-                <div className="text-center p-2 border-b border-black">
-                  <h2 className="text-base font-bold mb-1">{shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
-                  <p className="text-xs mb-1">
-                    {shopDetails?.address && typeof shopDetails.address === 'object' ?
-                      `${shopDetails.address.street || ''}, ${shopDetails.address.city || ''}, ${shopDetails.address.state || ''} - ${shopDetails.address.pincode || ''}`.replace(/^,\s*|,\s*$/, '').replace(/,\s*,/g, ',')
-                      : shopDetails?.address || 'A/12, Shrenik Park, Opp. Jain Temple, Near Akota Stadium, Akota Dandia Bazar, Vadodara, Gujarat'
-                    }
-                  </p>
-                  <p className="text-xs">
-                    Mobile: {shopDetails?.phone || '+91-9876543210'} | Email: {shopDetails?.email || 'info@krishisethu.com'}
-                  </p>
-                  <p className="text-xs">
-                    FLZ Lic No.: RWA/147F, Seed Lic No.: RWA/203RS, Pesticide Lic No.: RWA/47RP
-                  </p>
+                {/* Company Name and Details with Logo */}
+                <div className="p-2 border-b border-black">
+                  <div className="flex items-center justify-center gap-3 mb-2">
+                    {/* Company Logo */}
+                    <div className="flex-shrink-0">
+                      {shopDetails?.logo ? (
+                        <img
+                          src={shopDetails.logo}
+                          alt={`${shopDetails.name} Logo`}
+                          className="w-12 h-12 object-contain border border-gray-300 bg-white rounded"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            e.target.nextSibling.style.display = 'flex';
+                          }}
+                        />
+                      ) : null}
+                      {!shopDetails?.logo && (
+                        <div className="w-12 h-12 border border-gray-300 bg-gray-50 flex items-center justify-center text-xs text-gray-500 rounded">
+                          LOGO
+                        </div>
+                      )}
+                    </div>
+                    {/* Company Name */}
+                    <div className="text-center">
+                      <h2 className="text-base font-bold">{shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs mb-1">
+                      {shopDetails?.address && typeof shopDetails.address === 'object' ?
+                        `${shopDetails.address.street || ''}, ${shopDetails.address.city || ''}, ${shopDetails.address.state || ''} - ${shopDetails.address.pincode || ''}`.replace(/^,\s*|,\s*$/, '').replace(/,\s*,/g, ',')
+                        : shopDetails?.address || 'A/12, Shrenik Park, Opp. Jain Temple, Near Akota Stadium, Akota Dandia Bazar, Vadodara, Gujarat'
+                      }
+                    </p>
+                    <p className="text-xs">
+                      Mobile: {shopDetails?.phone || '+91-9876543210'} | Email: {shopDetails?.email || 'info@krishisethu.com'}
+                    </p>
+                    <p className="text-xs">
+                      FLZ Lic No.: RWA/147F, Seed Lic No.: RWA/203RS, Pesticide Lic No.: RWA/47RP
+                    </p>
+                  </div>
                 </div>
 
                 {/* Buyer Details and Invoice Info */}
@@ -2141,7 +2534,7 @@ const POS = ({ onNavigate }) => {
                     <p className="text-xs font-bold mb-1">Buyer's Name and Address</p>
                     <p className="text-xs font-semibold">{selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</p>
                     {(selectedCustomer?.address || customerForm.address) && (
-                      <p className="text-xs">{selectedCustomer?.address || customerForm.address}</p>
+                      <p className="text-xs">{formatAddress(selectedCustomer?.address || customerForm.address)}</p>
                     )}
                     <p className="text-xs">Contact No.: {selectedCustomer?.phone || customerForm.phone || 'N/A'}</p>
                     <p className="text-xs">GSTIN: {selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</p>

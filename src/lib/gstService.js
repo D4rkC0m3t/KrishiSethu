@@ -3,7 +3,7 @@
  * Handles all GST-related operations for Indian businesses
  */
 
-import { salesService, purchasesService } from './firestore';
+import { salesService, purchasesService } from './supabaseDb';
 import { shopDetailsService } from './shopDetails';
 
 class GSTService {

@@ -204,7 +204,7 @@ export const useBarcode = (onScan) => {
         barcodeService.stopScanning();
       }
     };
-  }, [onScan]);
+  }, [onScan, isScanning]);
 
   const startScanning = async () => {
     if (!videoRef.current) {

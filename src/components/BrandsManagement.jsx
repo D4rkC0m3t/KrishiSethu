@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -16,6 +16,61 @@ import {
   Building
 } from 'lucide-react';
 
+// BrandForm component moved outside to prevent remounting on each render
+const BrandForm = React.memo(({
+  formData,
+  setFormData,
+  handleSubmit,
+  isLoading,
+  selectedBrand,
+  setShowAddDialog,
+  setShowEditDialog
+}) => {
+  console.log('🔍 BrandForm rendering with formData:', formData);
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Brand Name *</label>
+        <Input
+          placeholder="Enter brand name"
+          value={formData.name || ''}
+          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Description</label>
+        <Input
+          placeholder="Enter description (optional)"
+          value={formData.description || ''}
+          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+        />
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <input
+          type="checkbox"
+          id="brandIsActive"
+          checked={formData.isActive}
+          onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+        />
+        <label htmlFor="brandIsActive" className="text-sm font-medium">Active</label>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => {
+          setShowAddDialog(false);
+          setShowEditDialog(false);
+        }}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={isLoading}>
+          {isLoading ? 'Saving...' : selectedBrand ? 'Update Brand' : 'Save Brand'}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+});
+
 const BrandsManagement = ({ onNavigate }) => {
   const [brands, setBrands] = useState([]);
   const [filteredBrands, setFilteredBrands] = useState([]);
@@ -27,9 +82,6 @@ const BrandsManagement = ({ onNavigate }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    website: '',
-    contactEmail: '',
-    contactPhone: '',
     isActive: true
   });
 
@@ -38,7 +90,7 @@ const BrandsManagement = ({ onNavigate }) => {
     loadBrands();
   }, []);
 
-  const loadBrands = async () => {
+  const loadBrands = useCallback(async () => {
     try {
       setIsLoading(true);
       const data = await brandsService.getAll();
@@ -46,23 +98,26 @@ const BrandsManagement = ({ onNavigate }) => {
       setFilteredBrands(data || []);
     } catch (error) {
       console.error('Error loading brands:', error);
+      // Don't show alert during form input
+      if (!showAddDialog && !showEditDialog) {
+        alert('Error loading brands');
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [showAddDialog, showEditDialog]);
 
   // Filter brands
   useEffect(() => {
     const filtered = brands.filter(brand =>
       brand.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      brand.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      brand.website?.toLowerCase().includes(searchTerm.toLowerCase())
+      brand.description?.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredBrands(filtered);
   }, [brands, searchTerm]);
 
   // Handle form submission
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     try {
       setIsLoading(true);
@@ -86,9 +141,6 @@ const BrandsManagement = ({ onNavigate }) => {
       setFormData({
         name: '',
         description: '',
-        website: '',
-        contactEmail: '',
-        contactPhone: '',
         isActive: true
       });
       setShowAddDialog(false);
@@ -101,19 +153,19 @@ const BrandsManagement = ({ onNavigate }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [formData, selectedBrand, loadBrands]);
 
   // Handle edit
   const handleEdit = (brand) => {
+    console.log('🔄 Editing brand:', brand);
     setSelectedBrand(brand);
     setFormData({
       name: brand.name || '',
       description: brand.description || '',
-      website: brand.website || '',
-      contactEmail: brand.contactEmail || '',
-      contactPhone: brand.contactPhone || '',
-      isActive: brand.isActive !== false
+      // Handle both camelCase and snake_case field names
+      isActive: brand.isActive !== false && brand.is_active !== false
     });
+    console.log('📋 Brand form populated with isActive:', brand.isActive || brand.is_active);
     setShowEditDialog(true);
   };
 
@@ -145,74 +197,7 @@ const BrandsManagement = ({ onNavigate }) => {
     }
   };
 
-  const BrandForm = () => (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Brand Name *</label>
-        <Input
-          placeholder="Enter brand name"
-          value={formData.name}
-          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-          required
-        />
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Description</label>
-        <Input
-          placeholder="Enter description (optional)"
-          value={formData.description}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Website</label>
-          <Input
-            placeholder="https://example.com"
-            value={formData.website}
-            onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Contact Email</label>
-          <Input
-            type="email"
-            placeholder="contact@brand.com"
-            value={formData.contactEmail}
-            onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
-          />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Contact Phone</label>
-        <Input
-          placeholder="+91-9876543210"
-          value={formData.contactPhone}
-          onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
-        />
-      </div>
-      <div className="flex items-center space-x-2">
-        <input
-          type="checkbox"
-          id="brandIsActive"
-          checked={formData.isActive}
-          onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
-        />
-        <label htmlFor="brandIsActive" className="text-sm font-medium">Active</label>
-      </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={() => {
-          setShowAddDialog(false);
-          setShowEditDialog(false);
-        }}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? 'Saving...' : selectedBrand ? 'Update Brand' : 'Save Brand'}
-        </Button>
-      </DialogFooter>
-    </form>
-  );
+  // Moved BrandForm outside to prevent remounting - see below
 
   return (
     <div className="space-y-6">
@@ -222,7 +207,18 @@ const BrandsManagement = ({ onNavigate }) => {
           <h1 className="text-3xl font-bold">Brands Management</h1>
           <p className="text-gray-600">Manage product brands and manufacturers</p>
         </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <Dialog open={showAddDialog} onOpenChange={(open) => {
+          setShowAddDialog(open);
+          if (open) {
+            // Reset form when opening add dialog
+            setFormData({
+              name: '',
+              description: '',
+              isActive: true
+            });
+            setSelectedBrand(null);
+          }
+        }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="h-4 w-4 mr-2" />
@@ -234,7 +230,16 @@ const BrandsManagement = ({ onNavigate }) => {
               <DialogTitle>Add New Brand</DialogTitle>
               <DialogDescription>Create a new product brand</DialogDescription>
             </DialogHeader>
-            <BrandForm />
+            <BrandForm
+              key={selectedBrand ? `edit-${selectedBrand.id}` : 'add-new'}
+              formData={formData}
+              setFormData={setFormData}
+              handleSubmit={handleSubmit}
+              isLoading={isLoading}
+              selectedBrand={selectedBrand}
+              setShowAddDialog={setShowAddDialog}
+              setShowEditDialog={setShowEditDialog}
+            />
           </DialogContent>
         </Dialog>
       </div>
@@ -287,15 +292,7 @@ const BrandsManagement = ({ onNavigate }) => {
                       <p className="text-sm text-gray-500 mt-1">{brand.description}</p>
                     )}
                     <div className="flex gap-4 mt-2 text-sm text-gray-500">
-                      {brand.website && (
-                        <span>🌐 {brand.website}</span>
-                      )}
-                      {brand.contactEmail && (
-                        <span>📧 {brand.contactEmail}</span>
-                      )}
-                      {brand.contactPhone && (
-                        <span>📞 {brand.contactPhone}</span>
-                      )}
+                      <span>📅 Created: {new Date(brand.createdAt || brand.created_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -325,13 +322,33 @@ const BrandsManagement = ({ onNavigate }) => {
       </Card>
 
       {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+      <Dialog open={showEditDialog} onOpenChange={(open) => {
+        setShowEditDialog(open);
+        if (!open) {
+          // Reset form when closing edit dialog
+          setFormData({
+            name: '',
+            description: '',
+            isActive: true
+          });
+          setSelectedBrand(null);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Brand</DialogTitle>
             <DialogDescription>Update brand information</DialogDescription>
           </DialogHeader>
-          <BrandForm />
+          <BrandForm
+            key={selectedBrand ? `edit-${selectedBrand.id}` : 'add-new'}
+            formData={formData}
+            setFormData={setFormData}
+            handleSubmit={handleSubmit}
+            isLoading={isLoading}
+            selectedBrand={selectedBrand}
+            setShowAddDialog={setShowAddDialog}
+            setShowEditDialog={setShowEditDialog}
+          />
         </DialogContent>
       </Dialog>
     </div>

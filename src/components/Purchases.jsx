@@ -3,31 +3,22 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+// Removed unused Tabs imports
+// Only import the icons we actually use
 import {
-  Search,
-  Filter,
   Plus,
   Eye,
-  Edit,
-  Trash2,
-  Download,
-  Upload,
-  Package,
-  Truck,
   Calendar,
   DollarSign,
   CheckCircle,
   Clock,
-  AlertCircle,
-  FileText,
-  TrendingUp,
-  BarChart3
+  AlertCircle
 } from 'lucide-react';
-import { purchasesService, suppliersService, productsService } from '../lib/firestore';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { purchasesService, suppliersService, productsService } from '../lib/supabaseDb';
+import { supabase } from '../lib/supabase';
+// Removed unused chart imports - charts not implemented yet
 
 const Purchases = ({ onNavigate }) => {
   const [purchases, setPurchases] = useState([]);
@@ -36,12 +27,13 @@ const Purchases = ({ onNavigate }) => {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [supplierFilter, setSupplierFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('purchaseDate');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [analytics, setAnalytics] = useState({});
+  // Removed unused filter state variables - filters not implemented yet
+  // const [statusFilter, setStatusFilter] = useState('all');
+  // const [supplierFilter, setSupplierFilter] = useState('all');
+  // const [dateFilter, setDateFilter] = useState('all');
+  // const [sortBy, setSortBy] = useState('purchaseDate');
+  // const [sortOrder, setSortOrder] = useState('desc');
+  // const [analytics, setAnalytics] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [newPurchase, setNewPurchase] = useState({
     supplierId: '',
@@ -54,32 +46,143 @@ const Purchases = ({ onNavigate }) => {
   });
   const [suppliers, setSuppliers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [dataError, setDataError] = useState(null);
 
   // Load suppliers and products
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [suppliersData, productsData] = await Promise.all([
-          suppliersService.getAll(),
-          productsService.getAll()
-        ]);
-        setSuppliers(suppliersData || []);
-        setProducts(productsData || []);
+        setDataError(null);
+
+        // Load suppliers
+        setLoadingSuppliers(true);
+
+        try {
+          // First try the service
+          const suppliersData = await suppliersService.getAll();
+          console.log('📋 Suppliers loaded via service:', suppliersData?.length || 0, 'suppliers');
+          console.log('📋 Suppliers data:', suppliersData);
+
+          // If no suppliers from service, try direct database query
+          if (!suppliersData || suppliersData.length === 0) {
+            console.log('⚠️ No suppliers from service, trying direct database query...');
+            const { data: directSuppliers, error } = await supabase
+              .from('suppliers')
+              .select('*')
+              .order('name', { ascending: true });
+
+            if (error) {
+              console.error('❌ Direct database query failed:', error);
+            } else {
+              console.log('📋 Direct database suppliers:', directSuppliers?.length || 0, 'suppliers');
+              console.log('📋 Direct suppliers data:', directSuppliers);
+              setSuppliers(directSuppliers || []);
+            }
+          } else {
+            setSuppliers(suppliersData);
+          }
+        } catch (supplierError) {
+          console.error('❌ Error loading suppliers:', supplierError);
+          setSuppliers([]);
+        }
+
+        setLoadingSuppliers(false);
+
+        // Load products
+        setLoadingProducts(true);
+
+        try {
+          const productsData = await productsService.getAll();
+          setProducts(productsData || []);
+        } catch (productError) {
+          console.error('❌ Error loading products:', productError);
+          setProducts([]);
+        }
+
+        setLoadingProducts(false);
+
       } catch (error) {
         console.error('Error loading data:', error);
+        setDataError('Failed to load suppliers and products. Please refresh the page.');
+        setLoadingSuppliers(false);
+        setLoadingProducts(false);
       }
     };
+    console.log('🚀 Purchases component mounted, loading data...');
     loadData();
   }, []);
+
+
+
+
+
+  // Function to refresh data (can be called when new suppliers/products are added)
+  const refreshData = async () => {
+    try {
+      setDataError(null);
+      setLoadingSuppliers(true);
+      setLoadingProducts(true);
+
+
+
+      // Load suppliers with fallback
+      let suppliersData = await suppliersService.getAll();
+      if (!suppliersData || suppliersData.length === 0) {
+        console.log('⚠️ No suppliers from service during refresh, trying direct query...');
+        const { data: directSuppliers } = await supabase
+          .from('suppliers')
+          .select('*')
+          .order('name', { ascending: true });
+        suppliersData = directSuppliers || [];
+      }
+
+      // Load products with fallback
+      let productsData = await productsService.getAll();
+      if (!productsData || productsData.length === 0) {
+        console.log('⚠️ No products from service during refresh, trying direct query...');
+        const { data: directProducts } = await supabase
+          .from('products')
+          .select('*')
+          .order('name', { ascending: true });
+        productsData = directProducts || [];
+      }
+
+      console.log('📋 Refresh complete - Suppliers:', suppliersData?.length || 0, 'Products:', productsData?.length || 0);
+
+      setSuppliers(suppliersData || []);
+      setProducts(productsData || []);
+      setLoadingSuppliers(false);
+      setLoadingProducts(false);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      setDataError('Failed to refresh data.');
+      setLoadingSuppliers(false);
+      setLoadingProducts(false);
+    }
+  };
 
   // Save new purchase
   const handleSavePurchase = async () => {
     try {
       setIsLoading(true);
 
-      // Validate form
-      if (!newPurchase.supplierId || !newPurchase.productId || !newPurchase.quantity || !newPurchase.unitPrice) {
-        alert('Please fill in all required fields');
+      // Enhanced validation
+      if (!newPurchase.supplierId) {
+        alert('Please select a supplier');
+        return;
+      }
+      if (!newPurchase.productId) {
+        alert('Please select a product');
+        return;
+      }
+      if (!newPurchase.quantity || parseFloat(newPurchase.quantity) <= 0) {
+        alert('Please enter a valid quantity');
+        return;
+      }
+      if (!newPurchase.unitPrice || parseFloat(newPurchase.unitPrice) <= 0) {
+        alert('Please enter a valid unit price');
         return;
       }
 
@@ -87,18 +190,33 @@ const Purchases = ({ onNavigate }) => {
       const supplier = suppliers.find(s => s.id === newPurchase.supplierId);
       const product = products.find(p => p.id === newPurchase.productId);
 
+      if (!supplier) {
+        alert('Selected supplier not found. Please refresh and try again.');
+        return;
+      }
+      if (!product) {
+        alert('Selected product not found. Please refresh and try again.');
+        return;
+      }
+
+      // Calculate totals
+      const quantity = parseFloat(newPurchase.quantity);
+      const unitPrice = parseFloat(newPurchase.unitPrice);
+      const totalAmount = quantity * unitPrice;
+
       const purchaseData = {
+        purchaseNumber: `PUR-${Date.now()}`, // Generate purchase number
         supplierId: newPurchase.supplierId,
-        supplierName: supplier?.name || 'Unknown Supplier',
-        productId: newPurchase.productId,
-        productName: product?.name || 'Unknown Product',
-        quantity: parseInt(newPurchase.quantity),
-        unitPrice: parseFloat(newPurchase.unitPrice),
-        totalAmount: parseInt(newPurchase.quantity) * parseFloat(newPurchase.unitPrice),
+        supplierName: supplier.name,
+        subtotal: totalAmount,
+        taxAmount: 0, // Add tax calculation if needed
+        totalAmount: totalAmount,
+        paymentStatus: 'pending',
+        amountPaid: 0,
+        // Removed balanceAmount - not in database schema, can be calculated as (totalAmount - amountPaid)
         purchaseDate: newPurchase.purchaseDate,
         invoiceNumber: newPurchase.invoiceNumber,
-        notes: newPurchase.notes,
-        status: 'received'
+        notes: newPurchase.notes
       };
 
       await purchasesService.add(purchaseData);
@@ -115,13 +233,14 @@ const Purchases = ({ onNavigate }) => {
       });
 
       setShowAddDialog(false);
-      alert('Purchase order created successfully!');
+      alert(`Purchase order created successfully!\nSupplier: ${supplier.name}\nProduct: ${product.name}\nQuantity: ${quantity} ${product.unit || 'units'}\nTotal: ₹${totalAmount.toFixed(2)}`);
 
-      // Reload purchases (you might want to add this functionality)
+      // Refresh data to ensure latest information
+      await refreshData();
 
     } catch (error) {
       console.error('Error saving purchase:', error);
-      alert('Error saving purchase order');
+      alert('Error saving purchase order: ' + (error.message || 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
@@ -145,7 +264,7 @@ const Purchases = ({ onNavigate }) => {
         total: 52395,
         paymentStatus: 'paid',
         amountPaid: 52395,
-        balanceAmount: 0,
+        // balanceAmount removed - calculated as (total - amountPaid)
         invoiceNumber: 'TC/2025/001',
         purchaseDate: new Date('2025-01-06'),
         createdBy: 'Demo User',
@@ -206,7 +325,7 @@ const Purchases = ({ onNavigate }) => {
         total: 14070,
         paymentStatus: 'paid',
         amountPaid: 14070,
-        balanceAmount: 0,
+        // balanceAmount removed - calculated as (total - amountPaid)
         invoiceNumber: 'TC/2025/002',
         purchaseDate: new Date('2025-01-03'),
         createdBy: 'Demo User',
@@ -226,7 +345,7 @@ const Purchases = ({ onNavigate }) => {
         total: 29400,
         paymentStatus: 'pending',
         amountPaid: 10000,
-        balanceAmount: 19400,
+        // balanceAmount removed - calculated as (total - amountPaid) = 19400
         invoiceNumber: 'ICL/2025/001',
         purchaseDate: new Date('2025-01-02'),
         createdBy: 'Demo User',
@@ -246,7 +365,7 @@ const Purchases = ({ onNavigate }) => {
     const pendingPurchases = purchaseData.filter(purchase => purchase.paymentStatus === 'pending');
 
     const totalPaid = paidPurchases.reduce((sum, purchase) => sum + purchase.amountPaid, 0);
-    const totalPending = pendingPurchases.reduce((sum, purchase) => sum + purchase.balanceAmount, 0);
+    const totalPending = pendingPurchases.reduce((sum, purchase) => sum + (purchase.total - purchase.amountPaid), 0);
     const avgOrderValue = totalPurchases / totalTransactions;
 
     // Supplier breakdown
@@ -262,17 +381,18 @@ const Purchases = ({ onNavigate }) => {
       return acc;
     }, {});
 
-    setAnalytics({
-      totalPurchases,
-      totalTransactions,
-      avgOrderValue,
-      totalPaid,
-      totalPending,
-      supplierBreakdown,
-      monthlyPurchases,
-      paidCount: paidPurchases.length,
-      pendingCount: pendingPurchases.length
-    });
+    // Analytics calculation removed - not currently used in UI
+    // setAnalytics({
+    //   totalPurchases,
+    //   totalTransactions,
+    //   avgOrderValue,
+    //   totalPaid,
+    //   totalPending,
+    //   supplierBreakdown,
+    //   monthlyPurchases,
+    //   paidCount: paidPurchases.length,
+    //   pendingCount: pendingPurchases.length
+    // });
   };
 
   // Enhanced filtering logic
@@ -284,52 +404,46 @@ const Purchases = ({ onNavigate }) => {
         purchase.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         purchase.items.some(item => item.productName.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const matchesStatus = statusFilter === 'all' || purchase.paymentStatus === statusFilter;
-      const matchesSupplier = supplierFilter === 'all' || purchase.supplierName === supplierFilter;
+      // Simplified filtering - using default 'all' values since filters are not implemented yet
+      const matchesStatus = true; // statusFilter === 'all' || purchase.paymentStatus === statusFilter;
+      const matchesSupplier = true; // supplierFilter === 'all' || purchase.supplierName === supplierFilter;
 
       let matchesDate = true;
-      if (dateFilter !== 'all') {
-        const today = new Date();
-        const purchaseDate = new Date(purchase.purchaseDate);
-
-        switch (dateFilter) {
-          case 'today':
-            matchesDate = purchaseDate.toDateString() === today.toDateString();
-            break;
-          case 'week':
-            const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-            matchesDate = purchaseDate >= weekAgo;
-            break;
-          case 'month':
-            const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-            matchesDate = purchaseDate >= monthAgo;
-            break;
-        }
-      }
+      // Date filtering disabled - not implemented yet
+      // if (dateFilter !== 'all') {
+      //   const today = new Date();
+      //   const purchaseDate = new Date(purchase.purchaseDate);
+      //   switch (dateFilter) {
+      //     case 'today':
+      //       matchesDate = purchaseDate.toDateString() === today.toDateString();
+      //       break;
+      //     case 'week':
+      //       const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      //       matchesDate = purchaseDate >= weekAgo;
+      //       break;
+      //     case 'month':
+      //       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      //       matchesDate = purchaseDate >= monthAgo;
+      //       break;
+      //     default:
+      //       matchesDate = true;
+      //       break;
+      //   }
+      // }
 
       return matchesSearch && matchesStatus && matchesSupplier && matchesDate;
     });
 
-    // Apply sorting
+    // Apply default sorting by purchase date (newest first)
     filtered.sort((a, b) => {
-      let aValue = a[sortBy];
-      let bValue = b[sortBy];
-
-      if (sortBy === 'purchaseDate') {
-        aValue = new Date(aValue);
-        bValue = new Date(bValue);
-      }
-
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
-      }
+      const aValue = new Date(a.purchaseDate);
+      const bValue = new Date(b.purchaseDate);
+      return bValue - aValue; // Newest first
     });
 
     setFilteredPurchases(filtered);
     calculateAnalytics(filtered);
-  }, [searchTerm, purchases, statusFilter, supplierFilter, dateFilter, sortBy, sortOrder]);
+  }, [searchTerm, purchases]); // Removed unused filter dependencies
 
   const getPaymentStatusBadge = (status) => {
     switch (status) {
@@ -358,7 +472,7 @@ const Purchases = ({ onNavigate }) => {
   const getPendingAmount = () => {
     return filteredPurchases
       .filter(purchase => purchase.paymentStatus !== 'paid')
-      .reduce((sum, purchase) => sum + purchase.balanceAmount, 0);
+      .reduce((sum, purchase) => sum + (purchase.total - purchase.amountPaid), 0);
   };
 
   const getTodaysPurchases = () => {
@@ -380,6 +494,9 @@ const Purchases = ({ onNavigate }) => {
           <Button onClick={() => setShowAddDialog(true)} className="bg-green-600 hover:bg-green-700">
             ➕ New Purchase
           </Button>
+
+
+
           <Button variant="outline" onClick={() => onNavigate('dashboard')}>
             ← Back to Dashboard
           </Button>
@@ -500,8 +617,8 @@ const Purchases = ({ onNavigate }) => {
                     <td className="py-3 px-4">
                       <div className="text-sm">
                         <div>Paid: ₹{purchase.amountPaid.toLocaleString()}</div>
-                        {purchase.balanceAmount > 0 && (
-                          <div className="text-red-600">Due: ₹{purchase.balanceAmount.toLocaleString()}</div>
+                        {(purchase.total - purchase.amountPaid) > 0 && (
+                          <div className="text-red-600">Due: ₹{(purchase.total - purchase.amountPaid).toLocaleString()}</div>
                         )}
                       </div>
                     </td>
@@ -587,8 +704,8 @@ const Purchases = ({ onNavigate }) => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Balance Amount:</span>
-                      <span className={selectedPurchase.balanceAmount > 0 ? 'text-red-600' : 'text-green-600'}>
-                        ₹{selectedPurchase.balanceAmount.toLocaleString()}
+                      <span className={(selectedPurchase.total - selectedPurchase.amountPaid) > 0 ? 'text-red-600' : 'text-green-600'}>
+                        ₹{(selectedPurchase.total - selectedPurchase.amountPaid).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -663,44 +780,141 @@ const Purchases = ({ onNavigate }) => {
       </Dialog>
 
       {/* Add Purchase Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent>
+      <Dialog
+        open={showAddDialog}
+        onOpenChange={(open) => {
+          setShowAddDialog(open);
+          // REMOVED: Automatic refresh on dialog open - might be causing issues
+          // if (open) {
+          //   refreshData();
+          // }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+
+
           <DialogHeader>
             <DialogTitle>Add New Purchase</DialogTitle>
             <DialogDescription>
               Create a new purchase order
             </DialogDescription>
+            {dataError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-md text-sm">
+                {dataError}
+              </div>
+            )}
           </DialogHeader>
+
+
+
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Supplier *</label>
-                <Select value={newPurchase.supplierId} onValueChange={(value) => setNewPurchase(prev => ({ ...prev, supplierId: value }))}>
+                <label className="text-sm font-medium">
+                  Supplier *
+                  <span className="text-xs text-muted-foreground ml-1">
+                    ({suppliers.length} available)
+                  </span>
+                </label>
+                <Select
+                  value={newPurchase.supplierId}
+                  onValueChange={(value) => setNewPurchase(prev => ({ ...prev, supplierId: value }))}
+                  disabled={loadingSuppliers}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
+                    <SelectValue placeholder={loadingSuppliers ? "Loading suppliers..." : "Select supplier"} />
                   </SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-h-[300px] overflow-y-auto">
+                    {loadingSuppliers ? (
+                      <div className="px-2 py-1 text-sm text-gray-500">
+                        Loading suppliers...
+                      </div>
+                    ) : suppliers.length > 0 ? (
+                      <>
+                        <div className="px-2 py-1 text-xs text-blue-600 font-semibold border-b">
+                          {suppliers.length} suppliers available
+                        </div>
+                        {suppliers.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{supplier.name}</span>
+                              {supplier.contactPerson && (
+                                <span className="text-xs text-muted-foreground">{supplier.contactPerson}</span>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="px-2 py-1 text-sm text-gray-500">
+                        No suppliers found. Please add suppliers first.
+                        <br />
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          onClick={refreshData}
+                          className="text-xs p-0 h-auto"
+                        >
+                          Click to refresh
+                        </Button>
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Product *</label>
-                <Select value={newPurchase.productId} onValueChange={(value) => setNewPurchase(prev => ({ ...prev, productId: value }))}>
+                <label className="text-sm font-medium">
+                  Product *
+                  <span className="text-xs text-muted-foreground ml-1">
+                    ({products.length} available)
+                  </span>
+                </label>
+                <Select
+                  value={newPurchase.productId}
+                  onValueChange={(value) => {
+                    const selectedProduct = products.find(p => p.id === value);
+                    setNewPurchase(prev => ({
+                      ...prev,
+                      productId: value,
+                      // Auto-populate unit price if available
+                      unitPrice: selectedProduct?.purchasePrice ? selectedProduct.purchasePrice.toString() : prev.unitPrice
+                    }));
+                  }}
+                  disabled={loadingProducts}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select product" />
+                    <SelectValue placeholder={loadingProducts ? "Loading products..." : "Select product"} />
                   </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name}
-                      </SelectItem>
-                    ))}
+                  <SelectContent className="max-h-[300px] overflow-y-auto">
+                    {loadingProducts ? (
+                      <div className="px-2 py-1 text-sm text-gray-500">
+                        Loading products...
+                      </div>
+                    ) : products.length > 0 ? (
+                      <>
+                        <div className="px-2 py-1 text-xs text-blue-600 font-semibold border-b">
+                          {products.length} products available
+                        </div>
+                        {products.map((product) => (
+                          <SelectItem key={product.id} value={product.id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{product.name}</span>
+                              <div className="flex gap-2 text-xs text-muted-foreground">
+                                {product.code && <span>Code: {product.code}</span>}
+                                {product.unit && <span>Unit: {product.unit}</span>}
+                                {product.quantity !== undefined && <span>Stock: {product.quantity}</span>}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="px-2 py-1 text-sm text-gray-500">
+                        No products found. Please add products first.
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -708,9 +922,21 @@ const Purchases = ({ onNavigate }) => {
 
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Quantity *</label>
+                <label className="text-sm font-medium">
+                  Quantity *
+                  {(() => {
+                    const selectedProduct = products.find(p => p.id === newPurchase.productId);
+                    return selectedProduct ? (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        (in {selectedProduct.unit || 'units'}, current stock: {selectedProduct.quantity || 0})
+                      </span>
+                    ) : null;
+                  })()}
+                </label>
                 <Input
                   type="number"
+                  step="0.01"
+                  min="0"
                   placeholder="Enter quantity"
                   value={newPurchase.quantity}
                   onChange={(e) => setNewPurchase(prev => ({ ...prev, quantity: e.target.value }))}
@@ -718,9 +944,21 @@ const Purchases = ({ onNavigate }) => {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Unit Price *</label>
+                <label className="text-sm font-medium">
+                  Unit Price *
+                  {(() => {
+                    const selectedProduct = products.find(p => p.id === newPurchase.productId);
+                    return selectedProduct?.purchasePrice ? (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        (last: ₹{selectedProduct.purchasePrice})
+                      </span>
+                    ) : null;
+                  })()}
+                </label>
                 <Input
                   type="number"
+                  step="0.01"
+                  min="0"
                   placeholder="Enter unit price"
                   value={newPurchase.unitPrice}
                   onChange={(e) => setNewPurchase(prev => ({ ...prev, unitPrice: e.target.value }))}

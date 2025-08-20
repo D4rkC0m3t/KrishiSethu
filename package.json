@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@prisma/client": "^5.19.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.14",
     "@radix-ui/react-label": "^2.1.7",
@@ -24,6 +25,7 @@
     "jspdf-autotable": "^5.0.2",
     "lottie-web": "^5.13.0",
     "lucide-react": "^0.539.0",
+    "pg": "^8.16.3",
     "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -49,7 +51,28 @@
     "test:smoke": "playwright test --grep @smoke",
     "test:regression": "playwright test --grep @regression",
     "test:mobile": "playwright test --project='Mobile Chrome'",
-    "test:api": "playwright test --project=api"
+    "test:api": "playwright test --project=api",
+    "test:database": "node tests/run-database-tests.js",
+    "test:database:playwright": "playwright test database-comprehensive.spec.js",
+    "test:database:schema": "playwright test database-comprehensive.spec.js --grep 'Schema'",
+    "test:database:crud": "playwright test database-comprehensive.spec.js --grep 'CRUD'",
+    "test:database:integrity": "playwright test database-comprehensive.spec.js --grep 'Integrity'",
+    "test:database:performance": "playwright test database-comprehensive.spec.js --grep 'Performance'",
+    "test:database:security": "playwright test database-comprehensive.spec.js --grep 'Security'",
+    "test:database:transactions": "playwright test database-comprehensive.spec.js --grep 'Transactions'",
+    "test:database:audit": "playwright test database-comprehensive.spec.js --grep 'Audit'",
+    "test:database:integration": "playwright test database-comprehensive.spec.js --grep 'Integration'",
+    "db:rls:enable": "echo '⚠️ Run enable-rls-security.sql in Supabase SQL Editor'",
+    "db:rls:disable": "echo '⚠️ Run disable-rls-for-testing.sql in Supabase SQL Editor'",
+    "db:rls:status": "echo '⚠️ Run check-rls-status.sql in Supabase SQL Editor'",
+    "db:rls:test": "playwright test database-comprehensive.spec.js --grep 'Row Level Security'",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:pull": "prisma db pull",
+    "prisma:studio": "prisma studio",
+    "prisma:reset": "prisma migrate reset",
+    "prisma:setup": "node setup-prisma.js",
+    "db:setup": "npm run prisma:setup"
   },
   "eslintConfig": {
     "extends": [
@@ -74,6 +97,7 @@
     "@types/node": "^24.2.1",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.6",
+    "prisma": "^5.19.1",
     "tailwindcss": "^3.4.17",
     "wait-on": "^8.0.4"
   }

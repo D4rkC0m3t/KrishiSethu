@@ -5,7 +5,7 @@ import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { productsService } from '../lib/firestore';
+import { productsService } from '../lib/supabaseDb';
 
 const StockMovement = ({ onNavigate }) => {
   const [products, setProducts] = useState([]);
@@ -89,9 +89,9 @@ const StockMovement = ({ onNavigate }) => {
   }, []);
 
   const getStockStatus = (currentStock, minStockLevel) => {
-    if (currentStock <= 0) return { status: 'Out of Stock', color: 'bg-red-100 text-red-800' };
-    if (currentStock <= minStockLevel) return { status: 'Low Stock', color: 'bg-yellow-100 text-yellow-800' };
-    return { status: 'In Stock', color: 'bg-green-100 text-green-800' };
+    if (currentStock <= 0) return { status: 'Out of Stock', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' };
+    if (currentStock <= minStockLevel) return { status: 'Low Stock', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' };
+    return { status: 'In Stock', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' };
   };
 
   const getMovementIcon = (type) => {
@@ -104,7 +104,7 @@ const StockMovement = ({ onNavigate }) => {
   };
 
   const getMovementColor = (quantity) => {
-    return quantity > 0 ? 'text-green-600' : 'text-red-600';
+    return quantity > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
   };
 
   const handleStockAdjustment = (product) => {
@@ -171,8 +171,8 @@ const StockMovement = ({ onNavigate }) => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Stock Movement</h1>
-          <p className="text-gray-600">Track inventory changes and adjust stock levels</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Stock Movement</h1>
+          <p className="text-gray-600 dark:text-gray-400">Track inventory changes and adjust stock levels</p>
         </div>
         <Button variant="outline" onClick={() => onNavigate('dashboard')}>
           ← Back to Dashboard
@@ -201,16 +201,16 @@ const StockMovement = ({ onNavigate }) => {
                 {products.map((product) => {
                   const stockStatus = getStockStatus(product.currentStock, product.minStockLevel);
                   return (
-                    <tr key={product.id} className="border-b hover:bg-gray-50">
+                    <tr key={product.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="py-3 px-4">
-                        <span className="font-medium">{product.name}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{product.name}</span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="text-lg font-bold">{product.currentStock}</span>
-                        <span className="text-sm text-gray-500 ml-1">{product.unit}</span>
+                        <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{product.currentStock}</span>
+                        <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">{product.unit}</span>
                       </td>
                       <td className="py-3 px-4">
-                        <span>{product.minStockLevel} {product.unit}</span>
+                        <span className="text-gray-900 dark:text-gray-100">{product.minStockLevel} {product.unit}</span>
                       </td>
                       <td className="py-3 px-4">
                         <Badge className={stockStatus.color}>
@@ -244,13 +244,13 @@ const StockMovement = ({ onNavigate }) => {
         <CardContent>
           <div className="space-y-4">
             {movements.map((movement) => (
-              <div key={movement.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div key={movement.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="flex items-center space-x-4">
                   <div className="text-2xl">{getMovementIcon(movement.type)}</div>
                   <div>
-                    <h4 className="font-medium">{movement.productName}</h4>
-                    <p className="text-sm text-gray-600">{movement.reason}</p>
-                    <p className="text-xs text-gray-500">
+                    <h4 className="font-medium text-gray-900 dark:text-gray-100">{movement.productName}</h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{movement.reason}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500">
                       {movement.date.toLocaleDateString()} by {movement.user}
                     </p>
                   </div>
@@ -259,7 +259,7 @@ const StockMovement = ({ onNavigate }) => {
                   <div className={`text-lg font-bold ${getMovementColor(movement.quantity)}`}>
                     {movement.quantity > 0 ? '+' : ''}{movement.quantity}
                   </div>
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
                     {movement.previousStock} → {movement.newStock}
                   </div>
                 </div>
@@ -280,8 +280,8 @@ const StockMovement = ({ onNavigate }) => {
           </DialogHeader>
           
           <div className="space-y-4">
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900 rounded-lg">
+              <p className="text-sm text-gray-900 dark:text-gray-100">
                 <strong>Current Stock:</strong> {selectedProduct?.currentStock} {selectedProduct?.unit}
               </p>
             </div>

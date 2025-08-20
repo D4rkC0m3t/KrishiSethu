@@ -2,18 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
-import { 
-  Database, 
-  CheckCircle, 
-  AlertCircle, 
-  Loader2, 
+import {
+  Database,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
   RefreshCw,
   Package,
   Users,
   Building,
   Tag,
   Settings,
-  ShoppingCart
+  ShoppingCart,
+  Activity,
+  Zap
 } from 'lucide-react';
 import {
   productsService,
@@ -22,6 +24,8 @@ import {
   salesService,
   purchasesService
 } from '../lib/supabaseDb';
+import { useDatabaseStatus } from '../hooks/useDatabase';
+import { supabaseDiagnostics } from '../lib/supabase';
 
 const DatabaseStatus = () => {
   const [status, setStatus] = useState({
@@ -34,18 +38,37 @@ const DatabaseStatus = () => {
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [healthData, setHealthData] = useState(null);
+  const [showHealthDetails, setShowHealthDetails] = useState(false);
+
+  // Use the database status hook
+  const {
+    status: dbStatus,
+    isReady,
+    hasError,
+    color: statusColor,
+    text: statusText,
+    icon: statusIcon
+  } = useDatabaseStatus();
 
   const loadDatabaseStatus = async () => {
     try {
       setIsRefreshing(true);
-      
-      const [products, suppliers, customers, sales, purchases] = await Promise.all([
+
+      // Run health check alongside data loading
+      const healthCheckPromise = supabaseDiagnostics.healthCheck();
+
+      const [products, suppliers, customers, sales, purchases, health] = await Promise.all([
         productsService.getAll(),
         suppliersService.getAll(),
         customersService.getAll(),
         salesService.getAll(),
-        purchasesService.getAll()
+        purchasesService.getAll(),
+        healthCheckPromise
       ]);
+
+      // Store health data
+      setHealthData(health);
 
       setStatus({
         products: { count: products.length, loading: false },
@@ -158,6 +181,46 @@ const DatabaseStatus = () => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Database Health Status */}
+        <div className="p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Connection Health
+            </h4>
+            <Badge
+              variant={statusColor === 'green' ? 'default' : statusColor === 'red' ? 'destructive' : 'secondary'}
+              className="flex items-center gap-1"
+            >
+              <span>{statusIcon}</span>
+              {statusText}
+            </Badge>
+          </div>
+
+          {healthData && (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600">Response Time:</span>
+                <span className="ml-2 font-medium">
+                  {healthData.performance?.averageResponseTime?.toFixed(2)}ms
+                </span>
+              </div>
+              <div>
+                <span className="text-gray-600">Tables Accessible:</span>
+                <span className="ml-2 font-medium">
+                  {healthData.performance?.accessibleTables}/{healthData.performance?.totalTables}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {hasError && (
+            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+              {dbStatus.error}
+            </div>
+          )}
+        </div>
+
         {/* Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
           <div className="text-center">

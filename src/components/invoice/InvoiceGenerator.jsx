@@ -7,7 +7,7 @@ import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import InvoiceTemplate from './InvoiceTemplate';
 import { invoiceService } from '../../lib/invoice';
-import { customersService, salesService } from '../../lib/firestore';
+import { customersService, salesService } from '../../lib/supabaseDb';
 import { 
   FileText, 
   Download, 
@@ -59,7 +59,7 @@ const InvoiceGenerator = ({ onNavigate, saleId = null }) => {
     if (saleId) {
       loadSaleData(saleId);
     }
-  }, [saleId]);
+  }, [saleId, loadSaleData]);
 
   const loadCustomers = async () => {
     try {
