@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KrishiSethu Supabase Debug - Login/Profile Mapper</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1220; color:#e6edf3; margin:0; }
+    .container { max-width: 980px; margin: 24px auto; padding: 16px; }
+    .card { background:#111827; border:1px solid #1f2937; border-radius: 12px; padding:16px; margin-bottom:16px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .row > * { flex:1; min-width: 240px; }
+    input, textarea { width: 100%; padding:10px; border-radius:8px; border:1px solid #334155; background:#0b1220; color:#e6edf3; }
+    label { font-size: 12px; color:#9ca3af; display:block; margin-bottom:6px; }
+    button { background:#16a34a; color:white; border:none; border-radius:8px; padding:10px 14px; cursor:pointer; }
+    button.secondary { background:#2563eb; }
+    button.warn { background:#ca8a04; }
+    button.danger { background:#b91c1c; }
+    pre { background:#0b1220; border:1px solid #334155; border-radius:8px; padding:12px; overflow:auto; max-height:480px; }
+    .note { color:#a3a3a3; font-size: 12px; }
+    a { color:#60a5fa; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.55.0/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>KrishiSethu – Supabase Debugger</h1>
+    <p class="note">Use this page to verify where login/registration writes data. It can search both <code>profiles</code> and <code>users</code> tables for an email, and it shows current auth/session tokens. Do not paste production service keys here.</p>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Supabase URL</label>
+          <input id="sbUrl" placeholder="e.g. https://xxxxxxxxxxxx.supabase.co or http://127.0.0.1:54321" />
+        </div>
+        <div>
+          <label>Anon Key (recommended)</label>
+          <input id="anonKey" placeholder="paste anon key" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <div>
+          <label>Service Role Key (optional; for local debugging; bypasses RLS)</label>
+          <input id="serviceKey" placeholder="paste service role key (avoid using in prod)" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button id="btnInit">1) Initialize Client</button>
+        <button id="btnSession" class="secondary">2) Check Session</button>
+        <button id="btnDump" class="warn">Dump Local Storage</button>
+        <button id="btnOpenLogin" class="secondary" onclick="window.location.href='/login'">Open /login</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Email to find</label>
+          <input id="email" placeholder="e.g. user@example.com" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button id="btnFindAnon">Find (anon)</button>
+        <button id="btnFindService" class="secondary">Find (service role)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Console Output</label>
+          <pre id="out"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let anonClient = null
+    let serviceClient = null
+
+    const out = document.getElementById('out')
+    const log = (...args) => { out.textContent += args.map(a => (typeof a === 'string' ? a : JSON.stringify(a, null, 2))).join(' ') + "\n" }
+    const clear = () => { out.textContent = '' }
+
+    function getInputs() {
+      return {
+        url: document.getElementById('sbUrl').value.trim(),
+        anonKey: document.getElementById('anonKey').value.trim(),
+        serviceKey: document.getElementById('serviceKey').value.trim(),
+      }
+    }
+
+    async function initClients() {
+      clear()
+      const { url, anonKey, serviceKey } = getInputs()
+      if (!url || !anonKey) { log('❌ Please enter Supabase URL and anon key'); return }
+      anonClient = supabase.createClient(url, anonKey, { auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true } })
+      log('✅ Anon client initialized:', { url })
+      // Persist for the app to use at runtime
+      try {
+        localStorage.setItem('ks_debug_sb_url', url)
+        localStorage.setItem('ks_debug_sb_anon_key', anonKey)
+        log('💾 Saved to localStorage (ks_debug_sb_url / ks_debug_sb_anon_key). Reload app to apply.')
+      } catch {}
+      if (serviceKey) {
+        serviceClient = supabase.createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false } })
+        log('✅ Service client initialized (RLS bypass). Use only for local debugging.')
+      } else {
+        serviceClient = null
+      }
+    }
+
+    async function checkSession() {
+      if (!anonClient) { log('❌ Initialize client first'); return }
+      const { data: { session }, error } = await anonClient.auth.getSession()
+      if (error) { log('❌ getSession error:', error.message); return }
+      log('🔐 Session:', session ? { user: session.user?.email, expires_at: session.expires_at } : 'No session')
+      try {
+        const projectRef = anonClient.supabaseUrl.split('//')[1].split('.')[0]
+        const key = `sb-${projectRef}-auth-token`
+        const raw = localStorage.getItem(key)
+        log('🗄️ LocalStorage token key:', key)
+        log('🗄️ LocalStorage token value:', raw || '(none)')
+      } catch {}
+    }
+
+    function dumpLocalStorage() {
+      const all = {}
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        all[k] = localStorage.getItem(k)
+      }
+      log('🧩 localStorage:', all)
+      const ss = {}
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i)
+        ss[k] = sessionStorage.getItem(k)
+      }
+      log('🧩 sessionStorage:', ss)
+    }
+
+    async function findEmail(client) {
+      if (!client) { log('❌ Client not initialized'); return }
+      const email = document.getElementById('email').value.trim()
+      if (!email) { log('❌ Enter an email'); return }
+
+      log(`\n🔎 Searching for: ${email}`)
+      try {
+        let { data: prof, error: e1 } = await client
+          .from('profiles')
+          .select('id, email, name, role, account_type, is_active, is_paid, trial_end, trial_end_date, created_at, updated_at')
+          .ilike('email', email)
+          .limit(5)
+        if (e1) log('profiles error:', e1.message)
+        log('profiles rows:', prof || [])
+      } catch (err) {
+        log('profiles exception:', err.message)
+      }
+
+      try {
+        let { data: users, error: e2 } = await client
+          .from('users')
+          .select('id, email, name, role, is_active, is_paid, trial_end, trial_end_date, created_at, updated_at')
+          .ilike('email', email)
+          .limit(5)
+        if (e2) log('users error:', e2.message)
+        log('users rows:', users || [])
+      } catch (err) {
+        log('users exception:', err.message)
+      }
+    }
+
+    document.getElementById('btnInit').onclick = initClients
+    document.getElementById('btnSession').onclick = checkSession
+    document.getElementById('btnDump').onclick = dumpLocalStorage
+    document.getElementById('btnFindAnon').onclick = () => findEmail(anonClient)
+    document.getElementById('btnFindService').onclick = () => findEmail(serviceClient || anonClient)
+  </script>
+</body>
+</html>
+
+

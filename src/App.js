@@ -6,6 +6,9 @@ import Dashboard from './components/Dashboard';
 import LandingPage from './components/LandingPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import ConfigurationError from './components/ConfigurationError';
+import AdminLogin from './components/admin/AdminLogin';
+import AdminMasterDashboard from './components/admin/AdminMasterDashboard';
+import UserDashboard from './components/admin/UserDashboard';
 import KSLogo from './components/KSLogo';
 import './App.css';
 import './styles/print.css';
@@ -50,6 +53,33 @@ function AppContent() {
     userRole: userProfile?.role || userProfile?.account_type
   });
 
+  // Listen for logout events to handle redirects
+  React.useEffect(() => {
+    const handleLogout = (event) => {
+      const { wasAdminSession, userContext } = event.detail;
+      console.log('🔊 Logout event received:', { wasAdminSession, userContext });
+      
+      // Redirect admin users to admin login page
+      if (wasAdminSession || userContext === 'admin') {
+        console.log('🔄 Redirecting admin user to admin login page');
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 100);
+      } else {
+        // Redirect regular users to landing page
+        console.log('🔄 Redirecting regular user to landing page');
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 100);
+      }
+    };
+
+    window.addEventListener('krishisethu:logout-complete', handleLogout);
+    return () => {
+      window.removeEventListener('krishisethu:logout-complete', handleLogout);
+    };
+  }, []);
+
   if (loading) {
     console.log('⏳ App is in loading state');
     return (
@@ -80,6 +110,30 @@ function AppContent() {
         <Route
           path="/login"
           element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />}
+        />
+
+        {/* Admin Routes */}
+        <Route
+          path="/admin"
+          element={<AdminLogin onNavigate={(path) => window.location.href = path} onAdminLogin={() => window.location.href = '/admin/dashboard'} />}
+        />
+
+        <Route
+          path="/admin/dashboard"
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <AdminMasterDashboard onNavigate={(path) => window.location.href = path} />
+            </ProtectedRoute>
+          }
+        />
+        
+        <Route
+          path="/admin/dashboard/user"
+          element={
+            <ProtectedRoute>
+              <UserDashboard onNavigate={(path) => window.location.href = path} />
+            </ProtectedRoute>
+          }
         />
 
         {/* Protected Routes - Dashboard handles all internal routing */}

@@ -121,6 +121,8 @@ const RegistrationForm = ({ onSuccess, onSwitchToLogin }) => {
           };
           
           console.log('🔄 Creating user profile...');
+          console.log('📋 Profile data to insert:', profileData);
+          
           const { error: profileError } = await supabase
             .from('users')
             .upsert(profileData, { 
@@ -130,10 +132,24 @@ const RegistrationForm = ({ onSuccess, onSwitchToLogin }) => {
 
           if (profileError) {
             console.warn('⚠️ Profile creation failed:', profileError.message);
+            console.warn('⚠️ Profile error details:', profileError);
             // Don't throw error here - auth user was created successfully
             // Profile can be created later when user logs in
           } else {
             console.log('✅ User profile created successfully');
+            
+            // Verify the profile was actually created
+            const { data: verifyData, error: verifyError } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', data.user.id)
+              .single();
+              
+            if (verifyError) {
+              console.warn('⚠️ Profile verification failed:', verifyError);
+            } else {
+              console.log('✅ Profile verified in database:', verifyData);
+            }
           }
         } catch (profileErr) {
           console.warn('⚠️ Profile creation exception:', profileErr.message);
@@ -312,7 +328,7 @@ const RegistrationForm = ({ onSuccess, onSwitchToLogin }) => {
                 Creating Account...
               </>
             ) : (
-              'Start Free Trial'
+              'Create Account'
             )}
           </Button>
 

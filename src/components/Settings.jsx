@@ -38,30 +38,30 @@ const Settings = ({ onNavigate }) => {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState(null);
   
-  // Company Information
+  // Company Information - Start with empty defaults for new users
   const [companyInfo, setCompanyInfo] = useState({
-    name: 'VK Fertilizers',
+    name: '',
     address: {
-      street: 'Siababa Temple Near Darga, Holagunda',
-      city: 'Holagunda',
-      state: 'Karnataka',
-      pincode: '585102',
+      street: '',
+      city: '',
+      state: '',
+      pincode: '',
       country: 'India'
     },
-    phone: '8688765111',
-    email: 'info@vkfertilizers.com',
-    website: 'https://vkfertilizers.com',
-    gstNumber: '29ABCDE1234F1Z5',
-    panNumber: 'ABCDE1234F',
+    phone: '',
+    email: '',
+    website: '',
+    gstNumber: '',
+    panNumber: '',
     logo: '',
     // Fertilizer Business Licenses
-    fertilizerLicense: 'FL/2024/001',
-    seedLicense: 'SD/2024/001',
-    pesticideLicense: 'PS/2024/001',
+    fertilizerLicense: '',
+    seedLicense: '',
+    pesticideLicense: '',
     // Bank Details
-    bankName: 'State Bank of India',
-    accountNumber: '12345678901234',
-    ifscCode: 'SBIN0001234'
+    bankName: '',
+    accountNumber: '',
+    ifscCode: ''
   });
 
   // Tax Settings
@@ -552,14 +552,21 @@ const Settings = ({ onNavigate }) => {
       switch (section) {
         case 'company':
           setCompanyInfo({
-            name: 'Krishisethu Fertilizers',
+            name: '',
             address: { street: '', city: '', state: '', pincode: '', country: 'India' },
             phone: '',
             email: '',
             website: '',
             gstNumber: '',
             panNumber: '',
-            logo: ''
+            logo: '',
+            // Reset all fields to empty
+            fertilizerLicense: '',
+            seedLicense: '',
+            pesticideLicense: '',
+            bankName: '',
+            accountNumber: '',
+            ifscCode: ''
           });
           setLogoPreview(null);
           break;

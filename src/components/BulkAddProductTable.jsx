@@ -14,6 +14,14 @@ import {
   getHSNCode,
   getSuggestedGSTRate
 } from '../config/fertilizerConfig';
+import {
+  getRecommendedUnit,
+  validateProductName,
+  getProductNamingExamples,
+  getUnitDisplayInfo,
+  validateQuantity,
+  formatPriceWithUnit
+} from '../utils/uomHelpers';
 
 const COLUMNS = [
   { key: 'name', label: 'Product Name*', width: 220, required: true },
@@ -48,7 +56,7 @@ const emptyRow = () => ({
   purchasePrice: '',
   salePrice: '',
   quantity: '1', // Default quantity
-  unit: 'kg', // Default unit
+  unit: 'pcs', // Default to pieces for new UOM approach
   supplierId: '',
   description: ''
 });
@@ -95,18 +103,12 @@ export default function BulkAddProductTable({ onNavigate }) {
           console.warn('⚠️ Could not load suppliers from database:', dbError.message);
         }
 
-        // Fallback to mock data if database fails
-        const mock = [
-          { id: 'sup1', name: 'Tata Chemicals Ltd' },
-          { id: 'sup2', name: 'IFFCO Distributors' },
-          { id: 'sup3', name: 'Green Gold Organics' },
-          { id: 'sup4', name: 'Coromandel International' },
-          { id: 'sup5', name: 'Rashtriya Chemicals' }
-        ];
-        console.log('📝 Using mock supplier data');
-        setSuppliers(mock);
+        // Show empty state to encourage user to set up suppliers
+        console.log('📦 No suppliers found in database, showing empty state');
+        setSuppliers([]);
       } catch (e) {
         console.error('❌ Failed to load suppliers:', e);
+        console.log('📦 Error loading suppliers, showing empty state');
         setSuppliers([]);
       }
     };
@@ -116,21 +118,7 @@ export default function BulkAddProductTable({ onNavigate }) {
         setBrandsLoading(true);
         console.log('🔄 Loading brands for bulk add...');
 
-        // Always use mock data for now to ensure brands are available
-        const mockBrands = [
-          { id: 'brand1', name: 'Tata Chemicals' },
-          { id: 'brand2', name: 'IFFCO' },
-          { id: 'brand3', name: 'Coromandel International' },
-          { id: 'brand4', name: 'Generic' },
-          { id: 'brand5', name: 'Green Gold Organics' },
-          { id: 'brand6', name: 'KrishiSethu' },
-          { id: 'brand7', name: 'Rashtriya Chemicals' }
-        ];
-
-        setBrands(mockBrands);
-        setBrandsLoading(false);
-
-        // Try to load from database in background (optional)
+        // Check if database has brands, otherwise show empty state
         try {
           const data = await brandsService.getAll();
           console.log('📊 Database brands loaded:', data);
@@ -140,18 +128,22 @@ export default function BulkAddProductTable({ onNavigate }) {
               ...brand,
               id: brand.id || brand._id || brand.brandId || `brand_${Date.now()}_${Math.random()}`
             }));
-            console.log('🔄 Updating with database brands:', validBrands);
+            console.log('🔄 Using database brands:', validBrands);
             setBrands(validBrands);
+          } else {
+            console.log('📦 No brands in database, showing empty state');
+            setBrands([]);
           }
+          setBrandsLoading(false);
         } catch (dbError) {
-          console.warn('⚠️ Database brands not available, using mock data:', dbError.message);
+          console.warn('⚠️ Database brands not available, showing empty state:', dbError.message);
+          setBrands([]);
+          setBrandsLoading(false);
         }
       } catch (error) {
         console.error('❌ Error loading brands:', error);
-        // Fallback to basic mock data
-        setBrands([
-          { id: 'brand1', name: 'Default Brand' }
-        ]);
+        // Show empty state to encourage user to set up brands
+        setBrands([]);
       } finally {
         setBrandsLoading(false);
       }
@@ -386,6 +378,38 @@ export default function BulkAddProductTable({ onNavigate }) {
           <p className="text-sm text-muted-foreground">Excel-like table entry. Paste from Excel/CSV, add rows, and save all.</p>
         </div>
       </div>
+
+      {/* UOM Guidance Section */}
+      <Card className="bg-blue-50 border-blue-200">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg text-blue-800">📦 UOM Best Practice Guide</CardTitle>
+          <CardDescription className="text-blue-700">
+            Follow this approach for consistent inventory tracking
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <h4 className="font-semibold text-blue-800 mb-2">✅ Product Naming</h4>
+              <ul className="space-y-1 text-blue-700">
+                <li>• <strong>Format:</strong> [Name] @[%] - [Size]</li>
+                <li>• <strong>Liquid:</strong> Nutrient @12% - 250ml</li>
+                <li>• <strong>Granular:</strong> NPK @20:20:0 - 50kg</li>
+                <li>• <strong>Seeds:</strong> Wheat Premium - 1kg Pack</li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold text-blue-800 mb-2">📏 Unit & Pricing</h4>
+              <ul className="space-y-1 text-blue-700">
+                <li>• <strong>Default Unit:</strong> "pcs" (pieces)</li>
+                <li>• <strong>Quantity:</strong> Count individual items</li>
+                <li>• <strong>Price:</strong> Per piece, not per box</li>
+                <li>• <strong>Example:</strong> 50 bottles = 50 pcs @ ₹200/pc</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

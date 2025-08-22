@@ -167,60 +167,60 @@ const DataImportExport = ({ onNavigate }) => {
     }
   };
 
-  // Generate sample data for demo purposes
+  // Generate sample data for demo purposes - generic examples for testing
   const generateSampleData = (dataType) => {
     const sampleData = {
       products: [
         {
-          'Product Name': 'Urea Fertilizer 50kg',
-          'Category': 'Fertilizers',
-          'Brand': 'IFFCO',
+          'Product Name': 'Sample Fertilizer @10% - 50kg',
+          'Category': 'Chemical Fertilizer',
+          'Brand': 'Example Brand A',
           'Purchase Price': '1200',
           'Selling Price': '1350',
           'Stock Quantity': '150',
-          'Unit': 'Bag',
-          'Description': 'High quality urea fertilizer for crops'
+          'Unit': 'pcs',
+          'Description': '[SAMPLE DATA] Example fertilizer product'
         },
         {
-          'Product Name': 'DAP Fertilizer 50kg',
-          'Category': 'Fertilizers',
-          'Brand': 'IFFCO',
+          'Product Name': 'Sample NPK @20:20:0 - 25kg',
+          'Category': 'NPK Fertilizers',
+          'Brand': 'Example Brand B',
           'Purchase Price': '1800',
           'Selling Price': '2000',
           'Stock Quantity': '75',
-          'Unit': 'Bag',
-          'Description': 'Di-ammonium phosphate fertilizer'
+          'Unit': 'pcs',
+          'Description': '[SAMPLE DATA] Example NPK fertilizer'
         }
       ],
       customers: [
         {
-          'Customer Name': 'Ramesh Kumar',
+          'Customer Name': 'Sample Customer 1',
           'Phone': '9876543210',
-          'Email': 'ramesh@example.com',
-          'Address': 'Village Kharkhoda',
-          'City': 'Sonipat',
-          'State': 'Haryana',
+          'Email': 'customer@example.com',
+          'Address': 'Sample Address 123',
+          'City': 'Sample City',
+          'State': 'Sample State',
           'Customer Type': 'Retail',
           'Credit Limit': '10000'
         }
       ],
       suppliers: [
         {
-          'Supplier Name': 'IFFCO Regional Office',
-          'Contact Person': 'Mr. Sharma',
+          'Supplier Name': 'Example Supplier Ltd',
+          'Contact Person': 'Sample Contact',
           'Phone': '9876543212',
-          'Email': 'sharma@iffco.com',
-          'Address': 'Industrial Area',
-          'City': 'Delhi',
-          'State': 'Delhi',
+          'Email': 'supplier@example.com',
+          'Address': 'Sample Industrial Area',
+          'City': 'Sample City',
+          'State': 'Sample State',
           'GST Number': '07AAACI1681G1ZN'
         }
       ],
       sales: [
         {
           'Sale Date': '2024-01-15',
-          'Customer Name': 'Ramesh Kumar',
-          'Product Name': 'Urea Fertilizer 50kg',
+          'Customer Name': 'Sample Customer 1',
+          'Product Name': 'Sample Fertilizer @10% - 50kg',
           'Quantity': '2',
           'Unit Price': '1350',
           'Total Amount': '2700',

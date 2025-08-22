@@ -22,6 +22,16 @@ import {
   getHSNCode,
   getSuggestedGSTRate
 } from '../config/fertilizerConfig';
+import {
+  getRecommendedUnit,
+  validateProductName,
+  getProductNamingExamples,
+  getProductEntryTips,
+  getUnitDisplayInfo,
+  validateQuantity,
+  formatPriceWithUnit,
+  calculateInventoryValue
+} from '../utils/uomHelpers';
 
 const AddProduct = ({ onNavigate, productToEdit = null }) => {
   const { currentUser, userProfile, isManager } = useAuth();
@@ -36,7 +46,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
     salePrice: '',
     quantity: '',
     minStockLevel: '10',
-    unit: 'kg',
+    unit: 'pcs', // Default to pieces for new UOM approach
     supplierId: '',
     hsn: '',
     gstRate: '',
@@ -179,7 +189,10 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
         minStockLevel: productToEdit.minStockLevel || productToEdit.min_stock_level || '10',
         supplierId: productToEdit.supplierId || productToEdit.supplier_id || '',
         gstRate: productToEdit.gstRate || productToEdit.gst_rate || '',
-        hsn: productToEdit.hsn || productToEdit.hsn_code || ''
+        hsn: productToEdit.hsn || productToEdit.hsn_code || '',
+        attachments: productToEdit.attachments || [],
+        imageUrls: productToEdit.imageUrls || [],
+        description: productToEdit.description || ''
       };
 
       console.log('📋 New form data created:', newFormData);
@@ -259,29 +272,17 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
         console.log('✅ Final suppliers count:', validSuppliers.length);
         setSuppliers(validSuppliers);
       } else {
-        console.log('📦 No suppliers found in database, using fallback data');
-        // Fallback to mock data if database is empty
-        const mockSuppliers = [
-          { id: 'sup1', name: 'Tata Chemicals Ltd', phone: '+91-9876543210', email: 'contact@tatachemicals.com' },
-          { id: 'sup2', name: 'IFFCO Distributors', phone: '+91-9876543211', email: 'sales@iffco.com' },
-          { id: 'sup3', name: 'Green Gold Organics', phone: '+91-9876543212', email: 'info@greengold.com' },
-          { id: 'sup4', name: 'Coromandel International', phone: '+91-9876543213', email: 'support@coromandel.com' }
-        ];
-        setSuppliers(mockSuppliers);
+        console.log('📦 No suppliers found in database, showing empty state');
+        // Show empty state to encourage user to add suppliers
+        setSuppliers([]);
       }
     } catch (error) {
       console.error('❌ Error loading suppliers:', error);
       console.log('🔄 Using fallback mock suppliers due to error');
 
-      // Fallback to mock data on error
-      const fallbackSuppliers = [
-        { id: 'sup1', name: 'Tata Chemicals Ltd', phone: '+91-9876543210', email: 'contact@tatachemicals.com' },
-        { id: 'sup2', name: 'IFFCO Distributors', phone: '+91-9876543211', email: 'sales@iffco.com' },
-        { id: 'sup3', name: 'Green Gold Organics', phone: '+91-9876543212', email: 'info@greengold.com' },
-        { id: 'sup4', name: 'Coromandel International', phone: '+91-9876543213', email: 'support@coromandel.com' },
-        { id: 'sup5', name: 'Default Supplier', phone: '+91-9876543214', email: 'default@supplier.com' }
-      ];
-      setSuppliers(fallbackSuppliers);
+      // Show empty state to encourage user to set up suppliers
+      console.log('🔄 Setting empty suppliers list to encourage setup');
+      setSuppliers([]);
     } finally {
       setSuppliersLoading(false);
     }
@@ -292,19 +293,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
       setBrandsLoading(true);
       console.log('🔄 Loading brands...');
 
-      // Always use mock data for now to ensure brands are available
-      const mockBrands = [
-        { id: 'brand1', name: 'Tata Chemicals' },
-        { id: 'brand2', name: 'IFFCO' },
-        { id: 'brand3', name: 'Coromandel' },
-        { id: 'brand4', name: 'Krishak Bharati' },
-        { id: 'brand5', name: 'Nagarjuna Fertilizers' }
-      ];
-
-      setBrands(mockBrands);
-      setBrandsLoading(false);
-
-      // Try to load from database in background (optional)
+      // Check if database has brands, otherwise show empty state
       try {
         const data = await brandsService.getAll();
         console.log('📊 Database brands loaded:', data);
@@ -314,18 +303,23 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
             ...brand,
             id: brand.id || brand._id || brand.brandId || `brand_${Date.now()}_${Math.random()}`
           }));
-          console.log('🔄 Updating with database brands:', validBrands);
+          console.log('🔄 Using database brands:', validBrands);
           setBrands(validBrands);
+        } else {
+          console.log('📦 No brands in database, showing empty state');
+          setBrands([]);
         }
+        setBrandsLoading(false);
+
       } catch (dbError) {
-        console.warn('⚠️ Database brands not available, using mock data:', dbError.message);
+        console.warn('⚠️ Database brands not available, showing empty state:', dbError.message);
+        setBrands([]);
+        setBrandsLoading(false);
       }
     } catch (error) {
       console.error('❌ Error loading brands:', error);
-      // Fallback to basic mock data
-      setBrands([
-        { id: 'brand1', name: 'Default Brand' }
-      ]);
+      // Show empty state to encourage user to set up brands
+      setBrands([]);
       setBrandsLoading(false);
     }
   };
@@ -679,7 +673,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
       // Remove from form data attachments
       setFormData(prev => ({
         ...prev,
-        attachments: prev.attachments.filter((_, index) => index !== fileIndex)
+        attachments: (prev.attachments || []).filter((_, index) => index !== fileIndex)
       }));
 
       // If it's an image, also remove from imageUrls
@@ -714,7 +708,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
         setUploadedFiles(prev => prev.filter((_, index) => index !== fileIndex));
         setFormData(prev => ({
           ...prev,
-          attachments: prev.attachments.filter((_, index) => index !== fileIndex)
+          attachments: (prev.attachments || []).filter((_, index) => index !== fileIndex)
         }));
       } else if (error.message && error.message.includes('Permission denied')) {
         errorMessage += 'Permission denied. Please check your access rights.';
@@ -1122,11 +1116,46 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                 <Input
                   name="name"
                   value={formData.name}
-                  onChange={handleChange}
-                  placeholder="e.g., NPK 20-20-20"
+                  onChange={(e) => {
+                    handleChange(e);
+                    // Validate product name format and show suggestions
+                    const validation = validateProductName(e.target.value);
+                    if (!validation.isValid) {
+                      setErrors(prev => ({ ...prev, name: validation.message }));
+                    }
+                  }}
+                  placeholder="e.g., Nutrient @12% - 250ml or NPK @20:20:0 - 50kg"
                   className={errors.name ? 'border-red-500' : ''}
                 />
                 {errors.name && <span className="text-red-500 text-sm">{errors.name}</span>}
+                {(() => {
+                  const validation = validateProductName(formData.name);
+                  if (validation.suggestions.length > 0) {
+                    return (
+                      <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                        💡 <strong>Suggestions:</strong>
+                        <ul className="mt-1 ml-4 list-disc">
+                          {validation.suggestions.map((suggestion, idx) => (
+                            <li key={idx}>{suggestion}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+                {formData.categoryId && (() => {
+                  const selectedCategory = categories.find(cat => cat.id === formData.categoryId);
+                  const examples = getProductNamingExamples(selectedCategory?.name || '');
+                  if (examples.length > 0) {
+                    return (
+                      <div className="text-xs text-gray-600">
+                        <strong>Examples for {selectedCategory?.name}:</strong> {examples.slice(0, 2).join(', ')}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div className="space-y-2">
@@ -1139,11 +1168,25 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                     <SelectValue placeholder={brandsLoading ? "Loading brands..." : "Select a brand"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {brands.map((brand) => (
-                      <SelectItem key={brand.id} value={brand.id}>
-                        {brand.name}
-                      </SelectItem>
-                    ))}
+                    {brandsLoading ? (
+                      <div className="px-2 py-1 text-sm text-gray-500">
+                        Loading brands...
+                      </div>
+                    ) : brands.length > 0 ? (
+                      brands.map((brand) => (
+                        <SelectItem key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="px-4 py-3 text-center">
+                        <div className="text-sm text-gray-500 mb-2">🏷️ No brands found</div>
+                        <div className="text-xs text-gray-400 mb-2">You need to add brands before creating products</div>
+                        <div className="text-xs text-blue-600">
+                          💡 Go to Brands section to add your first brand
+                        </div>
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
                 {errors.brandId && <span className="text-red-500 text-sm">{errors.brandId}</span>}
@@ -1305,12 +1348,26 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   type="number"
                   name="purchasePrice"
                   value={formData.purchasePrice}
-                  onChange={handleChange}
-                  placeholder="0.00"
+                  onChange={(e) => {
+                    handleChange(e);
+                    // Clear the error when user starts typing
+                    if (errors.purchasePrice) {
+                      setErrors(prev => ({ ...prev, purchasePrice: '' }));
+                    }
+                  }}
+                  placeholder="Enter per item price (not per box/case)"
                   step="0.01"
                   className={errors.purchasePrice ? 'border-red-500' : ''}
                 />
                 {errors.purchasePrice && <span className="text-red-500 text-sm">{errors.purchasePrice}</span>}
+                {formData.purchasePrice && formData.unit && (
+                  <p className="text-xs text-green-600">
+                    💰 {formatPriceWithUnit(formData.purchasePrice, formData.unit)}
+                  </p>
+                )}
+                <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  ⚡ <strong>Important:</strong> Enter the price per individual item (bottle, packet, bag), not per box or case.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -1319,12 +1376,28 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   type="number"
                   name="salePrice"
                   value={formData.salePrice}
-                  onChange={handleChange}
-                  placeholder="0.00"
+                  onChange={(e) => {
+                    handleChange(e);
+                    // Clear the error when user starts typing
+                    if (errors.salePrice) {
+                      setErrors(prev => ({ ...prev, salePrice: '' }));
+                    }
+                  }}
+                  placeholder="Enter per item sale price"
                   step="0.01"
                   className={errors.salePrice ? 'border-red-500' : ''}
                 />
                 {errors.salePrice && <span className="text-red-500 text-sm">{errors.salePrice}</span>}
+                {formData.salePrice && formData.unit && (
+                  <p className="text-xs text-green-600">
+                    💰 {formatPriceWithUnit(formData.salePrice, formData.unit)}
+                  </p>
+                )}
+                {formData.purchasePrice && formData.salePrice && (
+                  <p className="text-xs text-gray-600">
+                    📊 Profit margin: ₹{(parseFloat(formData.salePrice) - parseFloat(formData.purchasePrice)).toFixed(2)} per {formData.unit || 'item'}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1333,29 +1406,90 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   type="number"
                   name="quantity"
                   value={formData.quantity}
-                  onChange={handleChange}
-                  placeholder="0"
+                  onChange={(e) => {
+                    handleChange(e);
+                    // Validate quantity for piece-based system
+                    const validation = validateQuantity(e.target.value, formData.unit);
+                    if (!validation.isValid) {
+                      setErrors(prev => ({ ...prev, quantity: validation.message }));
+                    } else if (validation.isWarning) {
+                      setErrors(prev => ({ ...prev, quantity: validation.message }));
+                    } else {
+                      setErrors(prev => ({ ...prev, quantity: '' }));
+                    }
+                  }}
+                  placeholder={formData.unit === 'pcs' ? 'Enter number of pieces' : '0'}
+                  step={formData.unit === 'pcs' ? '1' : '0.01'}
                   className={errors.quantity ? 'border-red-500' : ''}
                 />
                 {errors.quantity && <span className="text-red-500 text-sm">{errors.quantity}</span>}
+                {formData.quantity && formData.purchasePrice && formData.unit && (
+                  <div className="text-xs text-gray-600">
+                    📦 Total investment: ₹{(parseFloat(formData.quantity) * parseFloat(formData.purchasePrice)).toFixed(2)}
+                  </div>
+                )}
+                <p className="text-xs text-blue-600">
+                  💡 Enter total pieces you have in stock (e.g., if you bought 5 boxes of 10 bottles each, enter 50)
+                </p>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Unit *</label>
+                <label className="text-sm font-medium">Unit * <span className="text-blue-600 font-normal">(📦 Recommended: pcs)</span></label>
                 <Select
                   value={formData.unit}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, unit: value }))}
+                  onValueChange={(value) => {
+                    setFormData(prev => ({ ...prev, unit: value }));
+                    // Auto-suggest recommended unit based on category if changing from default
+                    const selectedCategory = categories.find(cat => cat.id === formData.categoryId);
+                    if (selectedCategory && value !== 'pcs') {
+                      const recommended = getRecommendedUnit(selectedCategory.name, formData.name);
+                      if (recommended !== value) {
+                        console.log(`💡 Recommended unit for ${selectedCategory.name}: ${recommended}`);
+                      }
+                    }
+                  }}
                 >
                   <SelectTrigger className={errors.unit ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select Unit" />
                   </SelectTrigger>
                   <SelectContent>
-                    {UNITS.map(unit => (
-                      <SelectItem key={unit} value={unit}>{unit}</SelectItem>
-                    ))}
+                    {UNITS.map(unit => {
+                      const unitInfo = getUnitDisplayInfo(unit);
+                      return (
+                        <SelectItem key={unit} value={unit}>
+                          <div className="flex items-center space-x-2">
+                            <span>{unitInfo.icon}</span>
+                            <div>
+                              <div className="font-medium">{unitInfo.display}</div>
+                              <div className="text-xs text-muted-foreground">{unitInfo.description}</div>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 {errors.unit && <span className="text-red-500 text-sm">{errors.unit}</span>}
+                {(() => {
+                  const selectedCategory = categories.find(cat => cat.id === formData.categoryId);
+                  if (selectedCategory && formData.unit) {
+                    const recommended = getRecommendedUnit(selectedCategory.name, formData.name);
+                    if (recommended !== formData.unit && recommended === 'pcs') {
+                      return (
+                        <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                          💡 <strong>Suggestion:</strong> Consider using "pcs" for easier inventory tracking of countable items.
+                        </div>
+                      );
+                    }
+                  }
+                  return null;
+                })()}
+                <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded space-y-1">
+                  <div><strong>💡 UOM Best Practice:</strong></div>
+                  <div>• Use <strong>"pcs"</strong> for bottles, packets, bags, tools</div>
+                  <div>• Track individual sellable items, not boxes/cases</div>
+                  <div>• This eliminates conversion confusion in sales</div>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -1441,17 +1575,23 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                         );
                       })
                     ) : (
-                      <div className="px-2 py-1 text-sm text-gray-500">
-                        No suppliers available
+                      <div className="px-4 py-3 text-center">
+                        <div className="text-sm text-gray-500 mb-2">📦 No suppliers found</div>
+                        <div className="text-xs text-gray-400 mb-2">You need to add suppliers before creating products</div>
+                        <div className="text-xs text-blue-600">
+                          💡 Go to Suppliers section to add your first supplier
+                        </div>
                       </div>
                     )}
                   </SelectContent>
                 </Select>
                 {errors.supplierId && <span className="text-red-500 text-sm">{errors.supplierId}</span>}
                 {!suppliersLoading && suppliers.length === 0 && (
-                  <p className="text-xs text-amber-600">
-                    No suppliers found. Please add suppliers first.
-                  </p>
+                  <div className="text-xs bg-amber-50 border border-amber-200 rounded p-3 space-y-1">
+                    <div className="text-amber-800 font-medium">🚀 Quick Setup Required</div>
+                    <div className="text-amber-700">No suppliers found in your database.</div>
+                    <div className="text-amber-600">💡 <strong>Next step:</strong> Add suppliers in the Suppliers section before creating products.</div>
+                  </div>
                 )}
                 {/* Success indicator when supplier is selected */}
                 {formData.supplierId && suppliers.length > 0 && (

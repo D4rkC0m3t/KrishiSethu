@@ -1,0 +1,432 @@
+<!-- ========================================= -->
+<!-- KrishiSethu Email Templates for Supabase -->
+<!-- Use these in Supabase Dashboard → Auth → Email Templates -->
+<!-- ========================================= -->
+
+<!-- 1. EMAIL CONFIRMATION TEMPLATE -->
+<!-- Use this for: Confirm signup -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Confirm your email - KrishiSethu</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f8fdf9;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      }
+      .logo {
+        text-align: center;
+        font-size: 26px;
+        font-weight: bold;
+        color: #2f855a;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #2f855a;
+        text-align: center;
+      }
+      p {
+        font-size: 16px;
+        color: #333;
+        line-height: 1.5;
+      }
+      .button {
+        display: block;
+        width: 100%;
+        margin: 20px 0;
+        text-align: center;
+      }
+      a.confirm-btn {
+        background-color: #38a169;
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        display: inline-block;
+      }
+      a.confirm-btn:hover {
+        background-color: #2f855a;
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+      .highlight {
+        background-color: #f0fff4;
+        padding: 15px;
+        border-left: 4px solid #38a169;
+        margin: 15px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🌾 KrishiSethu</div>
+      <h2>Welcome to KrishiSethu!</h2>
+      <p>Thank you for joining <strong>KrishiSethu Inventory Management</strong> – your digital partner in agricultural business management.</p>
+
+      <div class="highlight">
+        <p><strong>What you'll get:</strong></p>
+        <p>✅ Complete inventory tracking<br>
+        ✅ Sales & purchase management<br>
+        ✅ Customer & supplier database<br>
+        ✅ Real-time stock monitoring<br>
+        ✅ Business reports & analytics</p>
+      </div>
+
+      <p>To get started, please confirm your email address:</p>
+
+      <div class="button">
+        <a class="confirm-btn" href="{{ .ConfirmationURL }}">Confirm Email & Start Free Trial</a>
+      </div>
+
+      <p>If the button doesn't work, copy this link:</p>
+      <p><a href="{{ .ConfirmationURL }}">{{ .ConfirmationURL }}</a></p>
+
+      <div class="footer">
+        © 2024 KrishiSethu. Growing together with farmers 🌱<br>
+        <em>Empowering agricultural businesses through smart technology</em>
+      </div>
+    </div>
+  </body>
+</html>
+
+<!-- ========================================= -->
+
+<!-- 2. PASSWORD RESET TEMPLATE -->
+<!-- Use this for: Reset password -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reset your password - KrishiSethu</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f8fdf9;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      }
+      .logo {
+        text-align: center;
+        font-size: 26px;
+        font-weight: bold;
+        color: #2f855a;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #2f855a;
+        text-align: center;
+      }
+      p {
+        font-size: 16px;
+        color: #333;
+        line-height: 1.5;
+      }
+      .button {
+        display: block;
+        width: 100%;
+        margin: 20px 0;
+        text-align: center;
+      }
+      a.reset-btn {
+        background-color: #38a169;
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        display: inline-block;
+      }
+      a.reset-btn:hover {
+        background-color: #2f855a;
+      }
+      .warning {
+        background-color: #fef5e7;
+        border: 1px solid #f6ad55;
+        border-radius: 6px;
+        padding: 12px;
+        margin: 15px 0;
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🌾 KrishiSethu</div>
+      <h2>Reset Your Password</h2>
+      <p>We received a request to reset the password for your KrishiSethu account.</p>
+
+      <div class="warning">
+        <p><strong>🔒 Security Notice:</strong><br>
+        If you didn't request this password reset, please ignore this email. Your account remains secure.</p>
+      </div>
+
+      <p>To create a new password, click the button below:</p>
+
+      <div class="button">
+        <a class="reset-btn" href="{{ .ConfirmationURL }}">Reset My Password</a>
+      </div>
+
+      <p>If the button doesn't work, copy this link:</p>
+      <p><a href="{{ .ConfirmationURL }}">{{ .ConfirmationURL }}</a></p>
+
+      <p><small>This reset link will expire in 24 hours for your security.</small></p>
+
+      <div class="footer">
+        © 2024 KrishiSethu. Growing together with farmers 🌱<br>
+        <em>Need help? Contact our support team</em>
+      </div>
+    </div>
+  </body>
+</html>
+
+<!-- ========================================= -->
+
+<!-- 3. MAGIC LINK TEMPLATE (for passwordless login) -->
+<!-- Use this for: Magic link -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Your login link - KrishiSethu</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f8fdf9;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      }
+      .logo {
+        text-align: center;
+        font-size: 26px;
+        font-weight: bold;
+        color: #2f855a;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #2f855a;
+        text-align: center;
+      }
+      p {
+        font-size: 16px;
+        color: #333;
+        line-height: 1.5;
+      }
+      .button {
+        display: block;
+        width: 100%;
+        margin: 20px 0;
+        text-align: center;
+      }
+      a.login-btn {
+        background-color: #38a169;
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        display: inline-block;
+      }
+      a.login-btn:hover {
+        background-color: #2f855a;
+      }
+      .info {
+        background-color: #e6fffa;
+        border: 1px solid #4fd1c7;
+        border-radius: 6px;
+        padding: 12px;
+        margin: 15px 0;
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🌾 KrishiSethu</div>
+      <h2>Quick Access to Your Account</h2>
+      <p>Click the button below to securely access your KrishiSethu inventory management dashboard:</p>
+
+      <div class="button">
+        <a class="login-btn" href="{{ .ConfirmationURL }}">Access My Dashboard</a>
+      </div>
+
+      <div class="info">
+        <p><strong>✨ Quick Access Features:</strong><br>
+        • No password needed<br>
+        • Secure one-click login<br>
+        • Direct access to your inventory<br>
+        • Works on any device</p>
+      </div>
+
+      <p>If the button doesn't work, copy this link:</p>
+      <p><a href="{{ .ConfirmationURL }}">{{ .ConfirmationURL }}</a></p>
+
+      <p><small>This login link will expire in 1 hour for your security.</small></p>
+
+      <div class="footer">
+        © 2024 KrishiSethu. Growing together with farmers 🌱<br>
+        <em>Manage your agricultural business with confidence</em>
+      </div>
+    </div>
+  </body>
+</html>
+
+<!-- ========================================= -->
+
+<!-- 4. INVITATION TEMPLATE (for team members) -->
+<!-- Use this for: Invite user -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>You're invited to KrishiSethu</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f8fdf9;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        max-width: 600px;
+        margin: auto;
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      }
+      .logo {
+        text-align: center;
+        font-size: 26px;
+        font-weight: bold;
+        color: #2f855a;
+        margin-bottom: 20px;
+      }
+      h2 {
+        color: #2f855a;
+        text-align: center;
+      }
+      p {
+        font-size: 16px;
+        color: #333;
+        line-height: 1.5;
+      }
+      .button {
+        display: block;
+        width: 100%;
+        margin: 20px 0;
+        text-align: center;
+      }
+      a.invite-btn {
+        background-color: #38a169;
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: bold;
+        display: inline-block;
+      }
+      a.invite-btn:hover {
+        background-color: #2f855a;
+      }
+      .invite-box {
+        background-color: #f0fff4;
+        border: 2px solid #38a169;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 20px 0;
+        text-align: center;
+      }
+      .footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #777;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">🌾 KrishiSethu</div>
+      <h2>You're Invited!</h2>
+      <p>You've been invited to join a KrishiSethu inventory management team.</p>
+
+      <div class="invite-box">
+        <p><strong>🤝 Join the team and get access to:</strong></p>
+        <p>📊 Shared inventory management<br>
+        🛒 Collaborative sales tracking<br>
+        📈 Real-time business insights<br>
+        👥 Team coordination tools</p>
+      </div>
+
+      <p>Click below to accept the invitation and set up your account:</p>
+
+      <div class="button">
+        <a class="invite-btn" href="{{ .ConfirmationURL }}">Accept Invitation</a>
+      </div>
+
+      <p>If the button doesn't work, copy this link:</p>
+      <p><a href="{{ .ConfirmationURL }}">{{ .ConfirmationURL }}</a></p>
+
+      <div class="footer">
+        © 2024 KrishiSethu. Growing together with farmers 🌱<br>
+        <em>Strengthening agricultural businesses through teamwork</em>
+      </div>
+    </div>
+  </body>
+</html>
+
+<!-- ========================================= -->
+<!-- How to Use These Templates in Supabase:
+1. Go to Supabase Dashboard → Authentication → Email Templates
+2. Select the template type (Confirm signup, Reset password, etc.)
+3. Copy the relevant HTML template above
+4. Paste it into the HTML content field
+5. Save changes
+6. Test with a real signup/reset to verify styling
+========================================= -->

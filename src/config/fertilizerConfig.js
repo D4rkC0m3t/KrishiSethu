@@ -92,17 +92,69 @@ export const CATEGORIES = Object.keys(FERTILIZER_CATEGORIES);
 // All types as a flat array (all subcategories combined)
 export const FERTILIZER_TYPES = Object.values(FERTILIZER_CATEGORIES).flat();
 
-// Additional product attributes
+// Units optimized for piece-based inventory tracking
+// Primary recommendation: Use 'pcs' for most products to avoid UOM confusion
 export const UNITS = [
-  'kg',
-  'bags',
-  'liters',
-  'tons',
-  'packets',
-  'bottles',
-  'boxes',
-  'pieces'
+  'pcs',     // Recommended: pieces/items (bottles, packets, tools, etc.)
+  'kg',      // For loose products sold by weight
+  'liters',  // For liquid products sold by volume
+  'bags',    // Only if selling complete bags (not individual items from bags)
+  'bottles', // Deprecated: use 'pcs' instead
+  'packets', // Deprecated: use 'pcs' instead  
+  'boxes',   // Deprecated: use 'pcs' instead
+  'pieces',  // Deprecated: use 'pcs' instead
+  'tons',    // For bulk products
+  'grams',   // For small quantities
+  'ml'       // For small liquid quantities
 ];
+
+// Product naming convention examples
+export const PRODUCT_NAMING_EXAMPLES = {
+  'Liquid Products': [
+    'Nutrient @12% - 250ml',
+    'Pesticide XYZ - 500ml', 
+    'Growth Hormone @5% - 100ml'
+  ],
+  'Granular Products': [
+    'NPK 20:20:0 - 50kg Bag',
+    'Urea 46% - 25kg Bag',
+    'Organic Compost - 10kg Pack'
+  ],
+  'Seeds': [
+    'Wheat Seeds Premium - 1kg Pack',
+    'Tomato Seeds Hybrid - 100gm Pack',
+    'Cotton Seeds Bt - 500gm Pack'
+  ],
+  'Tools': [
+    'Sprayer Manual - 16L Capacity',
+    'Fertilizer Spreader - Hand Operated',
+    'pH Meter Digital - Portable'
+  ]
+};
+
+// UOM Best Practices Guide
+export const UOM_BEST_PRACTICES = {
+  unit_selection: {
+    recommendation: 'Always use "pcs" as the primary unit for countable items',
+    reasoning: 'Eliminates confusion between wholesale (boxes) and retail (individual items) units',
+    examples: {
+      correct: 'Product: "Nutrient @12% - 250ml", Unit: pcs, Qty: 50 (if you have 50 bottles)',
+      incorrect: 'Product: "Nutrient", Unit: boxes, Qty: 5 (creates confusion about individual bottles)'
+    }
+  },
+  product_naming: {
+    format: '[Product Name] @[Concentration/Grade]% - [Pack Size][Unit]',
+    examples: [
+      'Nutrient @12% - 250ml',
+      'NPK @20:20:0 - 50kg',
+      'Pesticide ABC @25% - 1L'
+    ]
+  },
+  pricing: {
+    rule: 'Always enter purchase and sale price per piece (individual item)',
+    example: 'If you buy 1 box of 10 bottles at ₹2000, enter Purchase Price = ₹200 per piece'
+  }
+};
 
 export const GST_RATES = [
   0,

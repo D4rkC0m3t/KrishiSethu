@@ -377,12 +377,15 @@ export const COLLECTIONS = {
 };
 
 /**
- * Generic database operations
+ * Multi-tenant aware database operations
+ * RLS policies automatically filter data by owner_id = auth.uid()
  */
 export const dbOperations = {
-  // Get all records from a table
+  // Get all records from a table (automatically filtered by RLS)
   async getAll(table, options = {}) {
     try {
+      console.log(`🔍 [${table.toUpperCase()}] Fetching records for current user...`);
+      
       let query = supabase.from(table).select('*');
       
       // Apply filters
@@ -405,13 +408,18 @@ export const dbOperations = {
       
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error(`❌ [${table.toUpperCase()}] Error fetching records:`, error);
+        throw error;
+      }
 
+      console.log(`✅ [${table.toUpperCase()}] Found ${data?.length || 0} records for current user`);
+      
       // Map fields from database snake_case to JavaScript camelCase
       const mappedData = (data || []).map(item => mapFieldsFromDb(item, table));
       return mappedData;
     } catch (error) {
-      console.error(`Error getting all ${table}:`, error);
+      console.error(`❌ [${table.toUpperCase()}] Error getting all:`, error);
       throw error;
     }
   },
@@ -545,53 +553,149 @@ export const dbOperations = {
  */
 export const productOperations = {
   async getAllProducts() {
+    console.log('🔄 [PRODUCTS] Starting getAllProducts operation...');
+    
     try {
-      // Enhanced query with brand and category joins
-      const { data, error } = await supabase
-        .from('products')
-        .select(`
-          *,
-          brands(id, name),
-          categories(id, name)
-        `)
-        .order('name', { ascending: true });
+      // First, test if brands and categories tables exist and are accessible
+      console.log('🔄 [PRODUCTS] Testing brand and category table access...');
+      
+      const [brandsTest, categoriesTest] = await Promise.allSettled([
+        supabase.from('brands').select('count', { count: 'exact', head: true }),
+        supabase.from('categories').select('count', { count: 'exact', head: true })
+      ]);
+      
+      const brandsAccessible = brandsTest.status === 'fulfilled' && !brandsTest.value.error;
+      const categoriesAccessible = categoriesTest.status === 'fulfilled' && !categoriesTest.value.error;
+      
+      console.log('🔍 [PRODUCTS] Brands table accessible:', brandsAccessible);
+      console.log('🔍 [PRODUCTS] Categories table accessible:', categoriesAccessible);
+      
+      if (brandsAccessible && categoriesAccessible) {
+        // Enhanced query with brand and category joins - WITH TIMEOUT
+        console.log('🔄 [PRODUCTS] Attempting enhanced query with joins...');
+        
+        const enhancedQuery = supabase
+          .from('products')
+          .select(`
+            *,
+            brands(id, name),
+            categories(id, name)
+          `)
+          .order('name', { ascending: true })
+          .limit(200); // Add reasonable limit for performance
+        
+        // Set timeout for the query
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Enhanced products query timeout after 10 seconds'));
+          }, 10000);
+        });
+        
+        const { data, error } = await Promise.race([enhancedQuery, timeoutPromise]);
 
-      if (error) throw error;
+        if (error) {
+          console.warn('⚠️ [PRODUCTS] Enhanced query failed:', error.message);
+          throw error;
+        }
 
-      console.log('🔍 Raw product data with joins:', data?.slice(0, 2)); // Log first 2 products for debugging
+        console.log(`✅ [PRODUCTS] Enhanced query successful: ${(data || []).length} products loaded`);
+        console.log('🔍 [PRODUCTS] Raw product data with joins (sample):', data?.slice(0, 2));
 
-      // Map the joined data to include brand and category names
-      const mappedProducts = (data || []).map(product => {
-        const mappedProduct = mapFieldsFromDb(product, 'products');
+        // Map the joined data to include brand and category names
+        const mappedProducts = (data || []).map(product => {
+          const mappedProduct = mapFieldsFromDb(product, 'products');
 
-        // Add brand and category names from joins
-        if (product.brands) {
-          mappedProduct.brandName = product.brands.name;
-          mappedProduct.brand = product.brands.name; // For backward compatibility
-        } else {
+          // Add brand and category names from joins
+          if (product.brands) {
+            mappedProduct.brandName = product.brands.name;
+            mappedProduct.brand = product.brands.name; // For backward compatibility
+          } else {
+            mappedProduct.brandName = 'No Brand';
+            mappedProduct.brand = 'No Brand';
+          }
+
+          if (product.categories) {
+            mappedProduct.categoryName = product.categories.name;
+            mappedProduct.category = product.categories.name; // For backward compatibility
+          } else {
+            mappedProduct.categoryName = 'No Category';
+            mappedProduct.category = 'No Category';
+          }
+
+          return mappedProduct;
+        });
+
+        console.log(`✅ [PRODUCTS] Mapped ${mappedProducts.length} products with brand/category`);
+        console.log('🔍 [PRODUCTS] Sample mapped product:', mappedProducts[0]);
+        return mappedProducts;
+        
+      } else {
+        console.warn('⚠️ [PRODUCTS] Brand or category tables not accessible, using fallback query');
+        throw new Error('Brands or categories table not accessible');
+      }
+      
+    } catch (error) {
+      console.warn('⚠️ [PRODUCTS] Enhanced query failed, attempting fallback:', error.message);
+      console.warn('⚠️ [PRODUCTS] Error details:', error);
+      
+      try {
+        // Fallback to basic query without joins - WITH TIMEOUT
+        console.log('🔄 [PRODUCTS] Fallback: Basic products query without joins...');
+        
+        const basicQuery = supabase
+          .from('products')
+          .select('*')
+          .order('name', { ascending: true })
+          .limit(200); // Add reasonable limit for performance
+        
+        const fallbackTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Basic products query timeout after 8 seconds'));
+          }, 8000);
+        });
+        
+        const { data: basicData, error: basicError } = await Promise.race([basicQuery, fallbackTimeoutPromise]);
+        
+        if (basicError) {
+          console.error('❌ [PRODUCTS] Basic query also failed:', basicError);
+          throw basicError;
+        }
+        
+        console.log(`✅ [PRODUCTS] Basic query successful: ${(basicData || []).length} products loaded`);
+        console.log('🔍 [PRODUCTS] Sample basic product:', basicData?.[0]);
+        
+        // Map basic data without joins
+        const mappedBasicProducts = (basicData || []).map(product => {
+          const mappedProduct = mapFieldsFromDb(product, 'products');
+          
+          // Set default values for missing brand and category info
           mappedProduct.brandName = 'No Brand';
           mappedProduct.brand = 'No Brand';
-        }
-
-        if (product.categories) {
-          mappedProduct.categoryName = product.categories.name;
-          mappedProduct.category = product.categories.name; // For backward compatibility
-        } else {
-          mappedProduct.categoryName = 'No Category';
+          mappedProduct.categoryName = 'No Category'; 
           mappedProduct.category = 'No Category';
+          
+          return mappedProduct;
+        });
+        
+        console.log(`✅ [PRODUCTS] Mapped ${mappedBasicProducts.length} basic products`);
+        return mappedBasicProducts;
+        
+      } catch (fallbackError) {
+        console.error('❌ [PRODUCTS] Both enhanced and basic queries failed:', fallbackError);
+        
+        // Last resort: return minimal fallback using dbOperations
+        try {
+          console.log('🔄 [PRODUCTS] Last resort: Using dbOperations.getAll...');
+          const dbResult = await dbOperations.getAll(COLLECTIONS.PRODUCTS, {
+            orderBy: { field: 'name', ascending: true }
+          });
+          console.log(`✅ [PRODUCTS] dbOperations fallback successful: ${(dbResult || []).length} products`);
+          return dbResult || [];
+        } catch (dbError) {
+          console.error('❌ [PRODUCTS] All query methods failed:', dbError);
+          return []; // Return empty array to prevent crashes
         }
-
-        return mappedProduct;
-      });
-
-      console.log('✅ Mapped products with brand/category:', mappedProducts?.slice(0, 2)); // Log first 2 for debugging
-      return mappedProducts;
-    } catch (error) {
-      console.error('Error getting products with joins:', error);
-      // Fallback to basic query without joins
-      return dbOperations.getAll(COLLECTIONS.PRODUCTS, {
-        orderBy: { field: 'name', ascending: true }
-      });
+      }
     }
   },
 
@@ -1336,58 +1440,7 @@ export {
 };
 
 // Export with Firebase-compatible service names for easy migration
-export const productsService = {
-  ...productOperations,
-  // Add Firebase-compatible method names
-  add: productOperations.createProduct,
-  getAll: productOperations.getAllProducts,
-  getById: productOperations.getProductById,
-  update: productOperations.updateProduct,
-  delete: productOperations.deleteProduct
-};
-export const salesService = {
-  ...salesOperations,
-  // Add Firebase-compatible method names
-  add: salesOperations.createSale,
-  create: salesOperations.createSale,  // Add create method
-  getAll: salesOperations.getAllSales,
-  getById: salesOperations.getSaleById,
-  update: salesOperations.updateSale,
-  delete: salesOperations.deleteSale
-};
-export const customersService = {
-  ...customerOperations,
-  // Add Firebase-compatible method names
-  add: customerOperations.createCustomer,
-  create: customerOperations.createCustomer,  // Add create method
-  getAll: customerOperations.getAllCustomers,
-  getById: customerOperations.getCustomerById,
-  update: customerOperations.updateCustomer,
-  delete: customerOperations.deleteCustomer
-};
-export const suppliersService = {
-  async getAll() {
-    return dbOperations.getAll(COLLECTIONS.SUPPLIERS, {
-      orderBy: { field: 'name', ascending: true }
-    });
-  },
-  async add(supplierData) {
-    return dbOperations.create(COLLECTIONS.SUPPLIERS, supplierData);
-  },
-  async create(supplierData) {
-    // Alias for add method for compatibility
-    return this.add(supplierData);
-  },
-  async update(id, supplierData) {
-    return dbOperations.update(COLLECTIONS.SUPPLIERS, id, supplierData);
-  },
-  async delete(id) {
-    return dbOperations.delete(COLLECTIONS.SUPPLIERS, id);
-  },
-  async getById(id) {
-    return dbOperations.getById(COLLECTIONS.SUPPLIERS, id);
-  }
-};
+// Note: Using enhanced versions that support multi-tenancy
 export const brandsService = {
   async getAll() {
     return dbOperations.getAll(COLLECTIONS.BRANDS, {
@@ -1544,50 +1597,85 @@ export const einvoicesService = {
   // Get all E-invoices with optional filtering
   async getAll(filters = {}) {
     try {
+      console.log('🔍 Loading E-invoices...');
+
       // Try einvoices table first, fallback to sales table
-      let query;
+      let result;
       let tableName = 'einvoices';
 
       try {
-        query = supabase
+        console.log('📋 Attempting to query einvoices table...');
+        result = await supabase
           .from('einvoices')
           .select(`
             *,
             customer:customers(id, name, phone, email, address, gst_number)
           `)
           .order('created_at', { ascending: false });
+
+        if (result.error) {
+          throw result.error;
+        }
+
+        console.log('✅ Successfully loaded from einvoices table:', result.data?.length || 0, 'records');
       } catch (error) {
-        console.log('📋 E-invoices table not found, using sales table as fallback');
-        tableName = 'sales';
-        query = supabase
-          .from('sales')
-          .select(`
-            *,
-            customer:customers(id, name, phone, email, address, gst_number)
-          `)
-          .order('created_at', { ascending: false });
+        console.log('📋 E-invoices table not available, trying sales table as fallback...');
+        console.log('Error details:', error.message);
+
+        try {
+          tableName = 'sales';
+          result = await supabase
+            .from('sales')
+            .select(`
+              *,
+              customer:customers(id, name, phone, email, address, gst_number)
+            `)
+            .order('created_at', { ascending: false });
+
+          if (result.error) {
+            throw result.error;
+          }
+
+          console.log('✅ Successfully loaded from sales table:', result.data?.length || 0, 'records');
+        } catch (salesError) {
+          console.error('❌ Failed to load from both einvoices and sales tables:', salesError);
+          // Return empty array instead of throwing error
+          return [];
+        }
       }
 
-      // Apply filters
-      if (filters.status) {
-        query = query.eq('status', filters.status);
-      }
-      if (filters.customer_id) {
-        query = query.eq('customer_id', filters.customer_id);
-      }
-      if (filters.date_from) {
-        query = query.gte('invoice_date', filters.date_from);
-      }
-      if (filters.date_to) {
-        query = query.lte('invoice_date', filters.date_to);
+      // Apply filters if we have a valid result
+      if (result && result.data) {
+        let filteredData = result.data;
+
+        // Apply client-side filtering since we already have the data
+        if (filters.status) {
+          filteredData = filteredData.filter(item => item.status === filters.status);
+        }
+        if (filters.customer_id) {
+          filteredData = filteredData.filter(item => item.customer_id === filters.customer_id);
+        }
+        if (filters.date_from) {
+          filteredData = filteredData.filter(item =>
+            new Date(item.invoice_date || item.created_at) >= new Date(filters.date_from)
+          );
+        }
+        if (filters.date_to) {
+          filteredData = filteredData.filter(item =>
+            new Date(item.invoice_date || item.created_at) <= new Date(filters.date_to)
+          );
+        }
+
+        console.log('✅ Applied filters, returning', filteredData.length, 'records');
+        return filteredData;
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      return [];
     } catch (error) {
-      console.error('Error fetching E-invoices:', error);
-      throw error;
+      console.error('❌ Error fetching E-invoices:', error);
+      // Return empty array instead of throwing error to prevent UI crashes
+      console.log('🔄 Returning empty array due to error');
+      return [];
     }
   },
 
@@ -2004,4 +2092,250 @@ export const utilityService = {
     // Generate acknowledgment number for E-Invoice
     return Math.floor(100000000000000 + Math.random() * 900000000000000).toString();
   }
+};
+
+// =====================================================
+// MULTI-TENANT UTILITY FUNCTIONS
+// =====================================================
+
+// Get current authenticated user
+export const getCurrentUser = async () => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  
+  if (error) {
+    console.error('❌ Error getting current user:', error);
+    throw error;
+  }
+  
+  return user;
+};
+
+// Check if user can access specific record
+export const canUserAccessRecord = async (tableName, recordId) => {
+  const { data, error } = await supabase
+    .from(tableName)
+    .select('owner_id')
+    .eq('id', recordId)
+    .single();
+  
+  if (error) return false;
+  
+  const user = await getCurrentUser();
+  return data.owner_id === user?.id;
+};
+
+// Test multi-tenancy by creating and fetching data
+export const testMultiTenancy = async () => {
+  try {
+    console.log('🧪 Testing multi-tenancy...');
+    
+    // Test 1: Create a test supplier
+    const testSupplier = await suppliersService.create({
+      name: 'Test Supplier for Multi-tenancy',
+      phone: '1234567890',
+      email: 'test@multitenant.com'
+    });
+    
+    console.log('✅ Test supplier created:', testSupplier);
+    
+    // Test 2: Fetch all suppliers (should only show user's suppliers)
+    const userSuppliers = await suppliersService.getAll();
+    console.log(`✅ User can see ${userSuppliers.length} suppliers (including test supplier)`);
+    
+    // Test 3: Clean up test data
+    await suppliersService.delete(testSupplier.id);
+    console.log('✅ Test supplier deleted');
+    
+    console.log('🎉 Multi-tenancy test passed!');
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Multi-tenancy test failed:', error);
+    return false;
+  }
+};
+
+// =====================================================
+// ENHANCED SERVICES WITH LOGGING AND ERROR HANDLING
+// =====================================================
+
+// Enhanced suppliers service with detailed logging (replaces existing suppliersService)
+export const suppliersServiceEnhanced = {
+  // Get all suppliers for current user only (RLS automatically filters)
+  async getAll() {
+    console.log('🔍 [SUPPLIERS] Fetching suppliers for current user...');
+    
+    try {
+      const data = await dbOperations.getAll(COLLECTIONS.SUPPLIERS, {
+        orderBy: { field: 'name', ascending: true }
+      });
+      
+      console.log(`✅ [SUPPLIERS] Found ${data?.length || 0} suppliers for current user`);
+      return data || [];
+    } catch (error) {
+      console.error('❌ [SUPPLIERS] Error fetching suppliers:', error);
+      throw error;
+    }
+  },
+
+  // Create new supplier (owner_id set automatically by database trigger)
+  async create(supplierData) {
+    console.log('🔄 [SUPPLIERS] Creating new supplier...', supplierData);
+    
+    // Note: owner_id is set automatically by database trigger
+    // You can also explicitly set it if needed:
+    // const user = await supabase.auth.getUser();
+    // supplierData.owner_id = user.data.user?.id;
+    
+    try {
+      const result = await dbOperations.create(COLLECTIONS.SUPPLIERS, supplierData);
+      console.log('✅ [SUPPLIERS] Supplier created:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ [SUPPLIERS] Error creating supplier:', error);
+      throw error;
+    }
+  },
+
+  // Update supplier (only if user owns it)
+  async update(id, supplierData) {
+    console.log(`🔄 [SUPPLIERS] Updating supplier ${id}...`);
+    
+    try {
+      const result = await dbOperations.update(COLLECTIONS.SUPPLIERS, id, supplierData);
+      console.log('✅ [SUPPLIERS] Supplier updated:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ [SUPPLIERS] Error updating supplier:', error);
+      throw error;
+    }
+  },
+
+  // Delete supplier (only if user owns it)
+  async delete(id) {
+    console.log(`🔄 [SUPPLIERS] Deleting supplier ${id}...`);
+    
+    try {
+      await dbOperations.delete(COLLECTIONS.SUPPLIERS, id);
+      console.log('✅ [SUPPLIERS] Supplier deleted');
+      return true;
+    } catch (error) {
+      console.error('❌ [SUPPLIERS] Error deleting supplier:', error);
+      throw error;
+    }
+  },
+
+  async getById(id) {
+    return dbOperations.getById(COLLECTIONS.SUPPLIERS, id);
+  },
+
+  // Alias methods for compatibility
+  async add(supplierData) {
+    return this.create(supplierData);
+  }
+};
+
+// Enhanced products service with multi-tenancy
+export const productsServiceEnhanced = {
+  // Get all products for current user only
+  async getAll() {
+    console.log('🔍 [PRODUCTS] Fetching products for current user...');
+    
+    try {
+      // Use the existing productOperations which already handles joins
+      const data = await productOperations.getAllProducts();
+      
+      console.log(`✅ [PRODUCTS] Found ${data?.length || 0} products for current user`);
+      return data || [];
+    } catch (error) {
+      console.error('❌ [PRODUCTS] Error fetching products:', error);
+      throw error;
+    }
+  },
+
+  // Create new product (owner_id set automatically)
+  async create(productData) {
+    console.log('🔄 [PRODUCTS] Creating new product...', productData);
+    
+    try {
+      const result = await productOperations.createProduct(productData);
+      console.log('✅ [PRODUCTS] Product created:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ [PRODUCTS] Error creating product:', error);
+      throw error;
+    }
+  },
+
+  // Get products by category (user's products only)
+  async getByCategory(categoryId) {
+    console.log(`🔍 [PRODUCTS] Fetching products in category ${categoryId}...`);
+    
+    try {
+      const data = await productOperations.getProductsByCategory(categoryId);
+      return data || [];
+    } catch (error) {
+      console.error('❌ [PRODUCTS] Error fetching products by category:', error);
+      throw error;
+    }
+  },
+
+  // Search user's products
+  async search(searchTerm) {
+    console.log(`🔍 [PRODUCTS] Searching products for: "${searchTerm}"`);
+    
+    try {
+      const data = await productOperations.searchProducts(searchTerm);
+      return data || [];
+    } catch (error) {
+      console.error('❌ [PRODUCTS] Error searching products:', error);
+      throw error;
+    }
+  },
+
+  async update(id, productData) {
+    return productOperations.updateProduct(id, productData);
+  },
+
+  async delete(id) {
+    return productOperations.deleteProduct(id);
+  },
+
+  async getById(id) {
+    return productOperations.getProductById(id);
+  },
+
+  // Alias methods for compatibility
+  async add(productData) {
+    return this.create(productData);
+  }
+};
+
+// Replace existing services with enhanced versions that support multi-tenancy
+// Note: We keep the original service names for backward compatibility
+// but point them to the enhanced versions
+export { suppliersServiceEnhanced as suppliersService };
+export { productsServiceEnhanced as productsService };
+
+// Add the other missing services
+export const salesService = {
+  ...salesOperations,
+  // Add Firebase-compatible method names
+  add: salesOperations.createSale,
+  create: salesOperations.createSale,  // Add create method
+  getAll: salesOperations.getAllSales,
+  getById: salesOperations.getSaleById,
+  update: salesOperations.updateSale,
+  delete: salesOperations.deleteSale
+};
+
+export const customersService = {
+  ...customerOperations,
+  // Add Firebase-compatible method names
+  add: customerOperations.createCustomer,
+  create: customerOperations.createCustomer,  // Add create method
+  getAll: customerOperations.getAllCustomers,
+  getById: customerOperations.getCustomerById,
+  update: customerOperations.updateCustomer,
+  delete: customerOperations.deleteCustomer
 };

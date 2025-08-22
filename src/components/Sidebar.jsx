@@ -410,14 +410,24 @@ export default function Sidebar({
           <SidebarItem
             icon={<Bell size={18} />}
             label="Notifications"
-            active={currentPage === 'alerts-system'}
-            onClick={() => onNavigate('alerts-system')}
+            active={currentPage === 'notifications'}
+            onClick={() => onNavigate('notifications')}
             badge={unreadAlerts > 0 ? unreadAlerts.toString() : undefined}
             isCollapsed={isCollapsed}
           />
           {/* Secondary Navigation */}
           <div className={cn("border-t border-border pt-3 pb-3 mt-3")}>
             <div className="flex flex-col gap-1">
+              {/* Admin Panel - Admin Only */}
+              {isAdmin() && (
+                <SidebarItem
+                  icon={<Settings size={18} />}
+                  label="Admin Panel"
+                  active={currentPage === 'admin-panel'}
+                  onClick={() => onNavigate('admin-panel')}
+                  isCollapsed={isCollapsed}
+                />
+              )}
               {/* User Management - Admin and Trial Users */}
               {hasFullAccess() && (
                 <SidebarItem
@@ -445,6 +455,14 @@ export default function Sidebar({
                   isCollapsed={isCollapsed}
                 />
               )}
+              {/* Multi-Tenant Test Suite - All Users for Testing */}
+              <SidebarItem
+                icon={<Database size={18} />}
+                label="Multi-Tenant Test"
+                active={currentPage === 'multi-tenant-test'}
+                onClick={() => onNavigate('multi-tenant-test')}
+                isCollapsed={isCollapsed}
+              />
               <SidebarItem
                 icon={<BookText size={18} />}
                 label="Documentation"

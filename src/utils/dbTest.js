@@ -1,17 +1,24 @@
-import { supabase, supabaseDiagnostics } from '../lib/supabase.js';
+import { supabase } from '../lib/supabase.js';
 
 // Simple database connectivity test
 export const testDatabaseConnection = async () => {
   console.log('🔍 Testing database connection...');
   
   try {
-    // Test 1: Basic connectivity
-    const quickTest = await supabaseDiagnostics.quickTest();
-    console.log('📊 Quick Test Result:', quickTest);
-    
-    if (!quickTest.success) {
-      console.error('❌ Database connection failed:', quickTest.error);
-      return { success: false, error: quickTest.error };
+    // Test 1: Basic connectivity - try a simple query
+    const { data: basicTest, error: basicError } = await supabase
+      .from('_dummy_test_table')
+      .select('*')
+      .limit(1);
+      
+    // We expect this to fail with table not found, which means connection works
+    if (basicError && basicError.code === '42P01') {
+      console.log('✅ Database connection is working (table not found is expected)');
+    } else if (basicError) {
+      console.error('❌ Database connection failed:', basicError);
+      return { success: false, error: basicError.message };
+    } else {
+      console.log('✅ Database connection is working');
     }
     
     // Test 2: Check auth session

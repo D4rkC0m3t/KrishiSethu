@@ -555,6 +555,12 @@ const LandingPage = () => {
               <button onClick={() => scrollToSection('gallery')} className="text-green-700 hover:text-green-900 transition-colors">Gallery</button>
               <button onClick={() => scrollToSection('testimonials')} className="text-green-700 hover:text-green-900 transition-colors">Reviews</button>
               <button
+                onClick={() => navigate('/admin')}
+                className="bg-purple-600 text-white px-4 py-2 rounded-full hover:bg-purple-700 transition-all duration-300 transform hover:scale-105 text-sm"
+              >
+                Admin
+              </button>
+              <button
                 onClick={() => navigate('/login')}
                 className="bg-green-600 text-white px-6 py-2 rounded-full hover:bg-green-700 transition-all duration-300 transform hover:scale-105"
               >
@@ -696,6 +702,17 @@ const LandingPage = () => {
                 className="border-2 border-white text-white px-8 py-4 rounded-full text-lg font-semibold hover:bg-white hover:text-green-800 transition-all duration-300 transform hover:scale-105"
               >
                 Explore Features
+              </button>
+            </div>
+
+            {/* Admin Access */}
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={() => navigate('/admin')}
+                className="bg-purple-600/80 backdrop-blur-sm text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-purple-700/80 transition-all duration-300 border border-purple-400/30 flex items-center space-x-2"
+              >
+                <Shield className="h-4 w-4" />
+                <span>Admin Portal</span>
               </button>
             </div>
 
@@ -1500,7 +1517,16 @@ const LandingPage = () => {
             </div>
           </div>
           <div className="border-t border-green-800 mt-8 pt-8 text-center text-green-200">
-            <p>&copy; 2024 KrishiSethu. All rights reserved.</p>
+            <div className="flex justify-center items-center space-x-4 mb-4">
+              <p>&copy; 2024 KrishiSethu. All rights reserved.</p>
+              <span className="text-green-400">|</span>
+              <button
+                onClick={() => navigate('/admin')}
+                className="text-purple-300 hover:text-purple-100 transition-colors text-sm underline"
+              >
+                Admin Portal
+              </button>
+            </div>
           </div>
         </div>
       </footer>

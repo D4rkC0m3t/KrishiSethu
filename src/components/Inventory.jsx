@@ -40,6 +40,7 @@ import { supabase } from '../lib/supabase';
 import { productsService, productOperations } from '../lib/supabaseDb';
 import { EmptyInventory, EmptySearch, LoadingState, ErrorState } from './EmptyState';
 import { normalizeProductsArray, validateNormalizedProduct } from '../utils/productNormalizer';
+import DatabaseDiagnostic from './DatabaseDiagnostic';
 
 const Inventory = ({ onNavigate }) => {
   console.log('🏗️ [INVENTORY] Component render started');
@@ -83,6 +84,7 @@ const Inventory = ({ onNavigate }) => {
   const [reorderAlerts, setReorderAlerts] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(50); // Show 50 items per page for better performance
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
 
   useEffect(() => {
     loadProducts();
@@ -328,56 +330,142 @@ const Inventory = ({ onNavigate }) => {
 
   const loadProducts = async () => {
     let isComponentMounted = true;
+    let timeoutId = null;
     
     try {
       if (isComponentMounted) setLoading(true);
       console.log('🔄 [INVENTORY] Loading products from Supabase...');
+      console.log('🔄 [INVENTORY] Component mounted state:', isComponentMounted);
+      console.log('🔄 [INVENTORY] Loading state set to:', true);
+      
+      // Set up timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Database query timeout after 30 seconds'));
+        }, 30000);
+      });
+      
+      // Debug auth state with timeout
+      try {
+        console.log('🔄 [INVENTORY] Checking auth state...');
+        const authPromise = supabase.auth.getUser();
+        const authState = await Promise.race([authPromise, timeoutPromise]);
+        console.log('🔄 [INVENTORY] Current auth state:', authState);
+        console.log('🔄 [INVENTORY] User:', authState?.data?.user?.email || 'No user');
+      } catch (authError) {
+        console.warn('⚠️ [INVENTORY] Auth check failed:', authError);
+      }
 
-      // Skip connection test for faster loading
-      console.log('✅ Proceeding directly to product loading...');
+      // Test basic connection first with timeout
+      console.log('🔄 [INVENTORY] Testing database connection...');
+      const connectionPromise = supabase
+        .from('products')
+        .select('count', { count: 'exact', head: true });
+      
+      const { data: testData, error: testError } = await Promise.race([connectionPromise, timeoutPromise]);
+      
+      if (testError) {
+        console.error('❌ Database connection test failed:', testError);
+        throw new Error(`Database connection failed: ${testError.message}`);
+      }
+      
+      console.log('✅ Database connection successful');
+      console.log('📊 Products count check:', testData);
 
-      // Try normalized product loading with robust error handling
+      // Try normalized product loading with robust error handling and timeout
       let rawProducts = [];
       let normalizedProducts = [];
+      let queryMethod = 'unknown';
       
       try {
-        // Attempt enhanced query with joins first
-        console.log('🔄 Attempting enhanced query with joins...');
-        rawProducts = await productOperations.getAllProducts();
-        console.log(`✅ Enhanced query successful: ${rawProducts.length} raw products loaded`);
+        // Attempt enhanced query with joins first - WITH TIMEOUT
+        console.log('🔄 [INVENTORY] Attempting enhanced query with joins (with 15s timeout)...');
+        const enhancedQueryPromise = productOperations.getAllProducts();
+        
+        // Set shorter timeout for enhanced query since it might be hanging
+        const enhancedTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Enhanced query timeout after 15 seconds'));
+          }, 15000);
+        });
+        
+        rawProducts = await Promise.race([enhancedQueryPromise, enhancedTimeoutPromise]);
+        console.log(`✅ Enhanced query successful: ${rawProducts?.length || 0} raw products loaded`);
+        queryMethod = 'enhanced';
+        
+        // Clear timeout on success
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
         
         // Normalize products with consistent data structure
-        normalizedProducts = normalizeProductsArray(rawProducts);
-        console.log(`🔄 Normalized ${normalizedProducts.length} products`);
+        if (rawProducts && rawProducts.length > 0) {
+          console.log('🔄 [INVENTORY] Sample raw product before normalization:', rawProducts[0]);
+          normalizedProducts = normalizeProductsArray(rawProducts);
+          console.log(`🔄 [INVENTORY] Normalized ${normalizedProducts?.length || 0} products`);
+          console.log('🔄 [INVENTORY] Sample normalized product:', normalizedProducts[0]);
+        } else {
+          console.log('📦 [INVENTORY] No raw products returned from enhanced query');
+          normalizedProducts = [];
+        }
         
       } catch (joinError) {
-        console.warn('⚠️ Enhanced query failed, attempting fallback query:', joinError.message);
+        console.warn('⚠️ [INVENTORY] Enhanced query failed, attempting fallback query:', joinError.message);
+        console.warn('⚠️ [INVENTORY] Error details:', joinError);
         
-        // Fallback to simple query without joins
+        // Clear existing timeout
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        
+        // Fallback to simple query without joins - WITH TIMEOUT
         try {
-          const { data: simpleProducts, error: simpleError } = await supabase
+          console.log('🔄 [INVENTORY] Fallback: Simple products query (with 10s timeout)...');
+          
+          const simpleQueryPromise = supabase
             .from('products')
             .select('*')
-            .order('name', { ascending: true });
+            .order('name', { ascending: true })
+            .limit(100); // Limit for performance
+            
+          const simpleTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('Simple query timeout after 10 seconds'));
+            }, 10000);
+          });
+          
+          const { data: simpleProducts, error: simpleError } = await Promise.race([simpleQueryPromise, simpleTimeoutPromise]);
 
           if (simpleError) {
+            console.error('❌ [INVENTORY] Simple query also failed:', simpleError);
             throw simpleError;
           }
 
-          console.log(`✅ Simple query successful: ${(simpleProducts || []).length} raw products loaded`);
+          console.log(`✅ [INVENTORY] Simple query successful: ${(simpleProducts || []).length} raw products loaded`);
+          queryMethod = 'simple';
           
-          // Normalize simple products
-          normalizedProducts = normalizeProductsArray(simpleProducts || []);
-          console.log(`🔄 Normalized ${normalizedProducts.length} products from simple query`);
+          if (simpleProducts && simpleProducts.length > 0) {
+            console.log('🔄 [INVENTORY] Sample simple product before normalization:', simpleProducts[0]);
+            // Normalize simple products
+            normalizedProducts = normalizeProductsArray(simpleProducts || []);
+            console.log(`🔄 [INVENTORY] Normalized ${normalizedProducts?.length || 0} products from simple query`);
+            console.log('🔄 [INVENTORY] Sample normalized simple product:', normalizedProducts[0]);
+          } else {
+            console.log('📦 [INVENTORY] No products returned from simple query either');
+            normalizedProducts = [];
+          }
           
         } catch (fallbackError) {
-          console.error('❌ Both enhanced and simple queries failed:', fallbackError);
+          console.error('❌ [INVENTORY] Both enhanced and simple queries failed:', fallbackError);
+          console.error('❌ [INVENTORY] Fallback error details:', fallbackError);
           throw new Error(`Failed to load products: ${fallbackError.message}`);
         }
       }
 
       // Validate normalized products
-      const validProducts = normalizedProducts.filter(product => {
+      console.log(`🔄 Validating ${normalizedProducts?.length || 0} normalized products...`);
+      const validProducts = (normalizedProducts || []).filter(product => {
         const isValid = validateNormalizedProduct(product);
         if (!isValid) {
           console.warn('⚠️ Invalid normalized product:', product);
@@ -385,9 +473,11 @@ const Inventory = ({ onNavigate }) => {
         return isValid;
       });
 
+      console.log(`🔄 Found ${validProducts.length} valid products after validation`);
+
       if (isComponentMounted) {
         if (validProducts.length > 0) {
-          console.log(`✅ ${validProducts.length} valid products after normalization and validation`);
+          console.log(`✅ ${validProducts.length} valid products loaded via ${queryMethod} method`);
           setProducts(validProducts);
           
           // Show success notification
@@ -412,7 +502,8 @@ const Inventory = ({ onNavigate }) => {
       }
       
     } catch (error) {
-      console.error('❌ Error loading products:', error);
+      console.error('❌ [INVENTORY] Error loading products:', error);
+      console.error('❌ [INVENTORY] Error stack:', error.stack);
       
       if (isComponentMounted) {
         // Set empty array on error to prevent UI crashes
@@ -431,6 +522,9 @@ const Inventory = ({ onNavigate }) => {
         } else if (error.message.includes('auth')) {
           errorMessage = 'Authentication failed.';
           solution = 'Please log out and log back in.';
+        } else if (error.message.includes('JWT') || error.message.includes('token')) {
+          errorMessage = 'Session expired.';
+          solution = 'Please refresh the page or log in again.';
         }
         
         showNotification({
@@ -443,7 +537,7 @@ const Inventory = ({ onNavigate }) => {
     } finally {
       // Always ensure loading is set to false if component is still mounted
       if (isComponentMounted) {
-        console.log('🔄 Setting loading to false');
+        console.log('🔄 [INVENTORY] Setting loading to false');
         setLoading(false);
       }
     }
@@ -567,6 +661,26 @@ const Inventory = ({ onNavigate }) => {
           >
             <TrendingDown className="h-4 w-4 mr-2" />
             Stock Movement
+          </Button>
+
+          <Button
+            onClick={loadProducts}
+            variant="outline"
+            size="sm"
+            disabled={loading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Loading...' : 'Refresh'}
+          </Button>
+          
+          <Button
+            onClick={() => setShowDiagnostic(true)}
+            variant="outline"
+            size="sm"
+            className="text-blue-600 border-blue-200"
+          >
+            <Settings className="h-4 w-4 mr-2" />
+            Diagnostic
           </Button>
 
           <div className="flex gap-2">
@@ -923,7 +1037,12 @@ const Inventory = ({ onNavigate }) => {
                           >
                             <Target className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" title="View Details">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="View Details"
+                            onClick={() => onNavigate('view-product', product)}
+                          >
                             <Eye className="h-4 w-4" />
                           </Button>
                           <Button
@@ -1183,6 +1302,11 @@ const Inventory = ({ onNavigate }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* Database Diagnostic Modal */}
+      {showDiagnostic && (
+        <DatabaseDiagnostic onClose={() => setShowDiagnostic(false)} />
+      )}
     </div>
   );
 };

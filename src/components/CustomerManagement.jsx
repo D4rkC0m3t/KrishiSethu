@@ -4,12 +4,14 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { customersService } from '../lib/supabaseDb';
+import smartCustomerService, { customerServiceV2 } from '../services/customerServiceV2';
+import { FEATURE_FLAGS } from '../config/featureFlags';
 import { useDebouncedSearch, usePerformanceMonitor } from '../hooks/usePerformance';
 import {
   Users,
   UserPlus,
   Edit,
+  Eye,
   Trash2,
   ArrowLeft,
   RefreshCw,
@@ -23,8 +25,10 @@ const CustomerManagement = ({ onNavigate }) => {
   const { searchTerm, debouncedSearchTerm, setSearchTerm } = useDebouncedSearch('', 300);
   const { measureAsync } = usePerformanceMonitor('CustomerManagement');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customerToEdit, setCustomerToEdit] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -36,7 +40,12 @@ const CustomerManagement = ({ onNavigate }) => {
     city: '',
     state: '',
     pincode: '',
-    creditLimit: ''
+    country: 'India',
+    gstNumber: '',
+    creditLimit: '',
+    outstandingAmount: '',
+    totalPurchases: '',
+    isActive: true
   });
 
   // Load customers from database
@@ -46,7 +55,8 @@ const CustomerManagement = ({ onNavigate }) => {
       setError(null);
       console.log('🔄 Loading customers...');
 
-      const firebaseCustomers = await customersService.getAll();
+      // Force use of V2 service to ensure JSONB address handling
+      const firebaseCustomers = await customerServiceV2.getAllCustomers();
       console.log('✅ Loaded customers:', firebaseCustomers?.length || 0);
 
       if (firebaseCustomers && firebaseCustomers.length > 0) {
@@ -126,7 +136,7 @@ const CustomerManagement = ({ onNavigate }) => {
 
       for (const customer of sampleCustomers) {
         try {
-          const created = await customersService.create(customer);
+          const created = await smartCustomerService.createCustomer(customer);
           createdCustomers.push(created);
           console.log('✅ Created customer:', created.name);
         } catch (error) {
@@ -221,7 +231,10 @@ const CustomerManagement = ({ onNavigate }) => {
 
       // Save to database
       console.log('🔄 Creating customer with data:', newCustomer);
-      const createdCustomer = await customersService.create(newCustomer);
+      console.log('🏁 Feature flag USE_NEW_CUSTOMER_ADDRESS:', FEATURE_FLAGS.USE_NEW_CUSTOMER_ADDRESS);
+
+      // Force use of V2 service to ensure JSONB address handling
+      const createdCustomer = await customerServiceV2.createCustomer(newCustomer);
       console.log('✅ Customer created successfully:', createdCustomer);
 
       // Refresh the customer list
@@ -236,7 +249,12 @@ const CustomerManagement = ({ onNavigate }) => {
         city: '',
         state: '',
         pincode: '',
-        creditLimit: ''
+        country: 'India',
+        gstNumber: '',
+        creditLimit: '',
+        outstandingAmount: '',
+        totalPurchases: '',
+        isActive: true
       });
 
       setShowAddDialog(false);
@@ -278,7 +296,8 @@ const CustomerManagement = ({ onNavigate }) => {
       setSaving(true);
       setError(null);
 
-      await customersService.delete(customerId);
+      // Force use of V2 service to ensure JSONB address handling
+      await customerServiceV2.deleteCustomer(customerId);
       console.log('Customer deleted:', customerId);
 
       // Refresh the customer list
@@ -296,6 +315,93 @@ const CustomerManagement = ({ onNavigate }) => {
   const handleCustomerDetails = (customer) => {
     setSelectedCustomer(customer);
     setShowDetailsDialog(true);
+  };
+
+  const handleEditCustomer = (customer) => {
+    console.log('📝 Editing customer:', customer);
+    console.log('📋 Customer data structure:', {
+      keys: Object.keys(customer),
+      address: customer.address,
+      addressType: typeof customer.address
+    });
+
+    setCustomerToEdit(customer);
+
+    // Populate form with ALL customer data fields
+    const addressData = customer.address || {};
+    const isAddressObject = typeof addressData === 'object' && addressData !== null;
+
+    setFormData({
+      name: customer.name || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      address: isAddressObject ? (addressData.street || '') : (typeof addressData === 'string' ? addressData : ''),
+      city: isAddressObject ? (addressData.city || '') : '',
+      state: isAddressObject ? (addressData.state || '') : '',
+      pincode: isAddressObject ? (addressData.pincode || '') : '',
+      country: isAddressObject ? (addressData.country || 'India') : 'India',
+      gstNumber: customer.gstNumber || customer.gst_number || '',
+      creditLimit: customer.creditLimit || customer.credit_limit || '',
+      outstandingAmount: customer.outstandingAmount || customer.outstanding_amount || '',
+      totalPurchases: customer.totalPurchases || customer.total_purchases || '',
+      isActive: customer.isActive !== false && customer.is_active !== false
+    });
+
+    console.log('📝 Form populated with data:', formData);
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateCustomer = async (e) => {
+    e.preventDefault();
+
+    if (!customerToEdit) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      if (!formData.name.trim() || !formData.phone.trim()) {
+        alert('Please fill in required fields (Name and Phone)');
+        return;
+      }
+
+      console.log('🔄 Updating customer:', customerToEdit.id, 'with data:', formData);
+      console.log('🏁 Feature flag USE_NEW_CUSTOMER_ADDRESS:', FEATURE_FLAGS.USE_NEW_CUSTOMER_ADDRESS);
+
+      // Force use of V2 service to ensure JSONB address handling
+      await customerServiceV2.updateCustomer(customerToEdit.id, formData);
+      console.log('✅ Customer updated successfully');
+
+      // Refresh the customer list
+      await loadCustomers();
+
+      // Reset form and close dialog
+      setFormData({
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+        city: '',
+        state: '',
+        pincode: '',
+        country: 'India',
+        gstNumber: '',
+        creditLimit: '',
+        outstandingAmount: '',
+        totalPurchases: '',
+        isActive: true
+      });
+
+      setCustomerToEdit(null);
+      setShowEditDialog(false);
+      alert('Customer updated successfully!');
+    } catch (error) {
+      console.error('❌ Error updating customer:', error);
+      setError('Failed to update customer. Please try again.');
+      alert('Error updating customer: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -361,7 +467,7 @@ const CustomerManagement = ({ onNavigate }) => {
                 Add Customer
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Customer</DialogTitle>
                 <DialogDescription>Create a new customer account</DialogDescription>
@@ -374,50 +480,66 @@ const CustomerManagement = ({ onNavigate }) => {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Name *</label>
-                  <Input
-                    name="name"
-                    placeholder="Customer name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    required
-                  />
+              <form onSubmit={handleSubmit} className="space-y-3">
+                {/* Basic Information Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Name *</label>
+                    <Input
+                      name="name"
+                      placeholder="Customer name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Phone *</label>
+                    <Input
+                      name="phone"
+                      placeholder="+91-9876543210"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium">Phone *</label>
-                  <Input
-                    name="phone"
-                    placeholder="+91-9876543210"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    required
-                  />
+                {/* Contact Information Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Email</label>
+                    <Input
+                      name="email"
+                      type="email"
+                      placeholder="customer@email.com"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">GST Number</label>
+                    <Input
+                      name="gstNumber"
+                      placeholder="29ABCDE1234F1Z5"
+                      value={formData.gstNumber}
+                      onChange={handleInputChange}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium">Email</label>
-                  <Input
-                    name="email"
-                    type="email"
-                    placeholder="customer@email.com"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                  />
-                </div>
-
+                {/* Address Information */}
                 <div>
                   <label className="text-sm font-medium">Address</label>
                   <Input
                     name="address"
-                    placeholder="Full address"
+                    placeholder="Street address"
                     value={formData.address}
                     onChange={handleInputChange}
                   />
                 </div>
 
+                {/* Location Row */}
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-sm font-medium">City</label>
@@ -448,18 +570,30 @@ const CustomerManagement = ({ onNavigate }) => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium">Credit Limit (₹)</label>
-                  <Input
-                    name="creditLimit"
-                    type="number"
-                    placeholder="50000"
-                    value={formData.creditLimit}
-                    onChange={handleInputChange}
-                  />
+                {/* Financial Information Row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Credit Limit (₹)</label>
+                    <Input
+                      name="creditLimit"
+                      type="number"
+                      placeholder="50000"
+                      value={formData.creditLimit}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2 pt-6">
+                    <input
+                      type="checkbox"
+                      id="isActiveAdd"
+                      name="isActive"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <label htmlFor="isActiveAdd" className="text-sm font-medium">Active Customer</label>
+                  </div>
                 </div>
-
-
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)} disabled={saving}>
@@ -606,9 +740,17 @@ const CustomerManagement = ({ onNavigate }) => {
                         size="sm"
                         variant="outline"
                         onClick={() => handleCustomerDetails(customer)}
+                        title="View Details"
                       >
-                        <Edit className="h-4 w-4 mr-2" />
-                        View Details
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEditCustomer(customer)}
+                        title="Edit Customer"
+                      >
+                        <Edit className="h-4 w-4" />
                       </Button>
                       <Button
                         size="sm"
@@ -616,6 +758,7 @@ const CustomerManagement = ({ onNavigate }) => {
                         onClick={() => handleDeleteCustomer(customer.id)}
                         disabled={saving}
                         className="text-red-600 hover:text-red-700"
+                        title="Delete Customer"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -644,8 +787,9 @@ const CustomerManagement = ({ onNavigate }) => {
                   <h4 className="font-medium mb-2">Contact Information</h4>
                   <div className="space-y-1 text-sm">
                     <p><strong>Name:</strong> {selectedCustomer.name}</p>
-                    <p><strong>Phone:</strong> {selectedCustomer.phone}</p>
+                    <p><strong>Phone:</strong> {selectedCustomer.phone || 'Not provided'}</p>
                     <p><strong>Email:</strong> {selectedCustomer.email || 'Not provided'}</p>
+                    <p><strong>GST Number:</strong> {selectedCustomer.gstNumber || selectedCustomer.gst_number || 'Not provided'}</p>
                     <p><strong>Address:</strong> {
                       typeof selectedCustomer.address === 'string'
                         ? selectedCustomer.address
@@ -653,21 +797,43 @@ const CustomerManagement = ({ onNavigate }) => {
                           ? `${selectedCustomer.address.street || ''}, ${selectedCustomer.address.city || ''}, ${selectedCustomer.address.state || ''} ${selectedCustomer.address.pincode || ''}`.replace(/^,\s*|,\s*$/, '').replace(/,\s*,/g, ',')
                           : 'Not provided'
                     }</p>
-                    <p><strong>City:</strong> {selectedCustomer.city}</p>
-                    <p><strong>Pincode:</strong> {selectedCustomer.pincode}</p>
+                    {selectedCustomer.address && typeof selectedCustomer.address === 'object' && (
+                      <>
+                        <p><strong>City:</strong> {selectedCustomer.address.city || 'Not provided'}</p>
+                        <p><strong>State:</strong> {selectedCustomer.address.state || 'Not provided'}</p>
+                        <p><strong>Pincode:</strong> {selectedCustomer.address.pincode || 'Not provided'}</p>
+                        <p><strong>Country:</strong> {selectedCustomer.address.country || 'India'}</p>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 <div>
                   <h4 className="font-medium mb-2">Account Information</h4>
                   <div className="space-y-1 text-sm">
-                    <p><strong>Status:</strong> {getStatusBadge(selectedCustomer.status)}</p>
-                    <p><strong>Join Date:</strong> {selectedCustomer.joinDate ? new Date(selectedCustomer.joinDate).toLocaleDateString() : 'Unknown'}</p>
-                    <p><strong>Credit Limit:</strong> ₹{formatNumber(selectedCustomer.creditLimit)}</p>
-                    <p><strong>Current Credit:</strong> ₹{formatNumber(selectedCustomer.currentCredit)}</p>
-                    <p><strong>Available Credit:</strong> ₹{formatNumber((Number(selectedCustomer.creditLimit) || 0) - (Number(selectedCustomer.currentCredit) || 0))}</p>
-                    <p><strong>Total Purchases:</strong> ₹{formatNumber(selectedCustomer.totalPurchases)}</p>
-                    <p><strong>Last Purchase:</strong> {selectedCustomer.lastPurchase ? new Date(selectedCustomer.lastPurchase).toLocaleDateString() : 'Never'}</p>
+                    <p><strong>Status:</strong> {
+                      (selectedCustomer.isActive !== false && selectedCustomer.is_active !== false)
+                        ? <Badge className="bg-green-100 text-green-800">Active</Badge>
+                        : <Badge className="bg-red-100 text-red-800">Inactive</Badge>
+                    }</p>
+                    <p><strong>Customer ID:</strong> {selectedCustomer.id}</p>
+                    <p><strong>Created:</strong> {
+                      selectedCustomer.createdAt || selectedCustomer.created_at
+                        ? new Date(selectedCustomer.createdAt || selectedCustomer.created_at).toLocaleDateString()
+                        : 'Unknown'
+                    }</p>
+                    <p><strong>Last Updated:</strong> {
+                      selectedCustomer.updatedAt || selectedCustomer.updated_at
+                        ? new Date(selectedCustomer.updatedAt || selectedCustomer.updated_at).toLocaleDateString()
+                        : 'Unknown'
+                    }</p>
+                    <p><strong>Credit Limit:</strong> ₹{formatNumber(selectedCustomer.creditLimit || selectedCustomer.credit_limit || 0)}</p>
+                    <p><strong>Outstanding Amount:</strong> ₹{formatNumber(selectedCustomer.outstandingAmount || selectedCustomer.outstanding_amount || 0)}</p>
+                    <p><strong>Total Purchases:</strong> ₹{formatNumber(selectedCustomer.totalPurchases || selectedCustomer.total_purchases || 0)}</p>
+                    <p><strong>Available Credit:</strong> ₹{formatNumber(
+                      (Number(selectedCustomer.creditLimit || selectedCustomer.credit_limit) || 0) -
+                      (Number(selectedCustomer.outstandingAmount || selectedCustomer.outstanding_amount) || 0)
+                    )}</p>
                   </div>
                 </div>
               </div>
@@ -707,6 +873,182 @@ const CustomerManagement = ({ onNavigate }) => {
               Create Sale
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Customer Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Customer</DialogTitle>
+            <DialogDescription>Update customer information</DialogDescription>
+          </DialogHeader>
+
+          {error && (
+            <div className="flex items-center space-x-2 p-3 bg-red-50 border border-red-200 rounded-md">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleUpdateCustomer} className="space-y-4">
+            {/* Basic Information Row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Name *</label>
+                <Input
+                  name="name"
+                  placeholder="Customer name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Phone *</label>
+                <Input
+                  name="phone"
+                  placeholder="+91-9876543210"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Contact Information Row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Email</label>
+                <Input
+                  name="email"
+                  type="email"
+                  placeholder="customer@email.com"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">GST Number</label>
+                <Input
+                  name="gstNumber"
+                  placeholder="29ABCDE1234F1Z5"
+                  value={formData.gstNumber}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            {/* Address Information */}
+            <div>
+              <label className="text-sm font-medium">Address</label>
+              <Input
+                name="address"
+                placeholder="Street address"
+                value={formData.address}
+                onChange={handleInputChange}
+              />
+            </div>
+
+            {/* Location Row */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-sm font-medium">City</label>
+                <Input
+                  name="city"
+                  placeholder="City"
+                  value={formData.city}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">State</label>
+                <Input
+                  name="state"
+                  placeholder="State"
+                  value={formData.state}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Pincode</label>
+                <Input
+                  name="pincode"
+                  placeholder="400001"
+                  value={formData.pincode}
+                  onChange={handleInputChange}
+                />
+              </div>
+            </div>
+
+            {/* Financial Information Row */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm font-medium">Credit Limit (₹)</label>
+                <Input
+                  name="creditLimit"
+                  type="number"
+                  placeholder="50000"
+                  value={formData.creditLimit}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Outstanding (₹)</label>
+                <Input
+                  name="outstandingAmount"
+                  type="number"
+                  placeholder="0"
+                  value={formData.outstandingAmount}
+                  onChange={handleInputChange}
+                  readOnly
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Total Purchases (₹)</label>
+                <Input
+                  name="totalPurchases"
+                  type="number"
+                  placeholder="0"
+                  value={formData.totalPurchases}
+                  onChange={handleInputChange}
+                  readOnly
+                />
+              </div>
+            </div>
+
+            {/* Status Row */}
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="isActive"
+                name="isActive"
+                checked={formData.isActive}
+                onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+                className="rounded"
+              />
+              <label htmlFor="isActive" className="text-sm font-medium">Active Customer</label>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowEditDialog(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Update Customer
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

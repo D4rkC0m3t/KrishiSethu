@@ -500,10 +500,10 @@ const Login = () => {
         <CardHeader className="relative space-y-1 text-center pb-6 z-10 pt-8">
           <div className="space-y-2">
             <h1 className="text-3xl font-bold text-white">
-              {currentView === 'register' ? 'Start Your 30-Day Free Trial' : 'Welcome Back!'}
+              {currentView === 'register' ? 'Create Your Account' : 'Welcome Back!'}
             </h1>
             <p className="text-gray-300 text-sm">
-              {currentView === 'register' ? 'Get full access to KrishiSethu Inventory Management for 30 days' : 'Sign in to your KrishiSethu account'}
+              {currentView === 'register' ? 'Join KrishiSethu Inventory Management System' : 'Sign in to your KrishiSethu account'}
             </p>
           </div>
         </CardHeader>
@@ -535,7 +535,7 @@ const Login = () => {
                     : 'text-gray-300 hover:text-white hover:bg-white/10'
                 }`}
               >
-                Start Free Trial
+                Create Account
               </button>
             </div>
           </div>
@@ -805,7 +805,7 @@ const Login = () => {
                     Creating Account...
                   </>
                 ) : (
-                  'Start Free Trial'
+                  'Create Account'
                 )}
               </Button>
             </form>
@@ -821,7 +821,7 @@ const Login = () => {
                   onClick={() => setCurrentView('register')}
                   className="text-blue-400 hover:text-blue-300 font-medium"
                 >
-                  Start Free Trial
+                  Create Account
                 </button>
               </p>
             )}

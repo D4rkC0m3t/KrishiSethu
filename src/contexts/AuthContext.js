@@ -26,15 +26,102 @@ export const AuthProvider = ({ children }) => {
     CUSTOMER: 'trial' // Alias for trial users
   };
 
+  // Session refresh and validation
+  const validateAndRefreshSession = async () => {
+    try {
+      console.log('🔄 Validating and refreshing session...');
+      
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('❌ Session validation error:', error);
+        return false;
+      }
+      
+      if (!session) {
+        console.log('⚠️ No active session found');
+        return false;
+      }
+      
+      // Check if token is about to expire (within 5 minutes)
+      const expiresAt = session.expires_at;
+      const now = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = expiresAt - now;
+      
+      console.log(`⏰ Token expires in ${timeUntilExpiry} seconds`);
+      
+      if (timeUntilExpiry < 300) { // Less than 5 minutes
+        console.log('🔄 Token expiring soon, refreshing...');
+        
+        const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+        
+        if (refreshError) {
+          console.error('❌ Token refresh failed:', refreshError);
+          return false;
+        }
+        
+        if (refreshedSession?.user) {
+          console.log('✅ Session refreshed successfully');
+          setCurrentUser(refreshedSession.user);
+          return true;
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Session validation error:', error);
+      return false;
+    }
+  };
+
   // Initialize auth state
   useEffect(() => {
     let mounted = true;
-    
+    let sessionInterval = null;
+
+    // Check for local admin session first
+    const checkLocalAdminSession = () => {
+      try {
+        const adminSession = localStorage.getItem('krishisethu_admin_session');
+        if (adminSession) {
+          const session = JSON.parse(adminSession);
+
+          // Check if session is still valid (not expired)
+          if (session.expires && Date.now() < session.expires) {
+            console.log('✅ Found valid local admin session');
+            setCurrentUser(session.user);
+            setUserProfile({
+              ...session.user,
+              role: 'admin',
+              account_type: 'admin',
+              is_admin: true,
+              is_active: true,
+              is_paid: true
+            });
+            setLoading(false);
+            return true;
+          } else {
+            // Session expired, remove it
+            localStorage.removeItem('krishisethu_admin_session');
+          }
+        }
+      } catch (error) {
+        console.error('Error checking local admin session:', error);
+        localStorage.removeItem('krishisethu_admin_session');
+      }
+      return false;
+    };
+
     // Get initial session
     const getInitialSession = async () => {
       try {
         console.log('🔄 Getting initial session...');
-        
+
+        // First check for local admin session
+        if (checkLocalAdminSession()) {
+          return; // Admin session found, skip Supabase check
+        }
+
         // Skip database diagnostics to prevent startup issues
         console.log('🔍 Setting database status to healthy (skip diagnostics)');
         setDbStatus('healthy');
@@ -165,6 +252,20 @@ export const AuthProvider = ({ children }) => {
 
     getInitialSession();
 
+    // Set up periodic session validation for non-admin users
+    if (!checkLocalAdminSession()) {
+      sessionInterval = setInterval(async () => {
+        if (mounted && currentUser && !loading) {
+          const isValid = await validateAndRefreshSession();
+          if (!isValid) {
+            console.log('⚠️ Session validation failed, clearing user state');
+            setCurrentUser(null);
+            setUserProfile(null);
+          }
+        }
+      }, 60000); // Check every minute
+    }
+
     // Fallback timeout to ensure loading never gets stuck indefinitely
     const fallbackTimeout = setTimeout(() => {
       if (mounted) {
@@ -257,26 +358,80 @@ export const AuthProvider = ({ children }) => {
       mounted = false;
       subscription.unsubscribe();
       clearTimeout(fallbackTimeout);
+      if (sessionInterval) {
+        clearInterval(sessionInterval);
+      }
     };
   }, []);
 
   const loadUserProfile = async (user) => {
     try {
       console.log('👤 Loading profile for user:', user.email);
+      
+      let profile = null;
+      let error = null;
 
-      // Create a promise with timeout to prevent hanging
-      const profilePromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile loading timeout')), 2000);
-      });
-
-      // Try profiles table first (the correct table name)
-      let { data: profile, error } = await Promise.race([profilePromise, timeoutPromise]);
+      // Try users table first (where RegistrationForm writes)
+      try {
+        console.log('🔍 Checking users table...');
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Profile loading timeout')), 8000);
+        });
+        
+        const profilePromise = supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+          
+        const result = await Promise.race([profilePromise, timeoutPromise]);
+        profile = result.data;
+        error = result.error;
+        
+        if (!error && profile) {
+          console.log('✅ Found profile in users table:', profile);
+        } else {
+          console.log('⚠️ No profile found in users table:', error?.message);
+        }
+      } catch (usersError) {
+        console.log('⚠️ Users table access failed:', usersError.message);
+        error = usersError;
+      }
+      
+      // If users table didn't work, try profiles table (optional)
+      if (!profile) {
+        try {
+          console.log('🔍 Checking profiles table...');
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Profile loading timeout')), 5000);
+          });
+          
+          const profilePromise = supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single();
+            
+          const result = await Promise.race([profilePromise, timeoutPromise]);
+          profile = result.data;
+          error = result.error;
+          
+          if (!error && profile) {
+            console.log('✅ Found profile in profiles table:', profile);
+          } else {
+            console.log('⚠️ No profile found in profiles table:', error?.message);
+          }
+        } catch (profilesError) {
+          console.log('⚠️ Profiles table access failed (expected if table doesn\'t exist):', profilesError.message);
+          // Don't set error if it's just a missing table - we'll create a default profile
+          if (profilesError.message.includes('does not exist') || profilesError.code === '42P01') {
+            console.log('📝 Profiles table doesn\'t exist, will use default profile instead');
+            error = null; // Clear error so we proceed with default profile creation
+          } else {
+            error = profilesError;
+          }
+        }
+      }
 
       // If profiles table doesn't work, try creating a default profile
       if (error && (error.code === '42P01' || error.message.includes('relation') || error.message.includes('does not exist'))) {
@@ -397,48 +552,127 @@ export const AuthProvider = ({ children }) => {
     return { data, error };
   };
 
-  const logout = async () => {
-    console.log('🚪 Starting logout process...');
+  const logout = async (userContext = 'regular') => {
+    console.log('🚪 Starting logout process for:', userContext);
     
     try {
-      // 1. Call Supabase signOut
-      const { error } = await supabase.auth.signOut();
+      let wasAdminSession = false;
       
-      if (error) {
-        console.error('❌ Supabase signOut error:', error);
-        // Continue with cleanup even if signOut fails
+      // 1. Check if this is a local admin session
+      const adminSession = localStorage.getItem('krishisethu_admin_session');
+      if (adminSession) {
+        console.log('🔧 Logging out local admin session');
+        localStorage.removeItem('krishisethu_admin_session');
+        wasAdminSession = true;
+      } else {
+        // Check if this is an admin user through other means
+        const adminEmails = [
+          'arjunpeter@krishisethu.com',
+          'admin@krishisethu.com',
+          'superadmin@krishisethu.com',
+          'master@krishisethu.com',
+          'arjunin2020@gmail.com'
+        ];
+        
+        if (currentUser?.email && adminEmails.includes(currentUser.email.toLowerCase())) {
+          wasAdminSession = true;
+        }
+        
+        if (userProfile?.role === 'admin' || userProfile?.account_type === 'admin') {
+          wasAdminSession = true;
+        }
+        
+        // Call Supabase signOut for regular users
+        console.log('🔄 Calling Supabase signOut...');
+        
+        // Use Promise.race with timeout to prevent hanging on signOut
+        const signOutPromise = supabase.auth.signOut();
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Supabase signOut timeout')), 3000);
+        });
+        
+        try {
+          const { error } = await Promise.race([signOutPromise, timeoutPromise]);
+          if (error) {
+            console.error('❌ Supabase signOut error:', error);
+            // Continue with cleanup even if signOut fails
+          } else {
+            console.log('✅ Supabase signOut successful');
+          }
+        } catch (signOutError) {
+          console.error('⏱️ Supabase signOut timed out or failed:', signOutError);
+          // Continue with cleanup even if signOut times out
+        }
       }
       
       // 2. Clear local state immediately
+      console.log('🧹 Clearing application state...');
       setCurrentUser(null);
       setUserProfile(null);
       
-      // 3. Clear localStorage tokens manually
-      try {
-        const projectRef = supabase.supabaseUrl.split('//')[1].split('.')[0];
-        localStorage.removeItem(`sb-${projectRef}-auth-token`);
-        localStorage.removeItem('supabase.auth.token');
-        
-        // Clear any other auth-related storage
-        Object.keys(localStorage).forEach(key => {
-          if (key.includes('supabase') || key.includes('auth')) {
-            localStorage.removeItem(key);
+      // 3. Clear localStorage tokens and session data
+      if (isLocalStorageAvailable()) {
+        try {
+          console.log('🧹 Clearing storage...');
+          
+          // Clear Supabase specific tokens
+          const projectRef = supabase.supabaseUrl.split('//')[1].split('.')[0];
+          localStorage.removeItem(`sb-${projectRef}-auth-token`);
+          localStorage.removeItem('supabase.auth.token');
+          localStorage.removeItem('krishisethu-auth');
+          localStorage.removeItem('krishisethu-user');
+          
+          // Clear any other auth-related storage
+          Object.keys(localStorage).forEach(key => {
+            if (key.includes('supabase') || 
+                key.includes('auth') || 
+                key.includes('krishisethu') || 
+                key.includes('session')) {
+              console.log(`🗑️ Removing localStorage item: ${key}`);
+              localStorage.removeItem(key);
+            }
+          });
+          
+          // Use the clearAuthStorage helper if available
+          if (typeof clearAuthStorage === 'function') {
+            clearAuthStorage();
           }
-        });
-        
-        // Clear session storage as well
-        sessionStorage.clear();
-      } catch (storageError) {
-        console.warn('⚠️ Warning clearing storage:', storageError);
+          
+          // Clear session storage as well
+          sessionStorage.clear();
+        } catch (storageError) {
+          console.warn('⚠️ Warning clearing storage:', storageError);
+        }
+      } else {
+        console.warn('⚠️ localStorage not available for clearing');
       }
       
       // 4. Reset loading state
       setLoading(false);
       
+      // 5. Dispatch a custom event that other components can listen for
+      try {
+        const eventDetail = { 
+          timestamp: new Date().toISOString(),
+          wasAdminSession,
+          userContext 
+        };
+        window.dispatchEvent(new CustomEvent('krishisethu:logout-complete', {
+          detail: eventDetail
+        }));
+      } catch (eventError) {
+        console.warn('⚠️ Error dispatching logout event:', eventError);
+      }
+      
       console.log('✅ Logout completed successfully');
       
-      // 5. Return success
-      return { error: null, success: true };
+      // 6. Return success with admin info
+      return { 
+        error: null, 
+        success: true, 
+        wasAdminSession,
+        userContext 
+      };
       
     } catch (unexpectedError) {
       console.error('❌ Unexpected logout error:', unexpectedError);
@@ -447,6 +681,18 @@ export const AuthProvider = ({ children }) => {
       setCurrentUser(null);
       setUserProfile(null);
       setLoading(false);
+      
+      // Try one more time to clear storage in case of error
+      try {
+        if (isLocalStorageAvailable()) {
+          localStorage.removeItem('krishisethu_admin_session');
+          localStorage.removeItem('krishisethu-auth');
+          localStorage.removeItem('supabase.auth.token');
+          sessionStorage.clear();
+        }
+      } catch (e) {
+        // Ignore any errors in the final cleanup attempt
+      }
       
       return { error: unexpectedError, success: false };
     }

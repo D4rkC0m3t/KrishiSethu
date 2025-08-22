@@ -253,7 +253,7 @@ const LoginForm = ({ onSuccess, onSwitchToRegister }) => {
                 onClick={onSwitchToRegister}
                 className="text-green-600 hover:text-green-700 font-medium"
               >
-                Start Free Trial
+                Create Account
               </button>
             </p>
           </div>

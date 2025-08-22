@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { alertsService } from '../lib/alertsService';
 
 const EnhancedAlertsSystem = ({ onNavigate }) => {
   const { userProfile } = useAuth();
@@ -172,8 +173,14 @@ const EnhancedAlertsSystem = ({ onNavigate }) => {
   const loadAlerts = async () => {
     setIsLoading(true);
     try {
-      // Mock alerts data - in real app, load from Firebase
-      const mockAlerts = [
+      console.log('🔄 Loading real alerts from alertsService...');
+
+      // Load real alerts from the alerts service
+      const realAlerts = await alertsService.getAlerts();
+      console.log('✅ Loaded real alerts:', realAlerts?.length || 0);
+
+      // If no real alerts, show some sample alerts for demonstration
+      const mockAlerts = realAlerts && realAlerts.length > 0 ? realAlerts : [
         {
           id: '1',
           type: 'critical',
@@ -253,7 +260,10 @@ const EnhancedAlertsSystem = ({ onNavigate }) => {
         }
       ];
 
-      setAlerts(mockAlerts);
+      // Use real alerts if available, otherwise use mock data for demonstration
+      const alertsToUse = realAlerts && realAlerts.length > 0 ? realAlerts : mockAlerts;
+      console.log('📊 Setting alerts:', alertsToUse.length, 'alerts');
+      setAlerts(alertsToUse);
     } catch (error) {
       console.error('Error loading alerts:', error);
     } finally {

@@ -33,7 +33,9 @@ import { useAuth } from '../contexts/AuthContext';
 import Sidebar from './Sidebar';
 import Inventory from './Inventory';
 import AddProduct from './AddProduct';
+import ViewProduct from './ViewProduct';
 import BulkAddProductTable from './BulkAddProductTable';
+import NotificationManagement from './NotificationManagement';
 import POS from './POS';
 import SalesHistory from './SalesHistory';
 import StockMovement from './StockMovement';
@@ -63,6 +65,10 @@ import Support from './Support';
 import AdminControlPanel from './admin/AdminControlPanel';
 import DatabaseSyncTest from './DatabaseSyncTest';
 import StorageTest from './StorageTest';
+import MultiTenantTestSuite from './MultiTenantTestSuite';
+import MultiTenantSetupWizard from './MultiTenantSetupWizard';
+import SecurityAuditLogger from './SecurityAuditLogger';
+import DatabaseHealthCheck from './DatabaseHealthCheck';
 import AnimatedTitle from './AnimatedTitle';
 // Removed ErrorPage404 import since offline sync handles connectivity gracefully
 import ErrorBoundary from './ErrorBoundary';
@@ -87,19 +93,19 @@ const Dashboard = () => {
     return false;
   });
   const [stats, setStats] = useState({
-    totalProducts: 156,
-    lowStock: 8,
-    nearExpiry: 12,
-    todaySales: 25000,
-    monthlyProfit: 185000,
-    todaysSalesChange: 12,
-    monthlyProfitChange: 8,
-    totalCustomers: 342,
-    activeSuppliers: 15,
-    pendingOrders: 5,
-    totalRevenue: 1250000,
-    avgOrderValue: 1850,
-    topSellingProduct: 'NPK 20-20-20'
+    totalProducts: 0,
+    lowStock: 0,
+    nearExpiry: 0,
+    todaySales: 0,
+    monthlyProfit: 0,
+    todaysSalesChange: 0,
+    monthlyProfitChange: 0,
+    totalCustomers: 0,
+    activeSuppliers: 0,
+    pendingOrders: 0,
+    totalRevenue: 0,
+    avgOrderValue: 0,
+    topSellingProduct: 'No sales yet'
   });
   const [alerts, setAlerts] = useState([]);
   const [posItem, setPosItem] = useState('');
@@ -301,10 +307,13 @@ const Dashboard = () => {
   // Expose refresh function globally so Settings can call it
   useEffect(() => {
     window.refreshDashboardCompanyDetails = loadCompanyDetails;
+    // Expose navigation function for debugging
+    window.navigateToMultiTenantTest = () => handleNavigation('multi-tenant-test');
 
     // Cleanup on unmount
     return () => {
       delete window.refreshDashboardCompanyDetails;
+      delete window.navigateToMultiTenantTest;
     };
   }, []);
 
@@ -321,6 +330,10 @@ const Dashboard = () => {
       console.log('🔍 Product brandId/brand_id:', product.brandId, product.brand_id);
       setProductToEdit(product);
       setCurrentPage('add-product'); // Use the same component for editing
+    } else if (page === 'view-product' && product) {
+      console.log('👁️ Setting product to view:', product);
+      setProductToEdit(product);
+      setCurrentPage('view-product');
     } else if (page === 'add-product') {
       setProductToEdit(null); // Clear when adding new product
     }
@@ -830,6 +843,8 @@ const Dashboard = () => {
         return <Inventory onNavigate={handleNavigation} />;
       case 'add-product':
         return <AddProduct onNavigate={handleNavigation} productToEdit={productToEdit} />;
+      case 'view-product':
+        return <ViewProduct product={productToEdit} onNavigate={handleNavigation} />;
       case 'bulk-add-products':
         return <BulkAddProductTable onNavigate={handleNavigation} />;
       case 'stock-movement':
@@ -860,6 +875,8 @@ const Dashboard = () => {
         return <AlertsPanel onNavigate={handleNavigation} />;
       case 'alerts-system':
         return <EnhancedAlertsSystem onNavigate={handleNavigation} />;
+      case 'notifications':
+        return <NotificationManagement onNavigate={handleNavigation} />;
       case 'reports':
         return <Reports onNavigate={handleNavigation} />;
       case 'reports-dashboard':
@@ -896,6 +913,14 @@ const Dashboard = () => {
         return <DatabaseSyncTest onNavigate={handleNavigation} />;
       case 'storage-test':
         return <StorageTest onNavigate={handleNavigation} />;
+      case 'multi-tenant-test':
+        return <MultiTenantTestSuite onNavigate={handleNavigation} />;
+      case 'multi-tenant-setup':
+        return <MultiTenantSetupWizard onNavigate={handleNavigation} />;
+      case 'security-audit-logger':
+        return <SecurityAuditLogger onNavigate={handleNavigation} />;
+      case 'database-health-check':
+        return <DatabaseHealthCheck onNavigate={handleNavigation} />;
       // case 'theme-test':
         // return <ThemeTest onNavigate={handleNavigation} />;
       default:
@@ -1053,16 +1078,16 @@ const Dashboard = () => {
           <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               title="Orders"
-              value={stats.totalCustomers * 5}
+              value={stats.totalProducts > 0 ? Math.max(1, Math.floor(stats.totalProducts / 2)) : 0}
               description="Completed"
               icon={<ShoppingCart className="h-6 w-6 text-white" />}
               trend={stats.monthlyProfitChange}
               bgGradient="from-green-500 to-green-600"
               onClick={() => handleNavigation('sales')}
               subItems={[
-                { label: "Overdue", value: "1", color: "bg-red-400" },
-                { label: "In Progress", value: "14", color: "bg-yellow-400" },
-                { label: "Returns", value: "3", color: "bg-orange-400" }
+                { label: "Overdue", value: stats.totalProducts > 0 ? "1" : "0", color: "bg-red-400" },
+                { label: "In Progress", value: stats.totalProducts > 0 ? "2" : "0", color: "bg-yellow-400" },
+                { label: "Returns", value: stats.totalProducts > 0 ? "0" : "0", color: "bg-orange-400" }
               ]}
             />
             <StatCard
@@ -1075,9 +1100,9 @@ const Dashboard = () => {
               onClick={() => handleNavigation('inventory')}
               subItems={[
                 { label: "In Stock", value: stats.totalProducts - stats.lowStock, color: "bg-green-400" },
-                { label: "Out Of Stock", value: "12", color: "bg-red-400" },
+                { label: "Out Of Stock", value: stats.totalProducts > 0 ? "0" : "0", color: "bg-red-400" },
                 { label: "Low Stock", value: stats.lowStock, color: "bg-yellow-400" },
-                { label: "Dead Stock", value: "2", color: "bg-muted-foreground" }
+                { label: "Dead Stock", value: stats.totalProducts > 0 ? "0" : "0", color: "bg-muted-foreground" }
               ]}
             />
             <StatCard
@@ -1102,8 +1127,8 @@ const Dashboard = () => {
               bgGradient="from-orange-500 to-red-600"
               onClick={() => handleNavigation('customers')}
               subItems={[
-                { label: "New", value: "8", color: "bg-green-400" },
-                { label: "Regular", value: stats.totalCustomers - 8, color: "bg-teal-400" }
+                { label: "New", value: stats.totalCustomers > 0 ? Math.min(stats.totalCustomers, 3).toString() : "0", color: "bg-green-400" },
+                { label: "Regular", value: stats.totalCustomers > 3 ? (stats.totalCustomers - 3).toString() : "0", color: "bg-teal-400" }
               ]}
             />
           </div>
