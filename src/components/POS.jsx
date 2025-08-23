@@ -50,8 +50,13 @@ import {
   TrendingUp,
   ScanLine,
   BarChart3,
-  Upload
+  Upload,
+  Share2,
+  MessageCircle,
+  Copy,
+  Download
 } from 'lucide-react';
+import QRCode from 'qrcode';
 
 const POS = ({ onNavigate }) => {
   // Helper function to format address
@@ -116,6 +121,9 @@ const POS = ({ onNavigate }) => {
   const [showImageUploadDialog, setShowImageUploadDialog] = useState(false);
   const [selectedProductForUpload, setSelectedProductForUpload] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [customGSTRate, setCustomGSTRate] = useState(null); // For overriding GST rate
+  const [showGSTDialog, setShowGSTDialog] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // Generate bill number
   const generateBillNumber = () => {
@@ -683,7 +691,7 @@ const POS = ({ onNavigate }) => {
     return result.trim();
   };
 
-  // Enhanced calculation functions with item-wise GST
+  // Enhanced calculation functions with item-wise GST and custom GST rate
   const calculateCartTotals = () => {
     let subtotalBeforeDiscount = 0;
     let totalGSTAmount = 0;
@@ -691,9 +699,9 @@ const POS = ({ onNavigate }) => {
     const itemsWithGST = cart.map(item => {
       const itemSubtotal = (item.price || 0) * item.quantity;
       
-      // Get GST rate for this item
-      let gstRate = item.gstRate;
-      if (!gstRate || gstRate === null || gstRate === undefined) {
+      // Get GST rate for this item - custom rate takes priority
+      let gstRate = customGSTRate !== null ? customGSTRate : item.gstRate;
+      if (!gstRate && gstRate !== 0) {
         // Use GST service to determine rate based on category
         if (item.category) {
           gstRate = gstService.getGSTRate(item.category);
@@ -738,7 +746,7 @@ const POS = ({ onNavigate }) => {
   const total = taxableAmount + taxAmount;
   
   // Calculate average GST rate for display
-  const averageGSTRate = subtotal > 0 ? (cartTotals.totalGSTAmount / subtotal) * 100 : 5;
+  const averageGSTRate = customGSTRate !== null ? customGSTRate : (subtotal > 0 ? (cartTotals.totalGSTAmount / subtotal) * 100 : 5);
 
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -869,6 +877,7 @@ const POS = ({ onNavigate }) => {
         customer_name: customerName,
 
         // Financial fields with proper decimal formatting
+        // Financial fields with proper decimal formatting (after migration)
         subtotal: Number(subtotal.toFixed(2)),
         discount: Number(discountAmount.toFixed(2)),
         tax_amount: Number(taxAmount.toFixed(2)),
@@ -977,14 +986,26 @@ const POS = ({ onNavigate }) => {
       }
 
       // Update inventory quantities
+      const updatedProductIds = [];
       for (const item of cart) {
         try {
           const product = products.find(p => p.id === item.id);
           if (product) {
-            const newQuantity = Math.max(0, product.quantity - item.quantity);
+            // Use the current stock value from POS display (product.stock) instead of product.quantity
+            const currentStock = product.stock || product.quantity || 0;
+            const newQuantity = Math.max(0, currentStock - item.quantity);
+
+            console.log(`📦 Updating stock for ${product.name}:`, {
+              currentStock,
+              soldQuantity: item.quantity,
+              newQuantity,
+              productId: product.id
+            });
 
             if (navigator.onLine) {
               await productsService.update(product.id, { quantity: newQuantity });
+              console.log(`✅ Database updated for ${product.name}: ${currentStock} → ${newQuantity}`);
+              updatedProductIds.push(product.id);
             } else {
               // Store inventory update offline
               await offlineStorage.addOfflineInventoryUpdate({
@@ -997,11 +1018,37 @@ const POS = ({ onNavigate }) => {
                 timestamp: new Date()
               });
             }
+
+            // Update local products state immediately to reflect new stock
+            setProducts(prevProducts => 
+              prevProducts.map(p => 
+                p.id === product.id 
+                  ? { ...p, stock: newQuantity, quantity: newQuantity }
+                  : p
+              )
+            );
           }
         } catch (inventoryError) {
           console.warn('Failed to update inventory for product:', item.id, inventoryError);
         }
       }
+
+      // Also update filteredProducts to ensure display is consistent
+      setFilteredProducts(prevFiltered => 
+        prevFiltered.map(product => {
+          if (updatedProductIds.includes(product.id)) {
+            const cartItem = cart.find(item => item.id === product.id);
+            if (cartItem) {
+              const currentStock = product.stock || product.quantity || 0;
+              const newQuantity = Math.max(0, currentStock - cartItem.quantity);
+              return { ...product, stock: newQuantity, quantity: newQuantity };
+            }
+          }
+          return product;
+        })
+      );
+
+      console.log(`📊 Updated stock for ${updatedProductIds.length} products in local state`);
 
       // Close payment dialog and show receipt
       setShowPaymentDialog(false);
@@ -1036,7 +1083,18 @@ const POS = ({ onNavigate }) => {
 
     } catch (error) {
       console.error('Error in payment:', error);
-      alert('Payment failed: ' + error.message);
+      console.error('❌ Payment Error Details:', {
+        message: error?.message || 'Unknown error',
+        code: error?.code || 'NO_CODE',
+        details: error?.details || 'No details',
+        hint: error?.hint || 'No hint',
+        stack: error?.stack || 'No stack trace',
+        fullError: error
+      });
+      
+      // Create user-friendly error message
+      const userMessage = error?.message || error?.toString() || 'Unknown error occurred';
+      alert(`Payment failed: ${userMessage}`);
     } finally {
       setIsProcessing(false);
     }
@@ -1102,130 +1160,186 @@ const POS = ({ onNavigate }) => {
     setSelectedCustomer(null);
   };
 
-  // Print receipt function
+  // Print receipt function - Optimized Dual Copy Layout for A4 Portrait
   const printReceipt = () => {
-    if (receiptRef.current) {
-      const printWindow = window.open('', '_blank', 'width=794,height=1123');
+    if (cart.length === 0) {
+      alert('Cart is empty!');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank', 'width=794,height=1123');
+    if (printWindow) {
       printWindow.document.write(`
         <!DOCTYPE html>
         <html>
           <head>
             <title>GST Invoice - ${currentBillNumber}</title>
             <style>
+              * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+              }
+              
               body {
                 font-family: Arial, sans-serif;
-                margin: 0;
-                padding: 15px;
+                font-size: 10px;
+                line-height: 1.2;
+                color: #000;
                 background: white;
-                font-size: 11px;
+                padding: 8mm;
               }
               
-              .invoice-container {
-                max-width: 210mm;
+              .dual-invoice-container {
+                width: 210mm;
+                height: 297mm;
                 margin: 0 auto;
-                border: 2px solid #000;
                 background: white;
+                display: grid;
+                grid-template-rows: 1fr 1fr;
+                gap: 3mm;
+                padding: 5mm;
+                box-sizing: border-box;
+                page-break-inside: avoid;
               }
               
-              .header-row {
+              .invoice-copy {
+                border: 2px solid #000;
+                padding: 3mm;
+                background: white;
+                width: 200mm;
+                height: 140mm;
+                box-sizing: border-box;
+                display: grid;
+                grid-template-rows: auto auto 1fr auto;
+                gap: 2mm;
+                overflow: hidden;
+                position: relative;
+              }
+              
+              .header-section {
                 display: flex;
-                align-items: center;
-                padding: 8px;
-                border-bottom: 1px solid #000;
+                align-items: flex-start;
+                justify-content: space-between;
+                border-bottom: 2px solid #000;
+                padding-bottom: 3mm;
+                grid-row: 1;
               }
               
               .company-logo {
-                width: 60px;
-                height: 60px;
-                margin-right: 15px;
+                width: 50px;
+                height: 40px;
+                border: 1px solid #000;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                font-size: 8px;
               }
               
               .company-logo img {
-                width: 100%;
-                height: 100%;
+                max-width: 48px;
+                max-height: 38px;
                 object-fit: contain;
               }
               
               .company-info {
                 flex: 1;
                 text-align: center;
+                padding: 0 8px;
               }
               
               .company-name {
                 font-size: 18px;
                 font-weight: bold;
-                margin: 0;
-                color: #000;
+                margin-bottom: 2px;
               }
               
               .gst-invoice {
-                font-size: 16px;
+                font-size: 14px;
                 font-weight: bold;
-                margin: 2px 0;
+                margin-bottom: 3px;
               }
               
               .company-details {
                 font-size: 9px;
-                margin: 2px 0;
                 line-height: 1.3;
               }
               
               .right-logo {
-                width: 80px;
+                width: 50px;
                 height: 40px;
-              }
-              
-              .customer-invoice-row {
+                border: 1px solid #000;
                 display: flex;
-                border-bottom: 1px solid #000;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+                font-size: 8px;
               }
               
-              .customer-section {
+              .copy-type {
+                font-size: 12px;
+                font-weight: bold;
+                text-align: center;
+                margin-bottom: 4px;
+                text-decoration: underline;
+                padding: 2px 0;
+              }
+              
+              .customer-invoice-section {
+                display: flex;
+                justify-content: space-between;
+                gap: 3mm;
+                font-size: 8px;
+                grid-row: 2;
+              }
+              
+              .customer-details, .invoice-details {
                 flex: 1;
-                padding: 8px;
-                border-right: 1px solid #000;
-              }
-              
-              .invoice-section {
-                width: 200px;
-                padding: 8px;
+                border: 1px solid #000;
+                padding: 4px;
               }
               
               .section-title {
                 font-weight: bold;
                 font-size: 10px;
-                margin-bottom: 5px;
+                margin-bottom: 2px;
               }
               
               .customer-name {
-                font-weight: bold;
                 font-size: 11px;
+                font-weight: bold;
                 margin: 2px 0;
               }
               
-              .invoice-details {
-                font-size: 9px;
-                line-height: 1.4;
-              }
-              
-              .main-table {
+              .items-table {
                 width: 100%;
                 border-collapse: collapse;
-                font-size: 9px;
+                border: 1px solid #000;
+                font-size: 6px;
+                table-layout: fixed;
+                grid-row: 3;
+                align-self: start;
               }
               
-              .main-table th,
-              .main-table td {
+              .items-table th,
+              .items-table td {
                 border: 1px solid #000;
-                padding: 4px 2px;
+                padding: 1px;
                 text-align: center;
                 vertical-align: middle;
+                line-height: 1.0;
+                word-wrap: break-word;
+                overflow: hidden;
+                font-size: 5px;
               }
               
-              .main-table th {
+              .items-table th {
                 background-color: #f5f5f5;
                 font-weight: bold;
-                font-size: 8px;
+                font-size: 5px;
+                padding: 2px 1px;
+                text-align: center;
               }
               
               .product-name {
@@ -1239,32 +1353,110 @@ const POS = ({ onNavigate }) => {
               }
               
               .total-row {
-                background-color: #f0f0f0;
-              }
-              
-              .grand-total-section {
-                border-top: 2px solid #000;
-                padding: 8px;
-                text-align: center;
-              }
-              
-              .grand-total {
-                font-size: 16px;
+                background-color: #f9f9f9;
                 font-weight: bold;
-                margin: 5px 0;
+                font-size: 9px;
+              }
+              
+              
+              .total-amount-section {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-end;
+                margin: 4px 0;
+                gap: 8px;
               }
               
               .amount-words {
                 font-size: 9px;
-                margin-top: 5px;
                 font-style: italic;
+                flex: 1;
+                padding: 2px;
               }
               
-              .footer-note {
+              .total-amount-display {
+                text-align: right;
+                flex-shrink: 0;
+              }
+              
+              .total-amount-display .grand-total-display {
+                font-size: 16px;
+                font-weight: bold;
+                margin: 0 0 2px 0;
+                padding: 3px 6px;
+                border: 1px solid #000;
+                background-color: #f0f0f0;
+                text-align: center;
+                min-width: 100px;
+              }
+              
+              .total-amount-label {
                 font-size: 8px;
                 text-align: center;
-                margin-top: 5px;
-                color: #666;
+                font-weight: bold;
+                margin-top: 2px;
+              }
+              
+              .footer-content {
+                grid-row: 4;
+                display: grid;
+                grid-template-rows: auto auto auto auto;
+                gap: 1mm;
+                font-size: 6px;
+              }
+              
+              .total-amount-words {
+                font-weight: bold;
+                text-align: center;
+                grid-row: 1;
+              }
+              
+              .total-amount-display {
+                text-align: center;
+                grid-row: 2;
+              }
+              
+              .footer-section {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                font-size: 6px;
+                gap: 5mm;
+                grid-row: 3;
+              }
+              
+              .terms-section {
+                flex: 1;
+              }
+              
+              .payment-section {
+                flex: 1;
+                text-align: right;
+              }
+              
+              .signature-section {
+                display: flex;
+                justify-content: space-between;
+                font-size: 6px;
+                gap: 5mm;
+                grid-row: 4;
+              }
+              
+              .company-signature {
+                flex: 1;
+              }
+              
+              .customer-signature {
+                flex: 1;
+                text-align: right;
+              }
+              
+              .signature-line {
+                border-top: 1px solid #000;
+                margin-top: 8px;
+                padding-top: 1px;
+                height: 8px;
+                font-size: 6px;
               }
               
               @media print {
@@ -1274,189 +1466,439 @@ const POS = ({ onNavigate }) => {
                 }
                 
                 body {
-                  font-size: 10px;
+                  font-size: 9px;
                   -webkit-print-color-adjust: exact;
                   print-color-adjust: exact;
+                  padding: 0;
+                  margin: 0;
                 }
                 
-                .invoice-container {
+                .dual-invoice-container {
+                  width: 210mm !important;
+                  height: 297mm !important;
+                  display: grid !important;
+                  grid-template-rows: 1fr 1fr !important;
+                  gap: 3mm !important;
+                  padding: 5mm !important;
+                  margin: 0 auto !important;
+                  page-break-inside: avoid !important;
+                }
+                
+                .invoice-copy {
                   border: 2px solid #000 !important;
+                  width: 200mm !important;
+                  height: 140mm !important;
+                  max-height: 140mm !important;
+                  min-height: 140mm !important;
+                  padding: 3mm !important;
+                  box-sizing: border-box !important;
+                  display: grid !important;
+                  grid-template-rows: auto auto 1fr auto !important;
+                  gap: 2mm !important;
+                  overflow: hidden !important;
+                  page-break-inside: avoid !important;
                 }
                 
-                .main-table th,
-                .main-table td {
+                .items-table th,
+                .items-table td {
                   border: 1px solid #000 !important;
                   -webkit-print-color-adjust: exact;
                   print-color-adjust: exact;
+                  font-size: 7px !important;
+                }
+                
+                .items-table th {
+                  font-size: 6px !important;
+                }
+                
+                .total-row {
+                  font-size: 8px !important;
+                }
+                
+                .total-amount-display .grand-total-display {
+                  font-size: 14px !important;
+                }
+                
+                .company-name {
+                  font-size: 16px !important;
+                }
+                
+                .gst-invoice {
+                  font-size: 12px !important;
+                }
+                
+                .copy-type {
+                  font-size: 11px !important;
                 }
               }
             </style>
           </head>
           <body>
-            <div class="invoice-container">
-              <!-- Header with Logo and Company Info -->
-              <div class="header-row">
-                <div class="company-logo">
-                  ${shopDetails?.logo ? `
-                    <img src="${shopDetails.logo}" alt="${shopDetails?.name || 'Company'} Logo" />
-                  ` : `
-                    <div style="width:100%; height:100%; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-size:8px; color:#666;">LOGO</div>
-                  `}
-                </div>
+            <div class="dual-invoice-container">
+                <!-- CUSTOMER COPY -->
+              <div class="invoice-copy">
+                <!-- Copy Type -->
+                <div class="copy-type">Customer Copy</div>
                 
-                <div class="company-info">
-                  <div class="company-name">${shopDetails?.name || 'KrishiSethu Fertilizers'}</div>
-                  <div class="gst-invoice">GST Invoice</div>
-                  <div class="company-details">
-                    ${shopDetails?.address ? formatAddress(shopDetails.address) : '123 Agricultural Complex, Mumbai, Maharashtra - 400001'}<br>
-                    CIN No.: ${shopDetails?.cinNumber || 'L65921GA21967PLC000157'}<br>
-                    Toll Free Number: ${shopDetails?.tollFreeNumber || '18001212333'}<br>
-                    GSTIN: ${shopDetails?.gstNumber || '27AAAAA0000A1Z5'}<br>
-                    MFD SID: ${shopDetails?.mfdSid || '1115736'}<br>
-                    State Name: ${shopDetails?.state || 'Maharashtra'}
+                <!-- Header Section - JaiKisan Style -->
+                <div class="header-section">
+                  <div class="company-logo">
+                    ${shopDetails?.logo ? `
+                      <img src="${shopDetails.logo}" alt="Logo" />
+                    ` : `
+                      <div style="font-size: 8px; font-weight: bold; text-align: center;">JAI<br/>KISAN</div>
+                    `}
                   </div>
-                </div>
-                
-                <div class="right-logo">
-                  <!-- Right side logo space if needed -->
-                  <div style="width:100%; height:100%; border:1px solid #ccc; display:flex; align-items:center; justify-content:center; font-size:8px; color:#666;">BRAND</div>
-                </div>
-              </div>
-              
-              <!-- Customer and Invoice Details -->
-              <div class="customer-invoice-row">
-                <div class="customer-section">
-                  <div class="section-title">Customer Copy</div>
-                  <div style="margin-bottom: 8px;">
-                    <strong>Billed Customer (Bill to)</strong><br>
-                    <strong>Customer No.:</strong> ${selectedCustomer?.id || 'WALK001'}<br>
-                    <div class="customer-name">${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
-                    <strong>Village:</strong> ${selectedCustomer?.city || customerForm.city || 'N/A'}<br>
-                    <strong>Phone No.:</strong> ${selectedCustomer?.phone || customerForm.phone || 'N/A'}<br>
-                    <strong>Sales Type:</strong> Cash Sales<br>
-                    <strong>Customer GST No.:</strong> ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}
-                  </div>
-                </div>
-                
-                <div class="invoice-section">
-                  <div class="invoice-details">
-                    <strong>Invoice No.:</strong> ${currentBillNumber}<br>
-                    <strong>Order No.:</strong> ${currentBillNumber}<br>
-                    <strong>Invoice Date:</strong> ${new Date().toLocaleDateString('en-GB')}<br>
-                    <strong>License No.:</strong> ${shopDetails?.licenseNumber || 'NCL/20/ADA/FR/2019/23125'}
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Main Items Table -->
-              <table class="main-table">
-                <thead>
-                  <tr>
-                    <th style="width: 30px;">S.No.</th>
-                    <th style="width: 120px;">Description of Goods</th>
-                    <th style="width: 60px;">Item Code</th>
-                    <th style="width: 50px;">HSN/ SAC</th>
-                    <th style="width: 40px;">Batch No.</th>
-                    <th style="width: 50px;">Expiry Date</th>
-                    <th style="width: 40px;">Quantity & Unit</th>
-                    <th style="width: 30px;">Pack</th>
-                    <th style="width: 45px;">Rate/ Price</th>
-                    <th style="width: 50px;">Total Amount (Inclusive of Tax)</th>
-                    <th style="width: 45px;">Discount\\ Amount</th>
-                    <th style="width: 45px;">Taxable Amount</th>
-                    <th style="width: 25px;">%</th>
-                    <th style="width: 40px;">CGST Amount</th>
-                    <th style="width: 25px;">%</th>
-                    <th style="width: 40px;">SGST/UGST Amount</th>
-                    <th style="width: 25px;">%</th>
-                    <th style="width: 40px;">IGST Amount</th>
-                    <th style="width: 50px;">Total Amount (incl. tax)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${cart.map((item, index) => {
-                    const itemTotal = item.price * item.quantity;
-                    const gstRate = item.gstRate || 5; // Use actual GST rate from item
-                    const taxableAmount = itemTotal / (1 + gstRate / 100);
-                    const gstAmount = itemTotal - taxableAmount;
-                    const cgstAmount = gstAmount / 2;
-                    const sgstAmount = gstAmount / 2;
-                    
-                    return `
-                      <tr>
-                        <td>${index + 1}</td>
-                        <td class="product-name">${item.name}</td>
-                        <td>${item.barcode || 'N/A'}</td>
-                        <td>${item.hsn || '31051000'}</td>
-                        <td>N/A</td>
-                        <td>N/A</td>
-                        <td>${item.quantity} ${item.unit || 'BAG'}</td>
-                        <td>BAG</td>
-                        <td>₹${item.price.toFixed(2)}</td>
-                        <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
-                        <td>₹0.00</td>
-                        <td class="amount-col">₹${taxableAmount.toFixed(2)}</td>
-                        <td>${(gstRate/2).toFixed(1)}</td>
-                        <td>₹${cgstAmount.toFixed(2)}</td>
-                        <td>${(gstRate/2).toFixed(1)}</td>
-                        <td>₹${sgstAmount.toFixed(2)}</td>
-                        <td>0.0</td>
-                        <td>₹0.00</td>
-                        <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
-                      </tr>
-                    `;
-                  }).join('')}
                   
-                  <!-- Grand Total Row -->
-                  <tr class="total-row">
-                    <td colspan="9"><strong>Grand Total</strong></td>
-                    <td class="amount-col"><strong>₹${subtotal.toFixed(2)}</strong></td>
-                    <td><strong>₹${discountAmount.toFixed(2)}</strong></td>
-                    <td class="amount-col"><strong>₹${(subtotal - discountAmount).toFixed(2)}</strong></td>
-                    <td></td>
-                    <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
-                    <td></td>
-                    <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
-                    <td></td>
-                    <td><strong>₹0.00</strong></td>
-                    <td class="amount-col"><strong>₹${total.toFixed(2)}</strong></td>
-                  </tr>
-                </tbody>
-              </table>
+                  <div class="company-info">
+                    <div class="company-name">${shopDetails?.name || 'KrishiSethu'}</div>
+                    <div class="gst-invoice">GST Invoice</div>
+                  </div>
+                  
+                  <div class="right-logo">
+                    <div id="qrcode-customer" style="width: 48px; height: 38px; display: flex; align-items: center; justify-content: center;"></div>
+                  </div>
+                </div>
+                
+                <!-- Clean Company & Invoice Information Section -->
+                <div class="customer-invoice-section">
+                  <!-- Left Side - Company Info -->
+                  <div class="customer-details">
+                    <div class="font-semibold">${shopDetails?.name || 'Test company'} Limited</div>
+                    <div class="mt-1">
+                      <div><strong>DispatchedFrom</strong></div>
+                      <div>${shopDetails?.address ? formatAddress(shopDetails.address) : 'Fertilizer Distribution Center, Hyderabad, Telangana, 500001'}</div>
+                      <div>Telangana, India</div>
+                      <div><strong>GSTIN:</strong> ${shopDetails?.gstNumber || '36AAACZ3924H1Z5'}</div>
+                      <div><strong>MFDSID:</strong> ${shopDetails?.mfdSid || '1115736'}</div>
+                    </div>
+                    <div class="mt-1">
+                      <div class="inline-block border border-black px-1"><strong>StateName:</strong> Telangana</div>
+                    </div>
+                  </div>
+                  
+                  <!-- Right Side - Invoice & Customer Info -->
+                  <div class="invoice-details">
+                    <div><strong>InvoiceNo.:</strong> ${currentBillNumber}</div>
+                    <div><strong>ReceiptNo.:</strong> ${currentBillNumber}</div>
+                    <div><strong>InvoiceDate:</strong> ${new Date().toLocaleDateString('en-GB')}</div>
+                    <div><strong>LicenseNo.:</strong> ${shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
+                    
+                    <div class="mt-2">
+                      <div><strong>BilledCustomer(Billto)</strong></div>
+                      <div><strong>CustomerNo.:</strong> ${selectedCustomer?.id || 'S35100000371'}</div>
+                      <div><strong>CustomerName:</strong> ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
+                      <div><strong>Village:</strong> ${selectedCustomer?.city || customerForm.city || 'N/A'}</div>
+                      <div><strong>PhoneNo.:</strong> ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
+                      <div><strong>SalesType:</strong> Cash Sales</div>
+                      <div><strong>CustomerGSTNo:</strong> ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Items Table -->
+                <table class="items-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 5%;">S.No</th>
+                      <th style="width: 30%;">Description of Goods</th>
+                      <th style="width: 8%;">Item Code</th>
+                      <th style="width: 8%;">HSN/SAC</th>
+                      <th style="width: 8%;">Batch No.</th>
+                      <th style="width: 8%;">Expiry</th>
+                      <th style="width: 10%;">Qty & Unit</th>
+                      <th style="width: 6%;">Pack</th>
+                      <th style="width: 8%;">Rate</th>
+                      <th style="width: 10%;">Amount</th>
+                      <th style="width: 8%;">Discount</th>
+                      <th style="width: 10%;">Taxable</th>
+                      <th style="width: 4%;">CGST%</th>
+                      <th style="width: 8%;">CGST</th>
+                      <th style="width: 4%;">SGST%</th>
+                      <th style="width: 8%;">SGST</th>
+                      <th style="width: 4%;">IGST%</th>
+                      <th style="width: 8%;">IGST</th>
+                      <th style="width: 10%;">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${cart.map((item, index) => {
+                      const itemTotal = item.price * item.quantity;
+                      const gstRate = item.gstRate || 5;
+                      const taxableAmount = itemTotal;
+                      const gstAmount = (itemTotal * gstRate) / 100;
+                      const cgstAmount = gstAmount / 2;
+                      const sgstAmount = gstAmount / 2;
+                      const totalWithTax = itemTotal + gstAmount;
+                      
+                      return `
+                        <tr>
+                          <td>${index + 1}</td>
+                          <td class="product-name">${item.name}</td>
+                          <td>${item.barcode || 'N/A'}</td>
+                          <td>${item.hsn || '31051000'}</td>
+                          <td>N/A</td>
+                          <td>N/A</td>
+                          <td>${item.quantity} ${item.unit || 'bags'}</td>
+                          <td>${item.unit || 'BAG'}</td>
+                          <td>₹${item.price.toFixed(2)}</td>
+                          <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
+                          <td>₹0.00</td>
+                          <td class="amount-col">₹${taxableAmount.toFixed(2)}</td>
+                          <td>${(gstRate/2).toFixed(1)}</td>
+                          <td>₹${cgstAmount.toFixed(2)}</td>
+                          <td>${(gstRate/2).toFixed(1)}</td>
+                          <td>₹${sgstAmount.toFixed(2)}</td>
+                          <td>0.0</td>
+                          <td>₹0.00</td>
+                          <td class="amount-col">₹${totalWithTax.toFixed(2)}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                    
+                    <!-- Grand Total Row -->
+                    <tr class="total-row">
+                      <td colspan="9"><strong>Grand Total</strong></td>
+                      <td class="amount-col"><strong>₹${subtotal.toFixed(2)}</strong></td>
+                      <td><strong>₹${discountAmount.toFixed(2)}</strong></td>
+                      <td class="amount-col"><strong>₹${(subtotal - discountAmount).toFixed(2)}</strong></td>
+                      <td></td>
+                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
+                      <td></td>
+                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
+                      <td></td>
+                      <td><strong>₹0.00</strong></td>
+                      <td class="amount-col"><strong>₹${total.toFixed(2)}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                <!-- Footer Content -->
+                <div class="footer-content">
+                  <!-- Total Amount in Words -->
+                  <div class="total-amount-words">
+                    <strong>Total Invoice Value (in words):</strong> ${numberToWordsIndian(Math.round(total))} Only
+                  </div>
+                  
+                  <!-- Total Amount Display -->
+                  <div class="total-amount-display">
+                    <div style="border: 2px solid #000; padding: 3px 6px; text-align: center; font-weight: bold; font-size: 12px; display: inline-block; min-width: 80px;">
+                      ₹${total.toFixed(2)}
+                    </div>
+                    <div style="font-size: 6px; text-align: center; margin-top: 1px;">Total Amount (incl. tax)</div>
+                  </div>
+                  
+                  <!-- Footer Section -->
+                  <div class="footer-section">
+                    <div class="terms-section">
+                      <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br>
+                      This invoice is not payable under reverse charge
+                    </div>
+                    <div class="payment-section">
+                      <strong>Payment Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}<br>
+                      <strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br>
+                      <strong>Change:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
+                    </div>
+                  </div>
+                  
+                  <!-- Signatures Section -->
+                  <div class="signature-section">
+                    <div class="company-signature">
+                      <strong>For ${shopDetails?.name || 'Test company'}</strong>
+                      <div class="signature-line">Authorized Signatory</div>
+                    </div>
+                    <div class="customer-signature">
+                      <strong>Customer Signature</strong><br>
+                      <strong>For Acknowledgement</strong>
+                      <div class="signature-line">Customer</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Footer Note -->
+                <div style="text-align: center; font-size: 5px; margin-top: 1px; padding-top: 1px; border-top: 1px solid #ccc; position: absolute; bottom: 0; left: 0; right: 0;">
+                  Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge
+                </div>
+              </div>
               
-              <!-- Grand Total Section -->
-              <div class="grand-total-section">
-                <div class="grand-total">₹${total.toFixed(2)}</div>
-                <div class="amount-words">
-                  <strong>Total Invoice Value (in words):</strong> ${numberToWordsIndian(Math.round(total))} Only
-                </div>
-                <div class="footer-note">
-                  <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br>
-                  This invoice is not payable under reverse charge
+              <!-- OFFICE/AUDIT COPY -->
+              <div class="invoice-copy">
+                <!-- Copy Type -->
+                <div class="copy-type">Office Copy</div>
+                
+                <!-- Header Section - JaiKisan Style -->
+                <div class="header-section">
+                  <div class="company-logo">
+                    ${shopDetails?.logo ? `
+                      <img src="${shopDetails.logo}" alt="Logo" />
+                    ` : (
+                      '<div class="text-xs font-bold text-center">JAI<br/>KISAN</div>'
+                    )}
+                  </div>
+                  
+                  <div class="company-info">
+                    <div class="company-name">${shopDetails?.name || 'KrishiSethu'}</div>
+                    <div class="gst-invoice">GST Invoice</div>
+                  </div>
+                  
+                  <div class="right-logo">
+                    <div id="qrcode-office" style="width: 48px; height: 38px; display: flex; align-items: center; justify-content: center;"></div>
+                  </div>
                 </div>
                 
-                <!-- Customer Signature Section -->
-                <div style="margin-top: 20px; display: flex; justify-content: space-between; font-size: 9px;">
-                  <div>
-                    <strong>For ${shopDetails?.name || 'KrishiSethu Fertilizers'}</strong><br><br>
-                    ________________________<br>
-                    Authorized Signatory
+                <!-- Clean Company & Invoice Information Section -->
+                <div class="customer-invoice-section">
+                  <!-- Left Side - Company Info -->
+                  <div class="customer-details">
+                    <div class="font-semibold">${shopDetails?.name || 'Test company'} Limited</div>
+                    <div class="mt-1">
+                      <div><strong>DispatchedFrom</strong></div>
+                      <div>${shopDetails?.address ? formatAddress(shopDetails.address) : 'Fertilizer Distribution Center, Hyderabad, Telangana, 500001'}</div>
+                      <div>Telangana, India</div>
+                      <div><strong>GSTIN:</strong> ${shopDetails?.gstNumber || '36AAACZ3924H1Z5'}</div>
+                      <div><strong>MFDSID:</strong> ${shopDetails?.mfdSid || '1115736'}</div>
+                    </div>
+                    <div class="mt-1">
+                      <div class="inline-block border border-black px-1"><strong>StateName:</strong> Telangana</div>
+                    </div>
                   </div>
-                  <div style="text-align: right;">
+                  
+                  <!-- Right Side - Invoice & Customer Info -->
+                  <div class="invoice-details">
+                    <div><strong>InvoiceNo.:</strong> ${currentBillNumber}</div>
+                    <div><strong>ReceiptNo.:</strong> ${currentBillNumber}</div>
+                    <div><strong>InvoiceDate:</strong> ${new Date().toLocaleDateString('en-GB')}</div>
+                    <div><strong>LicenseNo.:</strong> ${shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
+                    
+                    <div class="mt-2">
+                      <div><strong>BilledCustomer(Billto)</strong></div>
+                      <div><strong>CustomerNo.:</strong> ${selectedCustomer?.id || 'S35100000371'}</div>
+                      <div><strong>CustomerName:</strong> ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
+                      <div><strong>Village:</strong> ${selectedCustomer?.city || customerForm.city || 'N/A'}</div>
+                      <div><strong>PhoneNo.:</strong> ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
+                      <div><strong>SalesType:</strong> Cash Sales</div>
+                      <div><strong>CustomerGSTNo:</strong> ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Items Table -->
+                <table class="items-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 4%;">S.No</th>
+                      <th style="width: 25%;">Description of Goods</th>
+                      <th style="width: 6%;">Item Code</th>
+                      <th style="width: 6%;">HSN/SAC</th>
+                      <th style="width: 5%;">Batch No.</th>
+                      <th style="width: 5%;">Expiry</th>
+                      <th style="width: 8%;">Qty & Unit</th>
+                      <th style="width: 4%;">Pack</th>
+                      <th style="width: 6%;">Rate</th>
+                      <th style="width: 6%;">Amount</th>
+                      <th style="width: 5%;">Discount</th>
+                      <th style="width: 6%;">Taxable</th>
+                      <th style="width: 3%;">CGST%</th>
+                      <th style="width: 5%;">CGST</th>
+                      <th style="width: 3%;">SGST%</th>
+                      <th style="width: 5%;">SGST</th>
+                      <th style="width: 3%;">IGST%</th>
+                      <th style="width: 5%;">IGST</th>
+                      <th style="width: 6%;">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${cart.map((item, index) => {
+                      const itemTotal = item.price * item.quantity;
+                      const gstRate = item.gstRate || 5;
+                      const taxableAmount = itemTotal;
+                      const gstAmount = (itemTotal * gstRate) / 100;
+                      const cgstAmount = gstAmount / 2;
+                      const sgstAmount = gstAmount / 2;
+                      const totalWithTax = itemTotal + gstAmount;
+                      
+                      return `
+                        <tr>
+                          <td>${index + 1}</td>
+                          <td class="product-name">${item.name}</td>
+                          <td>${item.barcode || 'N/A'}</td>
+                          <td>${item.hsn || '31051000'}</td>
+                          <td>N/A</td>
+                          <td>N/A</td>
+                          <td>${item.quantity} ${item.unit || 'BAG'}</td>
+                          <td>BAG</td>
+                          <td>₹${item.price.toFixed(2)}</td>
+                          <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
+                          <td>₹0.00</td>
+                          <td class="amount-col">₹${taxableAmount.toFixed(2)}</td>
+                          <td>${(gstRate/2).toFixed(1)}</td>
+                          <td>₹${cgstAmount.toFixed(2)}</td>
+                          <td>${(gstRate/2).toFixed(1)}</td>
+                          <td>₹${sgstAmount.toFixed(2)}</td>
+                          <td>0.0</td>
+                          <td>₹0.00</td>
+                          <td class="amount-col">₹${totalWithTax.toFixed(2)}</td>
+                        </tr>
+                      `;
+                    }).join('')}
+                    
+                    <!-- Grand Total Row -->
+                    <tr class="total-row">
+                      <td colspan="9"><strong>Grand Total</strong></td>
+                      <td class="amount-col"><strong>₹${subtotal.toFixed(2)}</strong></td>
+                      <td><strong>₹${discountAmount.toFixed(2)}</strong></td>
+                      <td class="amount-col"><strong>₹${(subtotal - discountAmount).toFixed(2)}</strong></td>
+                      <td></td>
+                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
+                      <td></td>
+                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
+                      <td></td>
+                      <td><strong>₹0.00</strong></td>
+                      <td class="amount-col"><strong>₹${total.toFixed(2)}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                <!-- Total Amount and Words Section -->
+                <div class="total-amount-section">
+                  <div class="amount-words">
+                    <strong>Total Invoice Value (in words):</strong> ${numberToWordsIndian(Math.round(total))} Only
+                  </div>
+                  <div class="total-amount-display">
+                    <div class="grand-total-display">₹${total.toFixed(2)}</div>
+                    <div class="total-amount-label">Total Amount (incl. tax)</div>
+                  </div>
+                </div>
+                
+                <!-- Footer Section -->
+                <div class="footer-section">
+                  <div class="terms-section">
+                    <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br>
+                    This invoice is not payable under reverse charge
+                  </div>
+                  <div class="payment-section">
+                    <strong>Payment Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}<br>
+                    <strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br>
+                    <strong>Change:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
+                  </div>
+                </div>
+                
+                <!-- Signatures -->
+                <div class="signature-section">
+                  <div class="company-signature">
+                    <strong>For ${shopDetails?.name || 'KrishiSethu Fertilizers'}</strong>
+                    <div class="signature-line">Authorized Signatory</div>
+                  </div>
+                  <div class="customer-signature">
                     <strong>Customer Signature</strong><br>
-                    <strong>For Acknowledgement</strong><br><br>
-                    ________________________<br>
-                    Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge
+                    <strong>For Acknowledgement</strong>
+                    <div class="signature-line">Customer</div>
                   </div>
                 </div>
                 
-                <!-- Payment Details -->
-                <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #000; font-size: 9px;">
-                  <div style="display: flex; justify-content: space-between;">
-                    <div><strong>Payment Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}</div>
-                    <div><strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}</div>
-                    <div><strong>Change:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}</div>
-                  </div>
+                <!-- Footer Note -->
+                <div style="text-align: center; font-size: 5px; margin-top: 1px; padding-top: 1px; border-top: 1px solid #ccc;">
+                  Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge
                 </div>
               </div>
             </div>
@@ -1465,11 +1907,42 @@ const POS = ({ onNavigate }) => {
       `);
       printWindow.document.close();
 
-      // Wait for content to load then print
-      setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 500);
+      // Generate QR codes and wait for content to load then print
+      setTimeout(async () => {
+        try {
+          // Generate QR code for customer copy
+          const qrDataCustomer = `Invoice: ${currentBillNumber}\nAmount: ₹${total.toFixed(2)}\nDate: ${new Date().toLocaleDateString()}\nCustomer: ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}`;
+          
+          const qrCanvas1 = printWindow.document.getElementById('qrcode-customer');
+          const qrCanvas2 = printWindow.document.getElementById('qrcode-office');
+          
+          if (qrCanvas1 && qrCanvas2) {
+            // Generate QR code data URLs
+            const qrDataURL = await QRCode.toDataURL(qrDataCustomer, {
+              width: 48,
+              height: 38,
+              margin: 1
+            });
+            
+            // Create images and set the QR code
+            qrCanvas1.innerHTML = `<img src="${qrDataURL}" style="width: 48px; height: 38px;" />`;
+            qrCanvas2.innerHTML = `<img src="${qrDataURL}" style="width: 48px; height: 38px;" />`;
+          }
+        } catch (error) {
+          console.error('Error generating QR code:', error);
+          // Fallback text if QR code generation fails
+          const qrCanvas1 = printWindow.document.getElementById('qrcode-customer');
+          const qrCanvas2 = printWindow.document.getElementById('qrcode-office');
+          if (qrCanvas1) qrCanvas1.innerHTML = '<div style="font-size: 6px; text-align: center;">QR Code</div>';
+          if (qrCanvas2) qrCanvas2.innerHTML = '<div style="font-size: 6px; text-align: center;">QR Code</div>';
+        }
+        
+        // Wait a bit more for QR codes to render
+        setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+        }, 500);
+      }, 800);
     }
   };
 
@@ -1523,6 +1996,111 @@ const POS = ({ onNavigate }) => {
     }
   };
 
+  // Share functionality
+  const shareInvoice = async (method) => {
+    const invoiceData = {
+      billNumber: currentBillNumber,
+      customerName: selectedCustomer?.name || customerForm.name || 'Walk-in Customer',
+      items: cart,
+      subtotal: subtotal,
+      discount: discountAmount,
+      tax: taxAmount,
+      total: total,
+      date: new Date().toLocaleDateString('en-IN'),
+      shopName: shopDetails?.name || 'KrishiSethu Fertilizers',
+      shopPhone: shopDetails?.phone || '+91-9876543210'
+    };
+
+    const invoiceText = `🧾 *INVOICE DETAILS*
+
+📋 Bill No: ${invoiceData.billNumber}
+👤 Customer: ${invoiceData.customerName}
+📅 Date: ${invoiceData.date}
+🏪 Shop: ${invoiceData.shopName}
+📞 Phone: ${invoiceData.shopPhone}
+
+📦 *ITEMS:*
+${cart.map((item, index) => 
+  `${index + 1}. ${item.name}\n   Qty: ${item.quantity} × ₹${item.price} = ₹${(item.price * item.quantity).toFixed(2)}`
+).join('\n\n')}
+
+💰 *BILLING SUMMARY:*
+• Subtotal: ₹${subtotal.toFixed(2)}
+• Discount: -₹${discountAmount.toFixed(2)}
+• Tax (GST): ₹${taxAmount.toFixed(2)}
+• *Total Amount: ₹${total.toFixed(2)}*
+
+💳 Payment: ${paymentData.method?.toUpperCase() || 'CASH'}
+
+${invoiceData.total > 0 ? `📝 Amount in words: ${numberToWordsIndian(Math.round(total))} Only` : ''}
+
+✅ Thank you for your business!
+
+---
+${invoiceData.shopName}
+${shopDetails?.address ? formatAddress(shopDetails.address) : 'Agricultural Products & Fertilizers'}
+GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
+
+    try {
+      switch (method) {
+        case 'whatsapp':
+          const customerPhone = selectedCustomer?.phone || customerForm.phone;
+          let whatsappUrl;
+          
+          if (customerPhone) {
+            // Format phone number for WhatsApp (remove +91, spaces, hyphens)
+            const cleanPhone = customerPhone.replace(/[^0-9]/g, '');
+            const formattedPhone = cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`;
+            whatsappUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(invoiceText)}`;
+          } else {
+            // Open WhatsApp web without specific number
+            whatsappUrl = `https://wa.me/?text=${encodeURIComponent(invoiceText)}`;
+          }
+          
+          window.open(whatsappUrl, '_blank');
+          break;
+
+        case 'email':
+          const emailSubject = `Invoice ${invoiceData.billNumber} - ${invoiceData.shopName}`;
+          const emailBody = invoiceText.replace(/\*/g, '').replace(/\n/g, '%0D%0A');
+          const customerEmail = selectedCustomer?.email || customerForm.email;
+          
+          const mailtoUrl = `mailto:${customerEmail || ''}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
+          window.location.href = mailtoUrl;
+          break;
+
+        case 'copy':
+          await navigator.clipboard.writeText(invoiceText);
+          // Show success notification
+          const notification = document.createElement('div');
+          notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg z-50';
+          notification.textContent = '✅ Invoice details copied to clipboard!';
+          document.body.appendChild(notification);
+          setTimeout(() => {
+            if (document.body.contains(notification)) {
+              document.body.removeChild(notification);
+            }
+          }, 3000);
+          break;
+
+        case 'sms':
+          const smsText = `Invoice ${invoiceData.billNumber} - Total: ₹${total.toFixed(2)} from ${invoiceData.shopName}. Thank you!`;
+          const smsPhone = selectedCustomer?.phone || customerForm.phone;
+          const smsUrl = `sms:${smsPhone || ''}?body=${encodeURIComponent(smsText)}`;
+          window.location.href = smsUrl;
+          break;
+
+        default:
+          console.log('Unknown share method:', method);
+      }
+      
+      setShowShareDialog(false);
+    } catch (error) {
+      console.error('Error sharing invoice:', error);
+      alert('Failed to share invoice. Please try again.');
+    }
+  };
+
   // Start new sale
   const startNewSale = () => {
     setCart([]);
@@ -1531,6 +2109,9 @@ const POS = ({ onNavigate }) => {
     setCurrentBillNumber(generateBillNumber());
     setCustomerForm({ name: '', phone: '', address: '' });
     setShowReceiptDialog(false);
+    setCustomGSTRate(null); // Reset custom GST rate
+    setDiscount(0);
+    setDiscountReason('');
   };
 
   // Debug function to test sales retrieval from Supabase
@@ -1644,10 +2225,10 @@ const POS = ({ onNavigate }) => {
                   Scan Barcode
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent aria-describedby="barcode-scanner-description">
                 <DialogHeader>
                   <DialogTitle>Barcode Scanner</DialogTitle>
-                  <DialogDescription>
+                  <DialogDescription id="barcode-scanner-description">
                     Scan or enter product barcode/ID to add to cart
                   </DialogDescription>
                 </DialogHeader>
@@ -1732,10 +2313,10 @@ const POS = ({ onNavigate }) => {
                             )}
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-2xl">
+                        <DialogContent className="max-w-2xl" aria-describedby="customer-select-description">
                           <DialogHeader>
                             <DialogTitle>Select Customer</DialogTitle>
-                            <DialogDescription>
+                            <DialogDescription id="customer-select-description">
                               Choose an existing customer or add a new one
                             </DialogDescription>
                           </DialogHeader>
@@ -1823,10 +2404,10 @@ const POS = ({ onNavigate }) => {
                             Add New
                           </Button>
                         </DialogTrigger>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-2xl" aria-describedby="add-customer-description">
                   <DialogHeader>
                     <DialogTitle>Add New Customer</DialogTitle>
-                    <DialogDescription>Enter customer details to create a new customer profile</DialogDescription>
+                    <DialogDescription id="add-customer-description">Enter customer details to create a new customer profile</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 max-h-96 overflow-y-auto">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2209,10 +2790,10 @@ const POS = ({ onNavigate }) => {
                               {discount > 0 ? 'Edit' : 'Add'} Discount
                             </Button>
                           </DialogTrigger>
-                          <DialogContent>
+                          <DialogContent aria-describedby="discount-description">
                             <DialogHeader>
                               <DialogTitle>Apply Discount</DialogTitle>
-                              <DialogDescription>
+                              <DialogDescription id="discount-description">
                                 Add discount to this sale with reason
                               </DialogDescription>
                             </DialogHeader>
@@ -2304,6 +2885,98 @@ const POS = ({ onNavigate }) => {
                     )}
                   </div>
 
+                  {/* GST Rate Selector */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">GST Rate</span>
+                      <div className="flex gap-2">
+                        <Dialog open={showGSTDialog} onOpenChange={setShowGSTDialog}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="text-xs">
+                              <Calculator className="h-3 w-3 mr-1" />
+                              {customGSTRate !== null ? `Custom ${customGSTRate}%` : `Auto ${averageGSTRate.toFixed(1)}%`}
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent aria-describedby="gst-rate-description">
+                            <DialogHeader>
+                              <DialogTitle>Set GST Rate</DialogTitle>
+                              <DialogDescription id="gst-rate-description">
+                                Choose GST rate for this entire sale
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-3 gap-2">
+                                {[0, 5, 12, 18].map((rate) => (
+                                  <Button
+                                    key={rate}
+                                    variant={customGSTRate === rate ? "default" : "outline"}
+                                    onClick={() => setCustomGSTRate(rate)}
+                                    className="h-12"
+                                  >
+                                    {rate}%
+                                  </Button>
+                                ))}
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Custom Rate (%)</label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.1"
+                                  placeholder="Enter custom GST rate"
+                                  value={customGSTRate || ''}
+                                  onChange={(e) => {
+                                    const rate = parseFloat(e.target.value);
+                                    setCustomGSTRate(isNaN(rate) ? null : rate);
+                                  }}
+                                />
+                              </div>
+                              <div className="p-3 bg-muted rounded-lg">
+                                <div className="text-sm">
+                                  <div className="flex justify-between">
+                                    <span>Subtotal:</span>
+                                    <span>₹{subtotal.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>GST ({customGSTRate !== null ? customGSTRate : averageGSTRate.toFixed(1)}%):</span>
+                                    <span>₹{taxAmount.toFixed(2)}</span>
+                                  </div>
+                                  <div className="flex justify-between font-medium">
+                                    <span>Total with GST:</span>
+                                    <span>₹{total.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button 
+                                variant="outline" 
+                                onClick={() => {
+                                  setCustomGSTRate(null);
+                                  setShowGSTDialog(false);
+                                }}
+                              >
+                                Reset to Auto
+                              </Button>
+                              <Button onClick={() => setShowGSTDialog(false)}>
+                                Apply GST Rate
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                    </div>
+                    {customGSTRate !== null && (
+                      <div className="text-sm text-blue-600 bg-blue-50 p-2 rounded">
+                        <div className="flex justify-between">
+                          <span>Custom GST Applied:</span>
+                          <span className="font-medium">{customGSTRate}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Totals */}
                   <div className="border-t pt-4 space-y-2">
                     <div className="flex justify-between">
@@ -2335,10 +3008,10 @@ const POS = ({ onNavigate }) => {
                           Confirm Payment ✅
                         </Button>
                       </DialogTrigger>
-                      <DialogContent>
+                      <DialogContent aria-describedby="payment-description">
                         <DialogHeader>
                           <DialogTitle>💳 Payment</DialogTitle>
-                          <DialogDescription>
+                          <DialogDescription id="payment-description">
                             Complete the payment for this sale
                           </DialogDescription>
                         </DialogHeader>
@@ -2437,292 +3110,322 @@ const POS = ({ onNavigate }) => {
 
       {/* Receipt Dialog */}
       <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" aria-describedby="receipt-description">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               🧾 Payment Receipt
               <Badge variant="outline" className="ml-auto">#{currentBillNumber}</Badge>
             </DialogTitle>
+            <DialogDescription id="receipt-description">
+              View and print your invoice receipt with dual copies
+            </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-auto">
-            {/* Receipt Content - Professional Invoice Format */}
+            {/* Receipt Content - Dual Copy Layout */}
             <div ref={receiptRef} className="receipt-content bg-white p-2" style={{
               fontFamily: 'Arial, sans-serif',
-              width: '194mm', // A4 width minus margins
-              minHeight: '277mm', // A4 height minus margins
-              maxWidth: '194mm',
-              fontSize: '10px',
-              lineHeight: '1.3',
+              width: '194mm',
+              maxWidth: '194mm', 
+              fontSize: '7px',
+              lineHeight: '1.1',
               margin: '0 auto',
               overflow: 'visible',
               border: '1px solid #ddd'
             }}>
 
-              {/* Complete Invoice with Border */}
-              <div className="border-2 border-black" style={{ height: '100%', width: '100%' }}>
-                {/* Top Header with GSTIN and Invoice Type */}
-                <div className="border-b border-black p-1 flex justify-between items-center text-xs">
-                  <span><strong>GSTIN: {shopDetails?.gstNumber || '27AAAAA0000A1Z5'}</strong></span>
-                  <span><strong>SALES INVOICE</strong></span>
-                  <span><strong>Original For Buyer</strong></span>
-                </div>
-
-                {/* Company Name and Details with Logo */}
-                <div className="p-2 border-b border-black">
-                  <div className="flex items-center justify-center gap-3 mb-2">
-                    {/* Company Logo */}
-                    <div className="flex-shrink-0">
+              {/* CUSTOMER COPY */}
+              <div className="border-2 border-black mb-2 p-2" style={{ minHeight: '35vh' }}>
+                {/* Copy Type */}
+                <div className="text-center font-bold text-xs mb-1 underline">Customer Copy</div>
+                
+                {/* Header Section - JaiKisan Style */}
+                <div className="border-b-2 border-black pb-2 mb-2">
+                  {/* Top Header with Logo, Company Name, and Brand */}
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="w-16 h-12 border border-black flex items-center justify-center">
                       {shopDetails?.logo ? (
-                        <img
-                          src={shopDetails.logo}
-                          alt={`${shopDetails.name} Logo`}
-                          className="w-12 h-12 object-contain border border-gray-300 bg-white rounded"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.nextSibling.style.display = 'flex';
-                          }}
-                        />
-                      ) : null}
-                      {!shopDetails?.logo && (
-                        <div className="w-12 h-12 border border-gray-300 bg-gray-50 flex items-center justify-center text-xs text-gray-500 rounded">
-                          LOGO
-                        </div>
+                        <img src={shopDetails.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
+                      ) : (
+                        <div className="text-xs font-bold text-center">JAI<br/>KISAN</div>
                       )}
                     </div>
-                    {/* Company Name */}
-                    <div className="text-center">
-                      <h2 className="text-base font-bold">{shopDetails?.name || 'KrishiSethu Fertilizers'}</h2>
+                    <div className="text-center flex-1 mx-4">
+                      <div className="text-base font-bold">{shopDetails?.name || 'KrishiSethu'}</div>
+                      <div className="text-sm font-bold">GST Invoice</div>
+                    </div>
+                    <div className="w-20 h-12 border border-black flex items-center justify-center">
+                      <div className="text-xs font-bold text-blue-600">adventz</div>
                     </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xs mb-1">
-                      {shopDetails?.address && typeof shopDetails.address === 'object' ?
-                        `${shopDetails.address.street || ''}, ${shopDetails.address.city || ''}, ${shopDetails.address.state || ''} - ${shopDetails.address.pincode || ''}`.replace(/^,\s*|,\s*$/, '').replace(/,\s*,/g, ',')
-                        : shopDetails?.address || 'A/12, Shrenik Park, Opp. Jain Temple, Near Akota Stadium, Akota Dandia Bazar, Vadodara, Gujarat'
-                      }
-                    </p>
-                    <p className="text-xs">
-                      Mobile: {shopDetails?.phone || '+91-9876543210'} | Email: {shopDetails?.email || 'info@krishisethu.com'}
-                    </p>
-                    <p className="text-xs">
-                      FLZ Lic No.: RWA/147F, Seed Lic No.: RWA/203RS, Pesticide Lic No.: RWA/47RP
-                    </p>
-                  </div>
-                </div>
-
-                {/* Buyer Details and Invoice Info */}
-                <div className="flex border-b border-black">
-                  {/* Left - Buyer Details */}
-                  <div className="flex-1 p-1 border-r border-black">
-                    <p className="text-xs font-bold mb-1">Buyer's Name and Address</p>
-                    <p className="text-xs font-semibold">{selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</p>
-                    {(selectedCustomer?.address || customerForm.address) && (
-                      <p className="text-xs">{formatAddress(selectedCustomer?.address || customerForm.address)}</p>
-                    )}
-                    <p className="text-xs">Contact No.: {selectedCustomer?.phone || customerForm.phone || 'N/A'}</p>
-                    <p className="text-xs">GSTIN: {selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</p>
-                  </div>
-
-                  {/* Right - Invoice Details */}
-                  <div className="w-40 p-1">
-                    <div className="text-xs space-y-0.5">
-                      <div className="flex justify-between">
-                        <span>Invoice No.:</span>
-                        <span>{currentBillNumber}</span>
+                  
+                  {/* Company Details Section */}
+                  <div className="flex justify-between text-xs">
+                    {/* Left Side - Company Info */}
+                    <div className="flex-1">
+                      <div className="font-semibold">{shopDetails?.name || 'KrishiSethu'} Limited</div>
+                      <div><strong>Website:</strong> www.krishisethu.in</div>
+                      <div><strong>CINNo:</strong> {shopDetails?.cinNumber || 'L65921GA21967PLC000157'}</div>
+                      <div><strong>TollFreeNumber:</strong> {shopDetails?.phone || '18001212333'}</div>
+                      <div className="mt-1">
+                        <div><strong>DispatchedFrom</strong></div>
+                        <div>ZACL-KALWAKURTHY</div>
+                        <div>{shopDetails?.address ? formatAddress(shopDetails.address) : 'Shop no. 12-114/19&20 Hyderabad Kalwakurthy Nagar Kurnool-509324'}</div>
+                        <div>Telangana, India</div>
+                        <div><strong>GSTIN:</strong> {shopDetails?.gstNumber || '36AAACZ3924H1Z9'}</div>
+                        <div><strong>MFDSID:</strong> {shopDetails?.mfdSid || '1115736'}</div>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Date:</span>
-                        <span>{new Date().toLocaleDateString('en-GB')}</span>
+                      <div className="mt-1">
+                        <div className="inline-block border border-black px-1"><strong>StateName:</strong> Telangana</div>
                       </div>
-                      <div className="flex justify-between">
-                        <span>LR Reference No:</span>
-                        <span>123456</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Narration:</span>
-                        <span>{paymentData.method?.toUpperCase() || 'CASH'}</span>
+                    </div>
+                    
+                    {/* Right Side - Invoice & Customer Info */}
+                    <div className="flex-1 text-right">
+                      <div><strong>InvoiceNo.:</strong> {currentBillNumber}</div>
+                      <div><strong>ReceiptNo.:</strong> {currentBillNumber}</div>
+                      <div><strong>InvoiceDate:</strong> {new Date().toLocaleDateString('en-GB')}</div>
+                      <div><strong>LicenseNo.:</strong> {shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
+                      
+                      <div className="mt-2">
+                        <div><strong>BilledCustomer(Billto)</strong></div>
+                        <div><strong>CustomerNo.:</strong> {selectedCustomer?.id || 'S35100000371'}</div>
+                        <div><strong>CustomerName:</strong> {selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
+                        <div><strong>Village:</strong> {selectedCustomer?.city || customerForm.city || 'N/A'}</div>
+                        <div><strong>PhoneNo.:</strong> {selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
+                        <div><strong>SalesType:</strong> Cash Sales</div>
+                        <div><strong>CustomerGSTNo:</strong> {selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
                       </div>
                     </div>
                   </div>
                 </div>
-
+                
+                {/* Customer and Invoice Details - Now integrated in header */}
+                
                 {/* Items Table */}
-                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
+                <table className="w-full border-collapse border border-black mb-1" style={{ fontSize: '6px' }}>
                   <thead>
                     <tr>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '25px' }}>Sr.</th>
-                      <th className="border border-black px-1 py-0.5 text-left" style={{ width: '180px' }}>Product, Name & Rate</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>HSN Code</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>Basic Price</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>CGST Rs. CGST %</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>SGST Rs. SGST %</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>IGST Rs. IGST %</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>Sales Price</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '35px' }}>Qty</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '35px' }}>Unit</th>
-                      <th className="border border-black px-1 py-0.5 text-center" style={{ width: '60px' }}>Amount</th>
+                      <th className="border border-black p-0.5">S.No</th>
+                      <th className="border border-black p-0.5">Product</th>
+                      <th className="border border-black p-0.5">HSN</th>
+                      <th className="border border-black p-0.5">Qty</th>
+                      <th className="border border-black p-0.5">Rate</th>
+                      <th className="border border-black p-0.5">CGST</th>
+                      <th className="border border-black p-0.5">SGST</th>
+                      <th className="border border-black p-0.5">Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {cart.map((item, index) => {
                       const itemTotal = item.price * item.quantity;
                       const gstRate = item.gstRate || 5;
-                      const basicPrice = itemTotal / (1 + gstRate / 100);
-                      const gstAmount = itemTotal - basicPrice;
+                      const taxableAmount = itemTotal / (1 + gstRate / 100);
+                      const gstAmount = itemTotal - taxableAmount;
                       const cgstAmount = gstAmount / 2;
                       const sgstAmount = gstAmount / 2;
-
+                      
                       return (
                         <tr key={index}>
-                          <td className="border border-black px-1 py-0.5 text-center">{index + 1}</td>
-                          <td className="border border-black px-1 py-0.5">
-                            <div className="font-medium">{item.name}</div>
-                            <div style={{ fontSize: '8px' }} className="text-gray-600">Batch Exp: abc123456 10-2022</div>
-                          </td>
-                          <td className="border border-black px-1 py-0.5 text-center">{item.hsn || '31051000'}</td>
-                          <td className="border border-black px-1 py-0.5 text-center">
-                            <div>{basicPrice.toFixed(2)}</div>
-                            <div style={{ fontSize: '8px' }}>{(gstRate/2).toFixed(1)}%</div>
-                          </td>
-                          <td className="border border-black px-1 py-0.5 text-center">
-                            <div>{cgstAmount.toFixed(2)}</div>
-                            <div style={{ fontSize: '8px' }}>{(gstRate/2).toFixed(1)}%</div>
-                          </td>
-                          <td className="border border-black px-1 py-0.5 text-center">
-                            <div>{sgstAmount.toFixed(2)}</div>
-                            <div style={{ fontSize: '8px' }}>{(gstRate/2).toFixed(1)}%</div>
-                          </td>
-                          <td className="border border-black px-1 py-0.5 text-center">
-                            <div>0.00</div>
-                            <div style={{ fontSize: '8px' }}>0.00%</div>
-                          </td>
-                          <td className="border border-black px-1 py-0.5 text-center">{item.price.toFixed(2)}</td>
-                          <td className="border border-black px-1 py-0.5 text-center">{item.quantity}</td>
-                          <td className="border border-black px-1 py-0.5 text-center">Bag</td>
-                          <td className="border border-black px-1 py-0.5 text-center font-medium">{itemTotal.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-center">{index + 1}</td>
+                          <td className="border border-black p-0.5">{item.name}</td>
+                          <td className="border border-black p-0.5 text-center">{item.hsn || '31051000'}</td>
+                          <td className="border border-black p-0.5 text-center">{item.quantity}</td>
+                          <td className="border border-black p-0.5 text-right">₹{item.price.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-right">₹{cgstAmount.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-right">₹{sgstAmount.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-right font-bold">₹{itemTotal.toFixed(2)}</td>
                         </tr>
                       );
                     })}
-
-                    {/* Empty rows for spacing */}
-                    {Array.from({ length: Math.max(0, 4 - cart.length) }).map((_, index) => (
-                      <tr key={`empty-${index}`} style={{ height: '20px' }}>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                        <td className="border border-black px-1 py-0.5"></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Tax Summary */}
-                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
-                  <tbody>
+                    
+                    {/* Grand Total Row */}
                     <tr>
-                      <td className="border border-black p-1 w-16 text-center"><strong>GST %</strong><br/>5%</td>
-                      <td className="border border-black p-1 w-20 text-center"><strong>Taxable Amt</strong><br/>{(subtotal - discountAmount).toFixed(2)}</td>
-                      <td className="border border-black p-1 w-20 text-center"><strong>SGST Amt.</strong><br/>{(taxAmount/2).toFixed(2)}</td>
-                      <td className="border border-black p-1 w-20 text-center"><strong>CGST Amt.</strong><br/>{(taxAmount/2).toFixed(2)}</td>
-                      <td className="border border-black p-1 w-20 text-center"><strong>Tax Amt.</strong><br/>{taxAmount.toFixed(2)}</td>
-                      <td className="border border-black p-1">
-                        <div className="space-y-0.5">
-                          <div className="flex justify-between">
-                            <span>Total Amount Before Tax</span>
-                            <span>{(subtotal - discountAmount).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Add: SGST</span>
-                            <span>{(taxAmount/2).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Add: CGST</span>
-                            <span>{(taxAmount/2).toFixed(2)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Add: IGST</span>
-                            <span>0.00</span>
-                          </div>
-                          <div className="flex justify-between border-t border-black pt-0.5">
-                            <span><strong>Total Tax Amount : GST</strong></span>
-                            <span><strong>{taxAmount.toFixed(2)}</strong></span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>(-) Round Off</span>
-                            <span>-0.31</span>
-                          </div>
-                        </div>
-                      </td>
+                      <td colSpan="7" className="border border-black p-0.5 text-center font-bold">Grand Total</td>
+                      <td className="border border-black p-0.5 text-right font-bold">₹{total.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
+                
+                {/* Grand Total and Details */}
+                <div className="text-center text-sm font-bold mb-1">₹{total.toFixed(2)}</div>
+                <div className="text-center text-xs mb-1">
+                  <strong>Total Invoice Value (in words):</strong> {numberToWordsIndian(Math.round(total))} Only
+                </div>
+                
+                {/* Footer */}
+                <div className="flex justify-between text-xs">
+                  <div>
+                    <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br />
+                    This invoice is not payable under reverse charge
+                  </div>
+                  <div className="text-right">
+                    <strong>Payment:</strong> {paymentData.method?.toUpperCase() || 'CASH'}<br />
+                    <strong>Received:</strong> ₹{paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br />
+                    <strong>Change:</strong> ₹{Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
+                  </div>
+                </div>
+                
+                {/* Signatures */}
+                <div className="flex justify-between text-xs mt-2">
+                  <div>
+                    <strong>For {shopDetails?.name || 'KrishiSethu Fertilizers'}</strong>
+                    <div className="border-t border-black mt-4 pt-1">Authorized Signatory</div>
+                  </div>
+                  <div className="text-right">
+                    <strong>Customer Signature</strong>
+                    <div className="border-t border-black mt-4 pt-1">Customer</div>
+                  </div>
+                </div>
+              </div>
 
-                {/* Bank Details and Grand Total */}
-                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
-                  <tbody>
+              {/* OFFICE/AUDIT COPY */}
+              <div className="border-2 border-black mb-2 p-2" style={{ minHeight: '35vh' }}>
+                {/* Copy Type */}
+                <div className="text-center font-bold text-xs mb-1 underline">Office Copy</div>
+                
+                {/* Header Section - JaiKisan Style */}
+                <div className="border-b-2 border-black pb-2 mb-2">
+                  {/* Top Header with Logo, Company Name, and Brand */}
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="w-16 h-12 border border-black flex items-center justify-center">
+                      {shopDetails?.logo ? (
+                        <img src={shopDetails.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
+                      ) : (
+                        <div className="text-xs font-bold text-center">JAI<br/>KISAN</div>
+                      )}
+                    </div>
+                    <div className="text-center flex-1 mx-4">
+                      <div className="text-base font-bold">{shopDetails?.name || 'KrishiSethu'}</div>
+                      <div className="text-sm font-bold">GST Invoice</div>
+                    </div>
+                    <div className="w-20 h-12 border border-black flex items-center justify-center">
+                      <div className="text-xs font-bold text-blue-600">adventz</div>
+                    </div>
+                  </div>
+                  
+                  {/* Company Details Section */}
+                  <div className="flex justify-between text-xs">
+                    {/* Left Side - Company Info */}
+                    <div className="flex-1">
+                      <div className="font-semibold">{shopDetails?.name || 'KrishiSethu'} Limited</div>
+                      <div><strong>Website:</strong> www.krishisethu.in</div>
+                      <div><strong>CINNo:</strong> {shopDetails?.cinNumber || 'L65921GA21967PLC000157'}</div>
+                      <div><strong>TollFreeNumber:</strong> {shopDetails?.phone || '18001212333'}</div>
+                      <div className="mt-1">
+                        <div><strong>DispatchedFrom</strong></div>
+                        <div>ZACL-KALWAKURTHY</div>
+                        <div>{shopDetails?.address ? formatAddress(shopDetails.address) : 'Shop no. 12-114/19&20 Hyderabad Kalwakurthy Nagar Kurnool-509324'}</div>
+                        <div>Telangana, India</div>
+                        <div><strong>GSTIN:</strong> {shopDetails?.gstNumber || '36AAACZ3924H1Z9'}</div>
+                        <div><strong>MFDSID:</strong> {shopDetails?.mfdSid || '1115736'}</div>
+                      </div>
+                      <div className="mt-1">
+                        <div className="inline-block border border-black px-1"><strong>StateName:</strong> Telangana</div>
+                      </div>
+                    </div>
+                    
+                    {/* Right Side - Invoice & Customer Info */}
+                    <div className="flex-1 text-right">
+                      <div><strong>InvoiceNo.:</strong> {currentBillNumber}</div>
+                      <div><strong>ReceiptNo.:</strong> {currentBillNumber}</div>
+                      <div><strong>InvoiceDate:</strong> {new Date().toLocaleDateString('en-GB')}</div>
+                      <div><strong>LicenseNo.:</strong> {shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
+                      
+                      <div className="mt-2">
+                        <div><strong>BilledCustomer(Billto)</strong></div>
+                        <div><strong>CustomerNo.:</strong> {selectedCustomer?.id || 'S35100000371'}</div>
+                        <div><strong>CustomerName:</strong> {selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
+                        <div><strong>Village:</strong> {selectedCustomer?.city || customerForm.city || 'N/A'}</div>
+                        <div><strong>PhoneNo.:</strong> {selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
+                        <div><strong>SalesType:</strong> Cash Sales</div>
+                        <div><strong>CustomerGSTNo:</strong> {selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Customer and Invoice Details - Now integrated in header */}
+                
+                {/* Items Table */}
+                <table className="w-full border-collapse border border-black mb-1" style={{ fontSize: '6px' }}>
+                  <thead>
                     <tr>
-                      <td className="border border-black p-1" style={{ width: '60%' }}>
-                        <div className="space-y-1">
-                          <p><strong>Bank Name:</strong> Punjab National Bank</p>
-                          <p><strong>Ac No.:</strong> 0405008700008228</p>
-                          <p><strong>IFSC Code:</strong> PUNB0040500 Br. Circular Rd, Rewari.</p>
-                          <p><strong>Bill Amount in Words:</strong> {numberToWordsIndian(Math.round(total))} Only</p>
-                        </div>
-                      </td>
-                      <td className="border border-black p-1 text-center" style={{ width: '40%' }}>
-                        <div className="text-sm font-bold mb-1">GRAND TOTAL</div>
-                        <div className="text-xl font-bold mb-2">{total.toFixed(2)}</div>
-                        <div style={{ fontSize: '8px' }} className="mb-3">For {shopDetails?.name || 'KrishiSethu Fertilizers'}</div>
-                        <div style={{ fontSize: '8px' }} className="border-t border-black pt-2">Auth. Signatory</div>
-                      </td>
+                      <th className="border border-black p-0.5">S.No</th>
+                      <th className="border border-black p-0.5">Product</th>
+                      <th className="border border-black p-0.5">HSN</th>
+                      <th className="border border-black p-0.5">Qty</th>
+                      <th className="border border-black p-0.5">Rate</th>
+                      <th className="border border-black p-0.5">CGST</th>
+                      <th className="border border-black p-0.5">SGST</th>
+                      <th className="border border-black p-0.5">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cart.map((item, index) => {
+                      const itemTotal = item.price * item.quantity;
+                      const gstRate = item.gstRate || 5;
+                      const taxableAmount = itemTotal / (1 + gstRate / 100);
+                      const gstAmount = itemTotal - taxableAmount;
+                      const cgstAmount = gstAmount / 2;
+                      const sgstAmount = gstAmount / 2;
+                      
+                      return (
+                        <tr key={index}>
+                          <td className="border border-black p-0.5 text-center">{index + 1}</td>
+                          <td className="border border-black p-0.5">{item.name}</td>
+                          <td className="border border-black p-0.5 text-center">{item.hsn || '31051000'}</td>
+                          <td className="border border-black p-0.5 text-center">{item.quantity}</td>
+                          <td className="border border-black p-0.5 text-right">₹{item.price.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-right">₹{cgstAmount.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-right">₹{sgstAmount.toFixed(2)}</td>
+                          <td className="border border-black p-0.5 text-right font-bold">₹{itemTotal.toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                    
+                    {/* Grand Total Row */}
+                    <tr>
+                      <td colSpan="7" className="border border-black p-0.5 text-center font-bold">Grand Total</td>
+                      <td className="border border-black p-0.5 text-right font-bold">₹{total.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>
-
-                {/* Terms and Conditions */}
-                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
-                  <tbody>
-                    <tr>
-                      <td className="border border-black p-1">
-                        <p><strong>Terms & Conditions:</strong></p>
-                        <p>1) Goods once sold will not be taken back or exchanged</p>
-                        <p>2) Cheque Bounce Charges Rs. 450</p>
-                        <p>3) Subject to Vadodara Jurisdiction</p>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                {/* Payment Log Section */}
-                <table className="w-full border-collapse" style={{ fontSize: '9px' }}>
-                  <tbody>
-                    <tr>
-                      <td className="border border-black p-1 bg-gray-50">
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <p><strong>Amount Received:</strong></p>
-                            <p className="text-sm font-bold">₹{paymentData.amountReceived?.toFixed(2) || '0.00'}</p>
-                          </div>
-                          <div>
-                            <p><strong>Change:</strong></p>
-                            <p className="text-sm font-bold">₹{Math.max(0, (paymentData.amountReceived || 0) - total).toFixed(2)}</p>
-                          </div>
-                          <div>
-                            <p><strong>Payment Method:</strong></p>
-                            <p className="text-sm font-bold">{paymentData.method?.toUpperCase() || 'CASH'}</p>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                
+                {/* Grand Total and Details */}
+                <div className="text-center text-sm font-bold mb-1">₹{total.toFixed(2)}</div>
+                <div className="text-center text-xs mb-1">
+                  <strong>Total Invoice Value (in words):</strong> {numberToWordsIndian(Math.round(total))} Only
+                </div>
+                
+                {/* Footer */}
+                <div className="flex justify-between text-xs">
+                  <div>
+                    <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br />
+                    This invoice is not payable under reverse charge
+                  </div>
+                  <div className="text-right">
+                    <strong>Payment:</strong> {paymentData.method?.toUpperCase() || 'CASH'}<br />
+                    <strong>Received:</strong> ₹{paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br />
+                    <strong>Change:</strong> ₹{Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
+                  </div>
+                </div>
+                
+                {/* Signatures */}
+                <div className="flex justify-between text-xs mt-2">
+                  <div>
+                    <strong>For {shopDetails?.name || 'KrishiSethu Fertilizers'}</strong>
+                    <div className="border-t border-black mt-4 pt-1">Authorized Signatory</div>
+                  </div>
+                  <div className="text-right">
+                    <strong>Customer Signature</strong>
+                    <div className="border-t border-black mt-4 pt-1">Customer</div>
+                  </div>
+                </div>
+                
+                {/* Footer Note */}
+                <div className="text-center text-xs mt-1 pt-1 border-t border-gray-400">
+                  Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge
+                </div>
               </div>
 
             </div>
@@ -2732,8 +3435,158 @@ const POS = ({ onNavigate }) => {
               Close
             </Button>
             <Button variant="outline" onClick={printReceipt}>
-              🖨️ Print Receipt
+              <Printer className="h-4 w-4 mr-2" />
+              Print Receipt
             </Button>
+            <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline">
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Invoice
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md" aria-describedby="share-invoice-description">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Share2 className="h-5 w-5" />
+                    Share Invoice
+                  </DialogTitle>
+                  <DialogDescription id="share-invoice-description">
+                    Share invoice details with your customer
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Customer Info Display */}
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="text-sm">
+                      <div className="font-medium">Invoice: {currentBillNumber}</div>
+                      <div className="text-gray-600">
+                        Customer: {selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}
+                      </div>
+                      <div className="text-gray-600">
+                        Total: ₹{total.toFixed(2)}
+                      </div>
+                      {selectedCustomer?.phone && (
+                        <div className="text-gray-600">
+                          📞 {selectedCustomer.phone}
+                        </div>
+                      )}
+                      {selectedCustomer?.email && (
+                        <div className="text-gray-600">
+                          ✉️ {selectedCustomer.email}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Share Options */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* WhatsApp */}
+                    <Button
+                      variant="outline"
+                      onClick={() => shareInvoice('whatsapp')}
+                      className="h-20 flex flex-col items-center gap-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                    >
+                      <MessageCircle className="h-6 w-6" />
+                      <span className="text-sm font-medium">WhatsApp</span>
+                      <span className="text-xs text-gray-500">
+                        {selectedCustomer?.phone ? 'Send to customer' : 'Choose contact'}
+                      </span>
+                    </Button>
+
+                    {/* Email */}
+                    <Button
+                      variant="outline"
+                      onClick={() => shareInvoice('email')}
+                      className="h-20 flex flex-col items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                    >
+                      <Mail className="h-6 w-6" />
+                      <span className="text-sm font-medium">Email</span>
+                      <span className="text-xs text-gray-500">
+                        {selectedCustomer?.email ? 'Send to customer' : 'Choose email'}
+                      </span>
+                    </Button>
+
+                    {/* Copy to Clipboard */}
+                    <Button
+                      variant="outline"
+                      onClick={() => shareInvoice('copy')}
+                      className="h-20 flex flex-col items-center gap-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200"
+                    >
+                      <Copy className="h-6 w-6" />
+                      <span className="text-sm font-medium">Copy Text</span>
+                      <span className="text-xs text-gray-500">Copy to clipboard</span>
+                    </Button>
+
+                    {/* SMS */}
+                    <Button
+                      variant="outline"
+                      onClick={() => shareInvoice('sms')}
+                      className="h-20 flex flex-col items-center gap-2 bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+                    >
+                      <MessageCircle className="h-6 w-6" />
+                      <span className="text-sm font-medium">SMS</span>
+                      <span className="text-xs text-gray-500">
+                        {selectedCustomer?.phone ? 'Send SMS' : 'Choose number'}
+                      </span>
+                    </Button>
+                  </div>
+
+                  {/* Additional Options */}
+                  <div className="border-t pt-4">
+                    <div className="text-sm text-gray-600 mb-2">More Options:</div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={printReceipt}
+                        className="flex-1"
+                      >
+                        <Printer className="h-4 w-4 mr-2" />
+                        Print
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // TODO: Generate PDF and download
+                          alert('PDF download feature coming soon!');
+                        }}
+                        className="flex-1"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        PDF
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Preview Text */}
+                  <details className="border rounded-lg p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900">
+                      Preview Share Text
+                    </summary>
+                    <div className="mt-2 p-2 bg-gray-50 rounded text-xs font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
+                      {`🧾 INVOICE DETAILS
+
+📋 Bill No: ${currentBillNumber}
+👤 Customer: ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}
+📅 Date: ${new Date().toLocaleDateString('en-IN')}
+
+💰 Total Amount: ₹${total.toFixed(2)}
+
+✅ Thank you for your business!`}
+                    </div>
+                  </details>
+                </div>
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setShowShareDialog(false)}>
+                    Cancel
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
             <Button onClick={startNewSale} className="bg-green-600 hover:bg-green-700">
               🔁 New Sale
             </Button>
@@ -2743,13 +3596,13 @@ const POS = ({ onNavigate }) => {
 
       {/* Manual Image Upload Dialog */}
       <Dialog open={showImageUploadDialog} onOpenChange={setShowImageUploadDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md" aria-describedby="image-upload-description">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Upload className="h-5 w-5" />
               Upload Product Images
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription id="image-upload-description">
               Select a product and upload an image for it
             </DialogDescription>
           </DialogHeader>

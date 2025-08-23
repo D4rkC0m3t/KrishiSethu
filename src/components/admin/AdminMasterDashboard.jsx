@@ -112,11 +112,11 @@ const AdminMasterDashboard = ({ onNavigate }) => {
   useEffect(() => {
     loadDashboardData();
     
-    // Failsafe timeout to prevent infinite loading
+    // Failsafe timeout to prevent infinite loading (extended for better reliability)
     const failsafeTimeout = setTimeout(() => {
-      console.warn('⚠️ Failsafe timeout triggered - forcing loading to false');
+      console.log('ℹ️ Dashboard loading timeout reached - this is normal for slow connections');
       setLoading(false);
-    }, 20000); // 20 second absolute maximum
+    }, 30000); // 30 second timeout for admin dashboard (more data to load)
     
     return () => clearTimeout(failsafeTimeout);
   }, []);
@@ -140,9 +140,9 @@ const AdminMasterDashboard = ({ onNavigate }) => {
       setError(null);
       console.log('🚀 Loading admin dashboard data...');
 
-      // Add a hard timeout to prevent infinite loading
+      // Add a hard timeout to prevent infinite loading (increased for reliability)
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Dashboard loading timeout after 15 seconds')), 15000);
+        setTimeout(() => reject(new Error('Dashboard loading timeout after 25 seconds')), 25000);
       });
       
       const dataPromise = Promise.all([

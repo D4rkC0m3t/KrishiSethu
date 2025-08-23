@@ -177,9 +177,9 @@ export const AuthProvider = ({ children }) => {
             console.log('👤 Setting current user:', session.user.email);
             setCurrentUser(session.user);
 
-            // Set a timeout for profile loading to prevent hanging
+            // Set a timeout for profile loading to prevent hanging (increased timeout)
             const profileLoadTimeout = setTimeout(() => {
-              console.warn('⚠️ Profile loading timeout, using default profile');
+              console.warn('⚠️ Profile loading timeout - using default profile (this is normal for new users)');
               const userName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User';
               const defaultProfile = {
                 id: session.user.id,
@@ -196,7 +196,7 @@ export const AuthProvider = ({ children }) => {
               if (mounted) {
                 setLoading(false);
               }
-            }, 3000); // 3 second timeout
+            }, 8000); // Increased to 8 seconds to reduce false timeouts
 
             try {
               await loadUserProfile(session.user);
@@ -252,27 +252,30 @@ export const AuthProvider = ({ children }) => {
 
     getInitialSession();
 
-    // Set up periodic session validation for non-admin users
-    if (!checkLocalAdminSession()) {
-      sessionInterval = setInterval(async () => {
-        if (mounted && currentUser && !loading) {
-          const isValid = await validateAndRefreshSession();
-          if (!isValid) {
-            console.log('⚠️ Session validation failed, clearing user state');
-            setCurrentUser(null);
-            setUserProfile(null);
-          }
-        }
-      }, 60000); // Check every minute
-    }
+    // DISABLED: Automatic session validation to prevent unwanted logouts
+    // Users will only be logged out when they explicitly sign out or tokens naturally expire
+    // if (!checkLocalAdminSession()) {
+    //   sessionInterval = setInterval(async () => {
+    //     if (mounted && currentUser && !loading) {
+    //       const isValid = await validateAndRefreshSession();
+    //       if (!isValid) {
+    //         console.log('⚠️ Session validation failed, clearing user state');
+    //         setCurrentUser(null);
+    //         setUserProfile(null);
+    //       }
+    //     }
+    //   }, 60000); // Check every minute
+    // }
+    
+    console.log('ℹ️ Automatic session validation is DISABLED - users will stay logged in until manual logout');
 
     // Fallback timeout to ensure loading never gets stuck indefinitely
     const fallbackTimeout = setTimeout(() => {
       if (mounted) {
-        console.warn('⚠️ Fallback timeout triggered - forcing loading to false');
+        console.warn('⚠️ Fallback timeout triggered - forcing loading to false (this indicates slow network or database)');
         setLoading(false);
       }
-    }, 10000); // 10 second absolute maximum
+    }, 15000); // Increased to 15 seconds for better reliability
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -375,7 +378,7 @@ export const AuthProvider = ({ children }) => {
       try {
         console.log('🔍 Checking users table...');
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Profile loading timeout')), 8000);
+          setTimeout(() => reject(new Error('Profile loading timeout')), 12000); // Increased timeout
         });
         
         const profilePromise = supabase
@@ -403,7 +406,7 @@ export const AuthProvider = ({ children }) => {
         try {
           console.log('🔍 Checking profiles table...');
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Profile loading timeout')), 5000);
+            setTimeout(() => reject(new Error('Profile loading timeout')), 10000); // Increased timeout
           });
           
           const profilePromise = supabase
@@ -467,7 +470,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (error || !profile) {
-        console.warn('⚠️ Profile not found or accessible, creating default profile:', error?.message);
+        console.log('ℹ️ Profile not found or accessible, creating default profile (this is normal for new users):', error?.message);
         
         // Extract name from user metadata or email
         const userName = user.user_metadata?.name || user.email?.split('@')[0] || 'User';

@@ -65,19 +65,8 @@ export default function BulkAddProductTable({ onNavigate }) {
   const [rows, setRows] = useState([emptyRow(), emptyRow(), emptyRow(), emptyRow(), emptyRow()]);
   const [suppliers, setSuppliers] = useState([]);
   const [brands, setBrands] = useState([]);
-  // Initialize categories with config data immediately to avoid first render issues
-  const [categories, setCategories] = useState(() => {
-    console.log('🔍 CATEGORIES from config:', CATEGORIES);
-    const configCategories = CATEGORIES.map((name, index) => ({
-      id: `cat_${index + 1}`,
-      name: name,
-      description: `${name} products`,
-      is_active: true,
-      sort_order: index + 1
-    }));
-    console.log('🔍 Initial categories state:', configCategories);
-    return configCategories;
-  });
+  // Initialize categories as empty array - load from database immediately
+  const [categories, setCategories] = useState([]);
   const [brandsLoading, setBrandsLoading] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -154,34 +143,23 @@ export default function BulkAddProductTable({ onNavigate }) {
         setCategoriesLoading(true);
         console.log('🔄 Loading categories from database...');
 
-        // Try to load from database first
+        // Load from database - this should return UUID-based IDs
         const data = await categoriesService.getAll();
         console.log('📊 Database categories loaded:', data);
 
         if (data && data.length > 0) {
+          console.log('✅ Using database categories with UUIDs');
           setCategories(data);
         } else {
-          // Fallback to config categories
-          const configCategories = CATEGORIES.map((name, index) => ({
-            id: `cat_${index + 1}`,
-            name: name,
-            description: `${name} products`,
-            is_active: true,
-            sort_order: index + 1
-          }));
-          setCategories(configCategories);
+          console.warn('⚠️ No categories found in database!');
+          console.warn('⚠️ You need to create categories in the Categories Management page first.');
+          // Set empty array instead of fallback to prevent UUID errors
+          setCategories([]);
         }
       } catch (error) {
         console.error('❌ Error loading categories:', error);
-        // Fallback to config categories
-        const configCategories = CATEGORIES.map((name, index) => ({
-          id: `cat_${index + 1}`,
-          name: name,
-          description: `${name} products`,
-          is_active: true,
-          sort_order: index + 1
-        }));
-        setCategories(configCategories);
+        console.warn('⚠️ Categories not available - please create categories first');
+        setCategories([]);
       } finally {
         setCategoriesLoading(false);
       }
@@ -280,6 +258,9 @@ export default function BulkAddProductTable({ onNavigate }) {
         // Resolve names to IDs for foreign key references
         const categoryId = categories.find(cat => cat.name === row.category)?.id || null;
         const brandId = brands.find(brand => brand.name === row.brand)?.id || null;
+        
+        console.log('🔍 Resolving category:', row.category, '→', categoryId);
+        console.log('🔍 Resolving brand:', row.brand, '→', brandId);
 
         // Map category name to enum value - convert frontend category names to database enum values
         const categoryToEnumMapping = {

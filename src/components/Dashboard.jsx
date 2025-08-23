@@ -320,23 +320,31 @@ const Dashboard = () => {
   const handleNavigation = (page, product = null) => {
     console.log('🧭 Dashboard handleNavigation called with:', page);
     console.log('📍 Current page before navigation:', currentPage);
-    setCurrentPage(page);
-    console.log('📍 Setting current page to:', page);
-    if (page === 'edit-product' && product) {
-      console.log('🔄 Setting product to edit:', product);
-      console.log('🔍 Product keys:', Object.keys(product));
-      console.log('🔍 Product name:', product.name);
-      console.log('🔍 Product categoryId/category_id:', product.categoryId, product.category_id);
-      console.log('🔍 Product brandId/brand_id:', product.brandId, product.brand_id);
-      setProductToEdit(product);
-      setCurrentPage('add-product'); // Use the same component for editing
-    } else if (page === 'view-product' && product) {
-      console.log('👁️ Setting product to view:', product);
-      setProductToEdit(product);
-      setCurrentPage('view-product');
-    } else if (page === 'add-product') {
-      setProductToEdit(null); // Clear when adding new product
-    }
+    
+    // Batch state updates to prevent unnecessary re-renders
+    React.startTransition(() => {
+      if (page === 'edit-product' && product) {
+        console.log('🔄 Setting product to edit:', product);
+        console.log('🔍 Product keys:', Object.keys(product));
+        console.log('🔍 Product name:', product.name);
+        console.log('🔍 Product categoryId/category_id:', product.categoryId, product.category_id);
+        console.log('🔍 Product brandId/brand_id:', product.brandId, product.brand_id);
+        setProductToEdit(product);
+        setCurrentPage('add-product'); // Use the same component for editing
+      } else if (page === 'view-product' && product) {
+        console.log('👁️ Setting product to view:', product);
+        setProductToEdit(product);
+        setCurrentPage('view-product');
+      } else if (page === 'add-product') {
+        setProductToEdit(null); // Clear when adding new product
+        setCurrentPage(page);
+      } else {
+        // For all other navigation, just set the page
+        setCurrentPage(page);
+      }
+    });
+    
+    console.log('📍 Navigation to:', page);
   };
 
   const toggleDarkMode = () => {
@@ -834,98 +842,65 @@ const Dashboard = () => {
 
   const renderCurrentPage = () => {
     console.log('🎯 Rendering page:', currentPage);
-    console.log('🎯 Available cases:', ['pos', 'inventory', 'add-product', 'bulk-add-products', 'stock-movement', 'sales', 'purchases', 'purchase-entry', 'suppliers', 'customers', 'e-invoice', 'e-invoice-history', 'categories', 'brands', 'stock-movements', 'alerts', 'alerts-system', 'reports', 'reports-dashboard', 'reports-advanced', 'reports-sales', 'reports-inventory', 'reports-financial', 'reports-profit', 'reports-gst', 'invoices', 'settings', 'admin-panel', 'user-management', 'data-import-export', 'backup-data-management', 'documentation', 'support', 'database-sync-test', 'storage-test']);
     console.log('🎯 Is inventory case:', currentPage === 'inventory');
-    switch (currentPage) {
-      case 'pos':
-        return <POS onNavigate={handleNavigation} />;
-      case 'inventory':
-        return <Inventory onNavigate={handleNavigation} />;
-      case 'add-product':
-        return <AddProduct onNavigate={handleNavigation} productToEdit={productToEdit} />;
-      case 'view-product':
-        return <ViewProduct product={productToEdit} onNavigate={handleNavigation} />;
-      case 'bulk-add-products':
-        return <BulkAddProductTable onNavigate={handleNavigation} />;
-      case 'stock-movement':
-        return <StockMovement onNavigate={handleNavigation} />;
-      case 'sales':
-        return <SalesHistory onNavigate={handleNavigation} />;
-      case 'purchases':
-        return <Purchases onNavigate={handleNavigation} />;
-      case 'purchase-entry':
-        return <PurchaseEntry onNavigate={handleNavigation} />;
-      case 'suppliers':
-        return <Suppliers onNavigate={handleNavigation} />;
-      case 'customers':
-        return <CustomerManagement onNavigate={handleNavigation} />;
-      case 'e-invoice':
-        return <EInvoice onNavigate={handleNavigation} />;
-      case 'e-invoice-history':
-        return <EInvoiceHistory onNavigate={handleNavigation} />;
-      case 'categories':
+    
+    // Use React.memo-like behavior to prevent unnecessary component unmounting
+    const ComponentMap = React.useMemo(() => ({
+      'pos': () => <POS onNavigate={handleNavigation} />,
+      'inventory': () => <Inventory onNavigate={handleNavigation} />,
+      'add-product': () => <AddProduct onNavigate={handleNavigation} productToEdit={productToEdit} />,
+      'view-product': () => <ViewProduct product={productToEdit} onNavigate={handleNavigation} />,
+      'bulk-add-products': () => <BulkAddProductTable onNavigate={handleNavigation} />,
+      'stock-movement': () => <StockMovement onNavigate={handleNavigation} />,
+      'sales': () => <SalesHistory onNavigate={handleNavigation} />,
+      'purchases': () => <Purchases onNavigate={handleNavigation} />,
+      'purchase-entry': () => <PurchaseEntry onNavigate={handleNavigation} />,
+      'suppliers': () => <Suppliers onNavigate={handleNavigation} />,
+      'customers': () => <CustomerManagement onNavigate={handleNavigation} />,
+      'e-invoice': () => <EInvoice onNavigate={handleNavigation} />,
+      'e-invoice-history': () => <EInvoiceHistory onNavigate={handleNavigation} />,
+      'categories': () => {
         console.log('✅ Rendering CategoriesManagement component');
         return <CategoriesManagement onNavigate={handleNavigation} />;
-      case 'brands':
+      },
+      'brands': () => {
         console.log('✅ Rendering BrandsManagement component');
         return <BrandsManagement onNavigate={handleNavigation} />;
-      case 'stock-movements':
-        return <StockMovementsHistory onNavigate={handleNavigation} />;
-      case 'alerts':
-        return <AlertsPanel onNavigate={handleNavigation} />;
-      case 'alerts-system':
-        return <EnhancedAlertsSystem onNavigate={handleNavigation} />;
-      case 'notifications':
-        return <NotificationManagement onNavigate={handleNavigation} />;
-      case 'reports':
-        return <Reports onNavigate={handleNavigation} />;
-      case 'reports-dashboard':
-        return <ReportsDashboard onNavigate={handleNavigation} />;
-      case 'reports-advanced':
-        return <Reports onNavigate={handleNavigation} />;
-      case 'reports-sales':
-        return <Reports onNavigate={handleNavigation} defaultTab="sales" />;
-      case 'reports-inventory':
-        return <Reports onNavigate={handleNavigation} defaultTab="inventory" />;
-      case 'reports-financial':
-        return <Reports onNavigate={handleNavigation} defaultTab="financial" />;
-      case 'reports-profit':
-        return <Reports onNavigate={handleNavigation} defaultTab="profit" />;
-      case 'reports-gst':
-        return <GSTReports onNavigate={handleNavigation} />;
-      case 'invoices':
-        return <InvoiceManagement onNavigate={handleNavigation} />;
-      case 'settings':
-        return <Settings onNavigate={handleNavigation} />;
-      case 'admin-panel':
-        return <AdminControlPanel onNavigate={handleNavigation} />;
-      case 'user-management':
-        return <UserManagement onNavigate={handleNavigation} />;
-      case 'data-import-export':
-        return <DataImportExport onNavigate={handleNavigation} />;
-      case 'backup-data-management':
-        return <BackupDataManagement onNavigate={handleNavigation} />;
-      case 'documentation':
-        return <Documentation onNavigate={handleNavigation} />;
-      case 'support':
-        return <Support onNavigate={handleNavigation} />;
-      case 'database-sync-test':
-        return <DatabaseSyncTest onNavigate={handleNavigation} />;
-      case 'storage-test':
-        return <StorageTest onNavigate={handleNavigation} />;
-      case 'multi-tenant-test':
-        return <MultiTenantTestSuite onNavigate={handleNavigation} />;
-      case 'multi-tenant-setup':
-        return <MultiTenantSetupWizard onNavigate={handleNavigation} />;
-      case 'security-audit-logger':
-        return <SecurityAuditLogger onNavigate={handleNavigation} />;
-      case 'database-health-check':
-        return <DatabaseHealthCheck onNavigate={handleNavigation} />;
-      // case 'theme-test':
-        // return <ThemeTest onNavigate={handleNavigation} />;
-      default:
-        console.log('❌ No matching route found for:', currentPage, '- rendering dashboard');
-        return renderDashboard();
+      },
+      'stock-movements': () => <StockMovementsHistory onNavigate={handleNavigation} />,
+      'alerts': () => <AlertsPanel onNavigate={handleNavigation} />,
+      'alerts-system': () => <EnhancedAlertsSystem onNavigate={handleNavigation} />,
+      'notifications': () => <NotificationManagement onNavigate={handleNavigation} />,
+      'reports': () => <Reports onNavigate={handleNavigation} />,
+      'reports-dashboard': () => <ReportsDashboard onNavigate={handleNavigation} />,
+      'reports-advanced': () => <Reports onNavigate={handleNavigation} />,
+      'reports-sales': () => <Reports onNavigate={handleNavigation} defaultTab="sales" />,
+      'reports-inventory': () => <Reports onNavigate={handleNavigation} defaultTab="inventory" />,
+      'reports-financial': () => <Reports onNavigate={handleNavigation} defaultTab="financial" />,
+      'reports-profit': () => <Reports onNavigate={handleNavigation} defaultTab="profit" />,
+      'reports-gst': () => <GSTReports onNavigate={handleNavigation} />,
+      'invoices': () => <InvoiceManagement onNavigate={handleNavigation} />,
+      'settings': () => <Settings onNavigate={handleNavigation} />,
+      'admin-panel': () => <AdminControlPanel onNavigate={handleNavigation} />,
+      'user-management': () => <UserManagement onNavigate={handleNavigation} />,
+      'data-import-export': () => <DataImportExport onNavigate={handleNavigation} />,
+      'backup-data-management': () => <BackupDataManagement onNavigate={handleNavigation} />,
+      'documentation': () => <Documentation onNavigate={handleNavigation} />,
+      'support': () => <Support onNavigate={handleNavigation} />,
+      'database-sync-test': () => <DatabaseSyncTest onNavigate={handleNavigation} />,
+      'storage-test': () => <StorageTest onNavigate={handleNavigation} />,
+      'multi-tenant-test': () => <MultiTenantTestSuite onNavigate={handleNavigation} />,
+      'multi-tenant-setup': () => <MultiTenantSetupWizard onNavigate={handleNavigation} />,
+      'security-audit-logger': () => <SecurityAuditLogger onNavigate={handleNavigation} />,
+      'database-health-check': () => <DatabaseHealthCheck onNavigate={handleNavigation} />,
+    }), [handleNavigation, productToEdit]);
+    
+    const ComponentRenderer = ComponentMap[currentPage];
+    if (ComponentRenderer) {
+      return ComponentRenderer();
+    } else {
+      console.log('❌ No matching route found for:', currentPage, '- rendering dashboard');
+      return renderDashboard();
     }
   };
 

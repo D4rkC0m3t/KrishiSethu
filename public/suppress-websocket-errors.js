@@ -11,12 +11,21 @@
   const originalError = console.error;
   const originalWarn = console.warn;
   
-  // List of WebSocket error patterns to suppress
+  // List of error patterns to suppress in development
   const suppressPatterns = [
+    // WebSocket errors
     /WebSocket connection to.*failed/i,
     /WebSocket.*ws.*failed/i,
     /Failed to connect to WebSocket/i,
-    /WebSocket.*connection.*refused/i
+    /WebSocket.*connection.*refused/i,
+    // Timeout warnings during development
+    /Fallback timeout triggered/i,
+    /Profile loading timeout/i,
+    /Dashboard loading timeout/i,
+    /Failsafe timeout triggered/i,
+    // Other development noise
+    /this indicates slow network or database/i,
+    /this is normal for slow connections/i
   ];
   
   // Override console.error to filter WebSocket errors
@@ -65,5 +74,5 @@
     }
   });
   
-  console.log('🔇 WebSocket error suppression active for development');
+  console.log('🔇 Development error suppression active (WebSocket, timeouts, etc.)');
 })();

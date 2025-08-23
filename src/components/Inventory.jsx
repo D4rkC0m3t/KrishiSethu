@@ -330,137 +330,37 @@ const Inventory = ({ onNavigate }) => {
 
   const loadProducts = async () => {
     let isComponentMounted = true;
-    let timeoutId = null;
     
     try {
       if (isComponentMounted) setLoading(true);
-      console.log('🔄 [INVENTORY] Loading products from Supabase...');
-      console.log('🔄 [INVENTORY] Component mounted state:', isComponentMounted);
-      console.log('🔄 [INVENTORY] Loading state set to:', true);
+      console.log('🔄 [INVENTORY] Loading products from database...');
       
-      // Set up timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error('Database query timeout after 30 seconds'));
-        }, 30000);
-      });
+      // Use a single, simple query approach with generous timeout
+      console.log('🔄 [INVENTORY] Executing simple products query...');
       
-      // Debug auth state with timeout
-      try {
-        console.log('🔄 [INVENTORY] Checking auth state...');
-        const authPromise = supabase.auth.getUser();
-        const authState = await Promise.race([authPromise, timeoutPromise]);
-        console.log('🔄 [INVENTORY] Current auth state:', authState);
-        console.log('🔄 [INVENTORY] User:', authState?.data?.user?.email || 'No user');
-      } catch (authError) {
-        console.warn('⚠️ [INVENTORY] Auth check failed:', authError);
-      }
-
-      // Test basic connection first with timeout
-      console.log('🔄 [INVENTORY] Testing database connection...');
-      const connectionPromise = supabase
+      const { data: products, error } = await supabase
         .from('products')
-        .select('count', { count: 'exact', head: true });
+        .select('*')
+        .order('name', { ascending: true })
+        .limit(500); // Reasonable limit for performance
       
-      const { data: testData, error: testError } = await Promise.race([connectionPromise, timeoutPromise]);
-      
-      if (testError) {
-        console.error('❌ Database connection test failed:', testError);
-        throw new Error(`Database connection failed: ${testError.message}`);
+      if (error) {
+        console.error('❌ [INVENTORY] Database query failed:', error);
+        throw new Error(`Database query failed: ${error.message}`);
       }
       
-      console.log('✅ Database connection successful');
-      console.log('📊 Products count check:', testData);
-
-      // Try normalized product loading with robust error handling and timeout
-      let rawProducts = [];
-      let normalizedProducts = [];
-      let queryMethod = 'unknown';
+      console.log(`✅ [INVENTORY] Query successful: ${(products || []).length} products loaded`);
       
-      try {
-        // Attempt enhanced query with joins first - WITH TIMEOUT
-        console.log('🔄 [INVENTORY] Attempting enhanced query with joins (with 15s timeout)...');
-        const enhancedQueryPromise = productOperations.getAllProducts();
-        
-        // Set shorter timeout for enhanced query since it might be hanging
-        const enhancedTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('Enhanced query timeout after 15 seconds'));
-          }, 15000);
-        });
-        
-        rawProducts = await Promise.race([enhancedQueryPromise, enhancedTimeoutPromise]);
-        console.log(`✅ Enhanced query successful: ${rawProducts?.length || 0} raw products loaded`);
-        queryMethod = 'enhanced';
-        
-        // Clear timeout on success
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        
-        // Normalize products with consistent data structure
-        if (rawProducts && rawProducts.length > 0) {
-          console.log('🔄 [INVENTORY] Sample raw product before normalization:', rawProducts[0]);
-          normalizedProducts = normalizeProductsArray(rawProducts);
-          console.log(`🔄 [INVENTORY] Normalized ${normalizedProducts?.length || 0} products`);
-          console.log('🔄 [INVENTORY] Sample normalized product:', normalizedProducts[0]);
-        } else {
-          console.log('📦 [INVENTORY] No raw products returned from enhanced query');
-          normalizedProducts = [];
-        }
-        
-      } catch (joinError) {
-        console.warn('⚠️ [INVENTORY] Enhanced query failed, attempting fallback query:', joinError.message);
-        console.warn('⚠️ [INVENTORY] Error details:', joinError);
-        
-        // Clear existing timeout
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        
-        // Fallback to simple query without joins - WITH TIMEOUT
-        try {
-          console.log('🔄 [INVENTORY] Fallback: Simple products query (with 10s timeout)...');
-          
-          const simpleQueryPromise = supabase
-            .from('products')
-            .select('*')
-            .order('name', { ascending: true })
-            .limit(100); // Limit for performance
-            
-          const simpleTimeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => {
-              reject(new Error('Simple query timeout after 10 seconds'));
-            }, 10000);
-          });
-          
-          const { data: simpleProducts, error: simpleError } = await Promise.race([simpleQueryPromise, simpleTimeoutPromise]);
-
-          if (simpleError) {
-            console.error('❌ [INVENTORY] Simple query also failed:', simpleError);
-            throw simpleError;
-          }
-
-          console.log(`✅ [INVENTORY] Simple query successful: ${(simpleProducts || []).length} raw products loaded`);
-          queryMethod = 'simple';
-          
-          if (simpleProducts && simpleProducts.length > 0) {
-            console.log('🔄 [INVENTORY] Sample simple product before normalization:', simpleProducts[0]);
-            // Normalize simple products
-            normalizedProducts = normalizeProductsArray(simpleProducts || []);
-            console.log(`🔄 [INVENTORY] Normalized ${normalizedProducts?.length || 0} products from simple query`);
-            console.log('🔄 [INVENTORY] Sample normalized simple product:', normalizedProducts[0]);
-          } else {
-            console.log('📦 [INVENTORY] No products returned from simple query either');
-            normalizedProducts = [];
-          }
-          
-        } catch (fallbackError) {
-          console.error('❌ [INVENTORY] Both enhanced and simple queries failed:', fallbackError);
-          console.error('❌ [INVENTORY] Fallback error details:', fallbackError);
-          throw new Error(`Failed to load products: ${fallbackError.message}`);
-        }
+      // Normalize products with consistent data structure
+      let normalizedProducts = [];
+      if (products && products.length > 0) {
+        console.log('🔄 [INVENTORY] Sample raw product:', products[0]);
+        normalizedProducts = normalizeProductsArray(products);
+        console.log(`🔄 [INVENTORY] Normalized ${normalizedProducts?.length || 0} products`);
+        console.log('🔄 [INVENTORY] Sample normalized product:', normalizedProducts[0]);
+      } else {
+        console.log('📦 [INVENTORY] No products found in database');
+        normalizedProducts = [];
       }
 
       // Validate normalized products
@@ -477,7 +377,7 @@ const Inventory = ({ onNavigate }) => {
 
       if (isComponentMounted) {
         if (validProducts.length > 0) {
-          console.log(`✅ ${validProducts.length} valid products loaded via ${queryMethod} method`);
+          console.log(`✅ ${validProducts.length} valid products loaded successfully`);
           setProducts(validProducts);
           
           // Show success notification

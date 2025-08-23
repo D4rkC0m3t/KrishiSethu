@@ -1,8 +1,9 @@
 
 import { COLLECTIONS } from './supabaseDb';
+import { supabase } from './supabase';
 
 /**
- * Real-time Data Service for Firebase Firestore
+ * Real-time Data Service using Supabase Realtime
  * Provides live data synchronization across components
  */
 class RealtimeService {
@@ -11,7 +12,7 @@ class RealtimeService {
   }
 
   /**
-   * Subscribe to real-time updates for a collection
+   * Subscribe to real-time updates for a collection using Supabase Realtime
    * @param {string} collectionName - Name of the collection
    * @param {Function} callback - Callback function to handle updates
    * @param {object} options - Query options (orderBy, where, limit)
@@ -19,41 +20,62 @@ class RealtimeService {
    */
   subscribe(collectionName, callback, options = {}) {
     try {
-      // Options destructured but not used in current implementation
-      
-      // Simplified polling for Supabase migration
-      console.log(`Setting up polling for ${collectionName}`);
+      console.log(`🔔 Setting up Supabase Realtime subscription for ${collectionName}`);
 
-      // For now, we'll use polling instead of real-time
-      const pollInterval = setInterval(async () => {
-        try {
-          // This would need to be implemented with proper Supabase service calls
-          // For now, just call the callback with empty data to prevent errors
-          callback([]);
-        } catch (error) {
-          console.error(`Polling error for ${collectionName}:`, error);
-          callback(null, error);
-        }
-      }, 5000); // Poll every 5 seconds
+      // Create a channel for this subscription
+      const channel = supabase
+        .channel(`realtime-${collectionName}`)
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: collectionName 
+          }, 
+          (payload) => {
+            console.log(`🔄 Realtime update for ${collectionName}:`, payload);
+            
+            // Handle different types of changes
+            switch (payload.eventType) {
+              case 'INSERT':
+                console.log(`➕ New ${collectionName} added:`, payload.new);
+                break;
+              case 'UPDATE':
+                console.log(`📝 ${collectionName} updated:`, payload.new);
+                break;
+              case 'DELETE':
+                console.log(`🗑️ ${collectionName} deleted:`, payload.old);
+                break;
+              default:
+                console.log(`🔄 ${collectionName} change:`, payload);
+            }
+            
+            // Trigger callback with the change data
+            callback(payload);
+          }
+        )
+        .subscribe((status) => {
+          console.log(`📡 Realtime status for ${collectionName}:`, status);
+        });
       
-      // Store the interval for cleanup
+      // Store the channel for cleanup
       const listenerId = `${collectionName}_${Date.now()}`;
-      this.listeners.set(listenerId, pollInterval);
+      this.listeners.set(listenerId, channel);
 
       return () => {
-        clearInterval(pollInterval);
+        console.log(`🔌 Unsubscribing from ${collectionName} realtime updates`);
+        supabase.removeChannel(channel);
         this.listeners.delete(listenerId);
       };
       
     } catch (error) {
-      console.error('Error setting up real-time subscription:', error);
+      console.error('❌ Error setting up Supabase Realtime subscription:', error);
       callback(null, error);
       return () => {}; // Return empty unsubscribe function
     }
   }
 
   /**
-   * Subscribe to real-time updates for a specific document
+   * Subscribe to real-time updates for a specific document using Supabase Realtime
    * @param {string} collectionName - Name of the collection
    * @param {string} docId - Document ID
    * @param {Function} callback - Callback function to handle updates
@@ -61,31 +83,53 @@ class RealtimeService {
    */
   subscribeToDocument(collectionName, docId, callback) {
     try {
-      // Simplified polling for document subscription
-      console.log(`Setting up document polling for ${collectionName}/${docId}`);
+      console.log(`🔔 Setting up Supabase Realtime document subscription for ${collectionName}/${docId}`);
 
-      const pollInterval = setInterval(async () => {
-        try {
-          // This would need to be implemented with proper Supabase service calls
-          // For now, just call the callback with null to prevent errors
-          callback(null);
-        } catch (error) {
-          console.error(`Document polling error for ${collectionName}/${docId}:`, error);
-          callback(null, error);
-        }
-      }, 5000); // Poll every 5 seconds
+      // Create a channel for this specific document
+      const channel = supabase
+        .channel(`realtime-${collectionName}-${docId}`)
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: collectionName,
+            filter: `id=eq.${docId}`
+          }, 
+          (payload) => {
+            console.log(`📝 Document update for ${collectionName}/${docId}:`, payload);
+            
+            // Handle different types of changes
+            switch (payload.eventType) {
+              case 'UPDATE':
+                console.log(`📝 Document updated:`, payload.new);
+                callback(payload.new);
+                break;
+              case 'DELETE':
+                console.log(`🗑️ Document deleted:`, payload.old);
+                callback(null); // Document no longer exists
+                break;
+              default:
+                console.log(`🔄 Document change:`, payload);
+                callback(payload.new || payload.old);
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log(`📡 Document realtime status for ${collectionName}/${docId}:`, status);
+        });
       
-      // Store the interval for cleanup
+      // Store the channel for cleanup
       const listenerId = `${collectionName}_${docId}_${Date.now()}`;
-      this.listeners.set(listenerId, pollInterval);
+      this.listeners.set(listenerId, channel);
 
       return () => {
-        clearInterval(pollInterval);
+        console.log(`🔌 Unsubscribing from ${collectionName}/${docId} document updates`);
+        supabase.removeChannel(channel);
         this.listeners.delete(listenerId);
       };
       
     } catch (error) {
-      console.error('Error setting up document real-time subscription:', error);
+      console.error('❌ Error setting up document Supabase Realtime subscription:', error);
       callback(null, error);
       return () => {}; // Return empty unsubscribe function
     }

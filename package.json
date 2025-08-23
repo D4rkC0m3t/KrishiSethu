@@ -75,10 +75,10 @@
     "@craco/craco": "^7.1.0",
     "@types/node": "^24.2.1",
     "autoprefixer": "^10.4.21",
+    "eslint-webpack-plugin": "^4.1.0",
     "postcss": "^8.5.6",
     "prisma": "^5.19.1",
     "tailwindcss": "^3.4.17",
-	"wait-on": "^8.0.4",
-    "eslint-webpack-plugin": "^4.1.0"
+    "wait-on": "^8.0.4"
   }
 }

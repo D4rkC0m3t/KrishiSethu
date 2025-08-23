@@ -111,6 +111,7 @@ const fieldMappings = {
     // JavaScript camelCase -> SQL snake_case
     toDb: {
       batchNo: 'batch_no',
+      barcode: 'barcode', // Add barcode mapping
       expiryDate: 'expiry_date',
       manufacturingDate: 'manufacturing_date',
       purchasePrice: 'purchase_price',
@@ -134,6 +135,7 @@ const fieldMappings = {
     // SQL snake_case -> JavaScript camelCase
     fromDb: {
       batch_no: 'batchNo',
+      barcode: 'barcode', // Add barcode mapping
       expiry_date: 'expiryDate',
       manufacturing_date: 'manufacturingDate',
       purchase_price: 'purchasePrice',
@@ -247,6 +249,8 @@ const fieldMappings = {
       saleNumber: 'sale_number',
       customerId: 'customer_id',
       customerName: 'customer_name',
+      // subtotal: 'subtotal',     // Column doesn't exist in database schema
+      // discount: 'discount',     // Column doesn't exist in database schema
       totalAmount: 'total_amount',
       taxAmount: 'tax_amount',
       paymentMethod: 'payment_method',
@@ -262,6 +266,8 @@ const fieldMappings = {
       sale_number: 'saleNumber',
       customer_id: 'customerId',
       customer_name: 'customerName',
+      // subtotal: 'subtotal',     // Column doesn't exist in database schema
+      // discount: 'discount',     // Column doesn't exist in database schema
       total_amount: 'totalAmount',
       tax_amount: 'taxAmount',
       payment_method: 'paymentMethod',
@@ -556,146 +562,47 @@ export const productOperations = {
     console.log('🔄 [PRODUCTS] Starting getAllProducts operation...');
     
     try {
-      // First, test if brands and categories tables exist and are accessible
-      console.log('🔄 [PRODUCTS] Testing brand and category table access...');
+      // Use a simple, fast query without joins to avoid timeouts
+      console.log('🔄 [PRODUCTS] Executing optimized products query...');
       
-      const [brandsTest, categoriesTest] = await Promise.allSettled([
-        supabase.from('brands').select('count', { count: 'exact', head: true }),
-        supabase.from('categories').select('count', { count: 'exact', head: true })
-      ]);
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .order('name', { ascending: true })
+        .limit(500); // Reasonable limit for performance
       
-      const brandsAccessible = brandsTest.status === 'fulfilled' && !brandsTest.value.error;
-      const categoriesAccessible = categoriesTest.status === 'fulfilled' && !categoriesTest.value.error;
-      
-      console.log('🔍 [PRODUCTS] Brands table accessible:', brandsAccessible);
-      console.log('🔍 [PRODUCTS] Categories table accessible:', categoriesAccessible);
-      
-      if (brandsAccessible && categoriesAccessible) {
-        // Enhanced query with brand and category joins - WITH TIMEOUT
-        console.log('🔄 [PRODUCTS] Attempting enhanced query with joins...');
-        
-        const enhancedQuery = supabase
-          .from('products')
-          .select(`
-            *,
-            brands(id, name),
-            categories(id, name)
-          `)
-          .order('name', { ascending: true })
-          .limit(200); // Add reasonable limit for performance
-        
-        // Set timeout for the query
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('Enhanced products query timeout after 10 seconds'));
-          }, 10000);
-        });
-        
-        const { data, error } = await Promise.race([enhancedQuery, timeoutPromise]);
-
-        if (error) {
-          console.warn('⚠️ [PRODUCTS] Enhanced query failed:', error.message);
-          throw error;
-        }
-
-        console.log(`✅ [PRODUCTS] Enhanced query successful: ${(data || []).length} products loaded`);
-        console.log('🔍 [PRODUCTS] Raw product data with joins (sample):', data?.slice(0, 2));
-
-        // Map the joined data to include brand and category names
-        const mappedProducts = (data || []).map(product => {
-          const mappedProduct = mapFieldsFromDb(product, 'products');
-
-          // Add brand and category names from joins
-          if (product.brands) {
-            mappedProduct.brandName = product.brands.name;
-            mappedProduct.brand = product.brands.name; // For backward compatibility
-          } else {
-            mappedProduct.brandName = 'No Brand';
-            mappedProduct.brand = 'No Brand';
-          }
-
-          if (product.categories) {
-            mappedProduct.categoryName = product.categories.name;
-            mappedProduct.category = product.categories.name; // For backward compatibility
-          } else {
-            mappedProduct.categoryName = 'No Category';
-            mappedProduct.category = 'No Category';
-          }
-
-          return mappedProduct;
-        });
-
-        console.log(`✅ [PRODUCTS] Mapped ${mappedProducts.length} products with brand/category`);
-        console.log('🔍 [PRODUCTS] Sample mapped product:', mappedProducts[0]);
-        return mappedProducts;
-        
-      } else {
-        console.warn('⚠️ [PRODUCTS] Brand or category tables not accessible, using fallback query');
-        throw new Error('Brands or categories table not accessible');
+      if (error) {
+        console.error('❌ [PRODUCTS] Query failed:', error);
+        throw error;
       }
+      
+      console.log(`✅ [PRODUCTS] Query successful: ${(data || []).length} products loaded`);
+      console.log('🔍 [PRODUCTS] Sample raw product:', data?.[0]);
+      
+      // Map the data to include default brand and category info
+      const mappedProducts = (data || []).map(product => {
+        const mappedProduct = mapFieldsFromDb(product, 'products');
+        
+        // Set default values for brand and category info
+        // These can be populated later via separate queries if needed
+        mappedProduct.brandName = mappedProduct.brand || 'No Brand';
+        mappedProduct.brand = mappedProduct.brand || 'No Brand';
+        mappedProduct.categoryName = mappedProduct.category || 'No Category';
+        mappedProduct.category = mappedProduct.category || 'No Category';
+        
+        return mappedProduct;
+      });
+      
+      console.log(`✅ [PRODUCTS] Mapped ${mappedProducts.length} products successfully`);
+      console.log('🔍 [PRODUCTS] Sample mapped product:', mappedProducts[0]);
+      return mappedProducts;
       
     } catch (error) {
-      console.warn('⚠️ [PRODUCTS] Enhanced query failed, attempting fallback:', error.message);
-      console.warn('⚠️ [PRODUCTS] Error details:', error);
+      console.error('❌ [PRODUCTS] getAllProducts failed:', error);
       
-      try {
-        // Fallback to basic query without joins - WITH TIMEOUT
-        console.log('🔄 [PRODUCTS] Fallback: Basic products query without joins...');
-        
-        const basicQuery = supabase
-          .from('products')
-          .select('*')
-          .order('name', { ascending: true })
-          .limit(200); // Add reasonable limit for performance
-        
-        const fallbackTimeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('Basic products query timeout after 8 seconds'));
-          }, 8000);
-        });
-        
-        const { data: basicData, error: basicError } = await Promise.race([basicQuery, fallbackTimeoutPromise]);
-        
-        if (basicError) {
-          console.error('❌ [PRODUCTS] Basic query also failed:', basicError);
-          throw basicError;
-        }
-        
-        console.log(`✅ [PRODUCTS] Basic query successful: ${(basicData || []).length} products loaded`);
-        console.log('🔍 [PRODUCTS] Sample basic product:', basicData?.[0]);
-        
-        // Map basic data without joins
-        const mappedBasicProducts = (basicData || []).map(product => {
-          const mappedProduct = mapFieldsFromDb(product, 'products');
-          
-          // Set default values for missing brand and category info
-          mappedProduct.brandName = 'No Brand';
-          mappedProduct.brand = 'No Brand';
-          mappedProduct.categoryName = 'No Category'; 
-          mappedProduct.category = 'No Category';
-          
-          return mappedProduct;
-        });
-        
-        console.log(`✅ [PRODUCTS] Mapped ${mappedBasicProducts.length} basic products`);
-        return mappedBasicProducts;
-        
-      } catch (fallbackError) {
-        console.error('❌ [PRODUCTS] Both enhanced and basic queries failed:', fallbackError);
-        
-        // Last resort: return minimal fallback using dbOperations
-        try {
-          console.log('🔄 [PRODUCTS] Last resort: Using dbOperations.getAll...');
-          const dbResult = await dbOperations.getAll(COLLECTIONS.PRODUCTS, {
-            orderBy: { field: 'name', ascending: true }
-          });
-          console.log(`✅ [PRODUCTS] dbOperations fallback successful: ${(dbResult || []).length} products`);
-          return dbResult || [];
-        } catch (dbError) {
-          console.error('❌ [PRODUCTS] All query methods failed:', dbError);
-          return []; // Return empty array to prevent crashes
-        }
-      }
+      // Return empty array instead of throwing to prevent app crashes
+      console.log('📦 [PRODUCTS] Returning empty array to prevent crashes');
+      return [];
     }
   },
 
@@ -777,9 +684,18 @@ export const salesOperations = {
   },
 
   async createSale(saleData) {
+    console.log('🚀 [SALES] Starting createSale with data:', {
+      saleNumber: saleData.sale_number,
+      customerName: saleData.customer_name,
+      totalAmount: saleData.total_amount,
+      itemCount: saleData.items?.length || 0
+    });
+
     try {
       // Start transaction
       const { items, ...saleInfo } = saleData;
+      
+      console.log('💾 [SALES] Inserting sale record:', saleInfo);
       
       // Create sale
       const { data: sale, error: saleError } = await supabase
@@ -788,26 +704,80 @@ export const salesOperations = {
         .select()
         .single();
         
-      if (saleError) throw saleError;
+      if (saleError) {
+        console.error('❌ [SALES] Sale insert error:', {
+          message: saleError?.message || 'No message',
+          code: saleError?.code || 'NO_CODE',
+          details: saleError?.details || 'No details',
+          hint: saleError?.hint || 'No hint',
+          fullError: saleError
+        });
+        throw saleError;
+      }
+
+      console.log('✅ [SALES] Sale record created:', {
+        id: sale.id,
+        saleNumber: sale.sale_number,
+        totalAmount: sale.total_amount
+      });
       
       // Create sale items
       if (items && items.length > 0) {
+        console.log(`📦 [SALES] Inserting ${items.length} sale items...`);
+        
         const saleItems = items.map(item => ({
           ...item,
           sale_id: sale.id
         }));
         
+        console.log('📦 [SALES] Sale items data:', saleItems);
+        
         const { error: itemsError } = await supabase
           .from(COLLECTIONS.SALE_ITEMS)
           .insert(saleItems);
           
-        if (itemsError) throw itemsError;
+        if (itemsError) {
+          console.error('❌ [SALES] Sale items insert error:', {
+            message: itemsError?.message || 'No message',
+            code: itemsError?.code || 'NO_CODE', 
+            details: itemsError?.details || 'No details',
+            hint: itemsError?.hint || 'No hint',
+            fullError: itemsError
+          });
+          throw itemsError;
+        }
+
+        console.log('✅ [SALES] Sale items created successfully');
       }
       
+      console.log('🎉 [SALES] Sale creation completed successfully:', sale);
       return sale;
     } catch (error) {
-      console.error('Error creating sale:', error);
-      throw error;
+      console.error('❌ [SALES] Error creating sale - Enhanced details:', {
+        message: error?.message || 'Unknown error occurred',
+        code: error?.code || 'NO_CODE',
+        details: error?.details || 'No additional details',
+        hint: error?.hint || 'No hint available',
+        stack: error?.stack || 'No stack trace',
+        name: error?.name || 'UnknownError',
+        fullError: error,
+        saleDataPassed: {
+          saleNumber: saleData?.sale_number,
+          customerName: saleData?.customer_name,
+          totalAmount: saleData?.total_amount,
+          itemCount: saleData?.items?.length || 0
+        }
+      });
+      
+      // Re-throw with enhanced message if possible
+      const enhancedMessage = error?.message || error?.toString() || 'Unknown database error occurred';
+      const enhancedError = new Error(`Sale creation failed: ${enhancedMessage}`);
+      enhancedError.originalError = error;
+      enhancedError.code = error?.code;
+      enhancedError.details = error?.details;
+      enhancedError.hint = error?.hint;
+      
+      throw enhancedError;
     }
   },
 
