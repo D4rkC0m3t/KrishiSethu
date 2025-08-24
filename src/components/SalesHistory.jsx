@@ -88,124 +88,16 @@ const SalesHistory = ({ onNavigate }) => {
         console.log('💰 Amount check - first sale total:', processedSales[0]?.total);
 
         setSales(processedSales);
-
-        // If no sales in Supabase, use mock data for demo
-        if (databaseSales.length === 0) {
-          const mockSales = [
-      {
-        id: 'SALE001',
-        date: new Date('2025-01-06'),
-        time: '14:23',
-        customer: 'Ram Prasad',
-        items: [
-          { name: 'Urea 50kg Bag', quantity: 2, price: 450, total: 900 },
-          { name: 'DAP 50kg Bag', quantity: 1, price: 1500, total: 1500 }
-        ],
-        subtotal: 2400,
-        discount: 200,
-        tax: 120,
-        total: 2320,
-        paymentMethod: 'cash',
-        amountPaid: 2320,
-        change: 0,
-        status: 'completed'
-      },
-      {
-        id: 'SALE002',
-        date: new Date('2025-01-05'),
-        time: '11:45',
-        customer: 'Walk-in Customer',
-        items: [
-          { name: 'NPK 20-20-20 50kg', quantity: 1, price: 950, total: 950 },
-          { name: 'Organic Compost 25kg', quantity: 1, price: 200, total: 200 }
-        ],
-        subtotal: 1150,
-        discount: 0,
-        tax: 57.5,
-        total: 1207.5,
-        paymentMethod: 'upi',
-        amountPaid: 1207.5,
-        change: 0,
-        status: 'completed'
-      },
-      {
-        id: 'SALE003',
-        date: new Date('2025-01-04'),
-        time: '16:30',
-        customer: 'Krishna Seeds',
-        items: [
-          { name: 'Urea 50kg Bag', quantity: 5, price: 450, total: 2250 },
-          { name: 'Potash 50kg Bag', quantity: 2, price: 800, total: 1600 }
-        ],
-        subtotal: 3850,
-        discount: 100,
-        tax: 187.5,
-        total: 3937.5,
-        paymentMethod: 'credit',
-        amountPaid: 0,
-        change: 0,
-        status: 'pending'
-      },
-      {
-        id: 'SALE004',
-        date: new Date('2025-01-03'),
-        time: '09:15',
-        customer: 'Farmer Cooperative',
-        items: [
-          { name: 'DAP 50kg Bag', quantity: 3, price: 1500, total: 4500 },
-          { name: 'NPK 20-20-20 50kg', quantity: 2, price: 950, total: 1900 }
-        ],
-        subtotal: 6400,
-        discount: 300,
-        tax: 305,
-        total: 6405,
-        paymentMethod: 'card',
-        amountPaid: 6405,
-        change: 0,
-        status: 'completed'
-      },
-      {
-        id: 'SALE005',
-        date: new Date('2025-01-02'),
-        time: '13:20',
-        customer: 'Green Valley Farm',
-        items: [
-          { name: 'Organic Compost 25kg', quantity: 4, price: 200, total: 800 },
-          { name: 'Bio NPK 10kg', quantity: 2, price: 380, total: 760 }
-        ],
-        subtotal: 1560,
-        discount: 50,
-        tax: 75.5,
-        total: 1585.5,
-        paymentMethod: 'upi',
-        amountPaid: 1585.5,
-        change: 0,
-        status: 'completed'
-      },
-      {
-        id: 'SALE006',
-        date: new Date('2025-01-01'),
-        time: '10:45',
-        customer: 'Sunrise Agriculture',
-        items: [
-          { name: 'Zinc Sulphate 25kg', quantity: 3, price: 220, total: 660 },
-          { name: 'Potash 50kg Bag', quantity: 1, price: 800, total: 800 }
-        ],
-        subtotal: 1460,
-        discount: 0,
-        tax: 73,
-        total: 1533,
-        paymentMethod: 'cash',
-        amountPaid: 1533,
-        change: 0,
-        status: 'completed'
-      }
-    ];
-          setSales(mockSales);
+        
+        // Real-time data only - no mock data fallback
+        console.log(`✅ Loaded ${processedSales.length} real sales transactions from database`);
+        
+        if (processedSales.length === 0) {
+          console.log('📊 No sales data found in database - showing empty state');
         }
       } catch (error) {
         console.error('Error loading sales:', error);
-        // Fallback to mock data on error
+        // Show error state - no mock data fallback
         setSales([]);
       } finally {
         setIsLoading(false);
@@ -403,8 +295,11 @@ const SalesHistory = ({ onNavigate }) => {
             <BarChart3 className="h-8 w-8 text-blue-600" />
             Sales Analytics
           </h1>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-400">
             {filteredSales.length} transactions • ₹{analytics.totalRevenue?.toLocaleString()} revenue
+            <span className="ml-2 text-xs bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 px-2 py-1 rounded-full">
+              📊 Real-time data from database
+            </span>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

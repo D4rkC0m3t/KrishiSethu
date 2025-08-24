@@ -70,6 +70,8 @@ import MultiTenantSetupWizard from './MultiTenantSetupWizard';
 import SecurityAuditLogger from './SecurityAuditLogger';
 import DatabaseHealthCheck from './DatabaseHealthCheck';
 import AnimatedTitle from './AnimatedTitle';
+import DebugInventoryTester from './DebugInventoryTester';
+import SimpleDbTest from './SimpleDbTest';
 // Removed ErrorPage404 import since offline sync handles connectivity gracefully
 import ErrorBoundary from './ErrorBoundary';
 import useNetworkStatus from '../hooks/useNetworkStatus';
@@ -77,6 +79,11 @@ import useNetworkStatus from '../hooks/useNetworkStatus';
 
 import DatabaseSetup from './DatabaseSetup';
 import NotificationDropdown from './NotificationDropdown';
+import InventoryDashboard from './inventory/InventoryDashboard';
+import StockAdjustment from './StockAdjustment';
+import InventoryAnalytics from './InventoryAnalytics';
+import PurchaseOrderManagement from './PurchaseOrderManagement';
+import SalesCustomerAnalytics from './SalesCustomerAnalytics';
 import { productsService, salesService, customersService, suppliersService } from '../lib/supabaseDb';
 
 const Dashboard = () => {
@@ -115,6 +122,8 @@ const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [productToEdit, setProductToEdit] = useState(null);
   const [companyDetails, setCompanyDetails] = useState(null);
+  const [showDebugTester, setShowDebugTester] = useState(false);
+  const [showSimpleDbTest, setShowSimpleDbTest] = useState(false);
 
   // Enhanced chart data
   const salesData = [
@@ -262,11 +271,9 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
+    // Load data once on component mount
     refreshData();
-
-    // Auto-refresh every 5 minutes
-    const interval = setInterval(refreshData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    // Removed auto-refresh interval for better performance and UX
   }, []);
 
   // Apply initial dark mode state to DOM
@@ -341,6 +348,15 @@ const Dashboard = () => {
       } else {
         // For all other navigation, just set the page
         setCurrentPage(page);
+      }
+
+      // Trigger refresh for data-dependent components when navigating to them
+      if (page === 'inventory') {
+        console.log('🔄 Navigating to inventory - triggering data refresh');
+        // Dispatch a custom event that Inventory can listen to
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('inventory-navigation-refresh'));
+        }, 100); // Small delay to ensure component is mounted
       }
     });
     
@@ -432,8 +448,8 @@ const Dashboard = () => {
             <div className="absolute top-4 right-4 z-10">
               <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
                 trend > 0
-                  ? 'bg-green-500/20 text-green-100 border border-green-400/30'
-                  : 'bg-red-500/20 text-red-100 border border-red-400/30'
+                  ? 'bg-green-500/20 text-green-100 dark:text-green-200 border border-green-400/30'
+                  : 'bg-red-500/20 text-red-100 dark:text-red-200 border border-red-400/30'
               }`}>
                 <span>{trend > 0 ? '↗' : '↘'}</span>
                 <span>{Math.abs(trend)}%</span>
@@ -732,9 +748,9 @@ const Dashboard = () => {
     };
 
     const events = [
-      { date: new Date(2024, 0, 15), title: 'Team Meeting', color: 'bg-orange-500' },
-      { date: new Date(2024, 0, 20), title: 'Product Launch', color: 'bg-green-500' },
-      { date: new Date(2024, 0, 25), title: 'Review Session', color: 'bg-red-500' }
+              { date: new Date(2024, 0, 15), title: 'Team Meeting', color: 'bg-orange-500 dark:bg-orange-600' },
+              { date: new Date(2024, 0, 20), title: 'Product Launch', color: 'bg-green-500 dark:bg-green-600' },
+              { date: new Date(2024, 0, 25), title: 'Review Session', color: 'bg-red-500 dark:bg-red-600' }
     ];
 
     const hasEvent = (date) => {
@@ -867,6 +883,7 @@ const Dashboard = () => {
         console.log('✅ Rendering BrandsManagement component');
         return <BrandsManagement onNavigate={handleNavigation} />;
       },
+      'stock-adjustment': () => <StockAdjustment onNavigate={handleNavigation} />,
       'stock-movements': () => <StockMovementsHistory onNavigate={handleNavigation} />,
       'alerts': () => <AlertsPanel onNavigate={handleNavigation} />,
       'alerts-system': () => <EnhancedAlertsSystem onNavigate={handleNavigation} />,
@@ -893,6 +910,10 @@ const Dashboard = () => {
       'multi-tenant-setup': () => <MultiTenantSetupWizard onNavigate={handleNavigation} />,
       'security-audit-logger': () => <SecurityAuditLogger onNavigate={handleNavigation} />,
       'database-health-check': () => <DatabaseHealthCheck onNavigate={handleNavigation} />,
+      'inventory-dashboard': () => <InventoryDashboard />,
+      'inventory-analytics': () => <InventoryAnalytics onNavigate={handleNavigation} />,
+      'purchase-order-management': () => <PurchaseOrderManagement onNavigate={handleNavigation} />,
+      'sales-customer-analytics': () => <SalesCustomerAnalytics onNavigate={handleNavigation} />,
     }), [handleNavigation, productToEdit]);
     
     const ComponentRenderer = ComponentMap[currentPage];
@@ -927,6 +948,22 @@ const Dashboard = () => {
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowDebugTester(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center gap-2"
+            >
+              🔬 Debug Inventory
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSimpleDbTest(true)}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center gap-2"
+            >
+              🔍 Simple DB Test
             </Button>
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -1140,7 +1177,7 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            <Card className="p-4 bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('purchases')}>
+            <Card className="p-4 bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 border-orange-200 dark:border-orange-700 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('purchases')}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-orange-600 font-medium">Pending</p>
@@ -1150,7 +1187,7 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            <Card className="p-4 bg-gradient-to-r from-amber-50 to-amber-100 border-amber-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('customers')}>
+            <Card className="p-4 bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-950 dark:to-amber-900 border-amber-200 dark:border-amber-700 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('customers')}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-amber-600 font-medium">Customers</p>
@@ -1160,7 +1197,7 @@ const Dashboard = () => {
               </div>
             </Card>
 
-            <Card className="p-4 bg-gradient-to-r from-teal-50 to-teal-100 border-teal-200 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('suppliers')}>
+            <Card className="p-4 bg-gradient-to-r from-teal-50 to-teal-100 dark:from-teal-950 dark:to-teal-900 border-teal-200 dark:border-teal-700 hover:shadow-md transition-all cursor-pointer" onClick={() => handleNavigation('suppliers')}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-teal-600 font-medium">Suppliers</p>
@@ -1230,10 +1267,10 @@ const Dashboard = () => {
                 {recentActivity.map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
                     <div className={`w-2 h-2 rounded-full mt-2 ${
-                      activity.type === 'sale' ? 'bg-green-500' :
-                      activity.type === 'stock' ? 'bg-yellow-500' :
-                      activity.type === 'purchase' ? 'bg-orange-500' :
-                      'bg-red-500'
+                      activity.type === 'sale' ? 'bg-green-500 dark:bg-green-600' :
+                      activity.type === 'stock' ? 'bg-yellow-500 dark:bg-yellow-600' :
+                      activity.type === 'purchase' ? 'bg-orange-500 dark:bg-orange-600' :
+                      'bg-red-500 dark:bg-red-600'
                     }`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">
@@ -1429,69 +1466,79 @@ const Dashboard = () => {
 
   return (
     <ErrorBoundary onNavigate={handleNavigation}>
-    <div className="h-screen flex transition-colors duration-300 bg-background">
-      {/* Sidebar - Hide for POS */}
-      {currentPage !== 'pos' && (
-        <Sidebar
-          theme={darkMode ? 'dark' : 'light'}
-          currentPage={currentPage}
-          onNavigate={handleNavigation}
-          alerts={alerts}
-        />
-      )}
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
-        {/* Header - Hide for POS */}
+      <div className="h-screen flex transition-colors duration-300 bg-background">
+        {/* Sidebar - Hide for POS */}
         {currentPage !== 'pos' && (
-          <header className="bg-background shadow-lg border-b border-border transition-colors duration-300">
-          <div className="px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center space-x-4">
-                <div
-                  className="cursor-pointer"
-                  onClick={() => handleNavigation('dashboard')}
-                >
-                  <AnimatedTitle size="small" />
-                </div>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-muted-foreground">
-                    Welcome, {userProfile?.name || currentUser?.email}
-                  </span>
-                  <Badge variant="secondary" className="text-xs">
-                    {userProfile?.role}
-                  </Badge>
-                </div>
-
-                {/* Dark Mode Toggle */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleDarkMode}
-                  className="text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
-                >
-                  {darkMode ? '☀️' : '🌙'}
-                </Button>
-
-                {/* Notifications Dropdown */}
-                <NotificationDropdown
-                  alerts={alerts}
-                  onNavigate={handleNavigation}
-                />
-              </div>
-            </div>
-          </div>
-          </header>
+          <Sidebar
+            theme={darkMode ? 'dark' : 'light'}
+            currentPage={currentPage}
+            onNavigate={handleNavigation}
+            alerts={alerts}
+          />
         )}
 
-        {/* Main Content */}
-        <div className="flex-1 transition-colors duration-300 overflow-auto bg-background">
-          {renderCurrentPage()}
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+          {/* Header - Hide for POS */}
+          {currentPage !== 'pos' && (
+            <header className="bg-background shadow-lg border-b border-border transition-colors duration-300">
+              <div className="px-4 sm:px-6 lg:px-8">
+                <div className="flex justify-between items-center py-4">
+                  <div className="flex items-center space-x-4">
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => handleNavigation('dashboard')}
+                    >
+                      <AnimatedTitle size="small" />
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-muted-foreground">
+                        Welcome, {userProfile?.name || currentUser?.email}
+                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        {userProfile?.role}
+                      </Badge>
+                    </div>
+
+                    {/* Dark Mode Toggle */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleDarkMode}
+                      className="text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
+                    >
+                      {darkMode ? '☀️' : '🌙'}
+                    </Button>
+
+                    {/* Notifications Dropdown */}
+                    <NotificationDropdown
+                      alerts={alerts}
+                      onNavigate={handleNavigation}
+                    />
+                  </div>
+                </div>
+              </div>
+            </header>
+          )}
+
+          {/* Main Content */}
+          <div className="flex-1 transition-colors duration-300 overflow-auto bg-background">
+            {renderCurrentPage()}
+          </div>
+
+          {/* Debug Inventory Tester Modal */}
+          {showDebugTester && (
+            <DebugInventoryTester onClose={() => setShowDebugTester(false)} />
+          )}
+          
+          {/* Simple DB Test Modal */}
+          {showSimpleDbTest && (
+            <SimpleDbTest onClose={() => setShowSimpleDbTest(false)} />
+          )}
         </div>
       </div>
-    </div>
     </ErrorBoundary>
   );
 };

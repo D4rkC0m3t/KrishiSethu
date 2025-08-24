@@ -73,8 +73,8 @@ const Suppliers = ({ onNavigate }) => {
     };
   };
 
-  // Load suppliers from Supabase - memoized to prevent infinite re-renders
-  const loadSuppliers = useCallback(async () => {
+  // Load suppliers from Supabase
+  const loadSuppliers = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -89,8 +89,10 @@ const Suppliers = ({ onNavigate }) => {
         setSuppliers(normalizedSuppliers);
         setFilteredSuppliers(normalizedSuppliers);
       } else {
-        // If no suppliers exist, create some sample data
-        await createSampleSuppliers();
+        // No suppliers found - start with empty list
+        console.log('No suppliers found in database');
+        setSuppliers([]);
+        setFilteredSuppliers([]);
       }
     } catch (error) {
       console.error('Error loading suppliers:', error);
@@ -101,102 +103,9 @@ const Suppliers = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  }, []); // Empty dependency array since this function doesn't depend on any props or state
+  };
 
-  // Create sample suppliers for demo - memoized to prevent re-creation
-  const createSampleSuppliers = useCallback(async () => {
-    const sampleSuppliers = [
-      {
-        name: 'Tata Chemicals Ltd',
-        contactPerson: 'Rajesh Kumar',
-        phone: '+91-9876543210',
-        email: 'rajesh@tatachemicals.com',
-        address: 'Industrial Area, Phase 1',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        pincode: '400001',
-        gstNumber: '27AAACT2727Q1ZZ',
-        isActive: true,
-        totalPurchases: 15,
-        totalAmount: 450000
-      },
-      {
-        name: 'IFFCO Distributors',
-        contactPerson: 'Suresh Patel',
-        phone: '+91-9876543211',
-        email: 'suresh@iffco.com',
-        address: 'Fertilizer Complex',
-        city: 'Ahmedabad',
-        state: 'Gujarat',
-        pincode: '380001',
-        gstNumber: '24AAACI1681G1ZZ',
-        isActive: true,
-        totalPurchases: 12,
-        totalAmount: 320000
-      },
-      {
-        name: 'Green Gold Organics',
-        contactPerson: 'Priya Sharma',
-        phone: '+91-9876543212',
-        email: 'priya@greengold.com',
-        address: 'Organic Farm Complex',
-        city: 'Pune',
-        state: 'Maharashtra',
-        pincode: '411001',
-        gstNumber: '27AABCG1234Q1ZZ',
-        isActive: true,
-        totalPurchases: 8,
-        totalAmount: 180000
-      },
-      {
-        name: 'Coromandel International',
-        contactPerson: 'Amit Singh',
-        phone: '+91-9876543213',
-        email: 'amit@coromandel.com',
-        address: 'Chemical Plant',
-        city: 'Hyderabad',
-        state: 'Telangana',
-        pincode: '500001',
-        gstNumber: '36AABCC1234Q1ZZ',
-        isActive: false,
-        totalPurchases: 5,
-        totalAmount: 125000
-      }
-    ];
-
-    try {
-      for (const supplier of sampleSuppliers) {
-        try {
-          await suppliersService.add(supplier);
-        } catch (dbError) {
-          console.warn('Failed to save sample supplier to database:', dbError);
-        }
-      }
-
-      // Try to reload from database, fallback to local data
-      try {
-        const newSuppliers = await suppliersService.getAll();
-        if (newSuppliers && newSuppliers.length > 0) {
-          const normalizedSuppliers = newSuppliers.map(normalizeSupplier);
-          setSuppliers(normalizedSuppliers);
-          setFilteredSuppliers(normalizedSuppliers);
-        } else {
-          throw new Error('No suppliers returned from database');
-        }
-      } catch (dbError) {
-        console.warn('Failed to load from database, using local sample data:', dbError);
-        const normalizedSuppliers = sampleSuppliers.map(normalizeSupplier);
-        setSuppliers(normalizedSuppliers);
-        setFilteredSuppliers(normalizedSuppliers);
-      }
-    } catch (error) {
-      console.error('Error creating sample suppliers:', error);
-      // Fallback to local sample data
-      const normalizedSuppliers = sampleSuppliers.map(normalizeSupplier);
-      setSuppliers(normalizedSuppliers);
-      setFilteredSuppliers(normalizedSuppliers);
-    }
-  }, []); // Empty dependency array since this function doesn't depend on any props or state
+  // Removed createSampleSuppliers function - no longer auto-creating mock data
 
   useEffect(() => {
     // Initial load only - disable real-time subscription to prevent refresh loops
@@ -205,7 +114,7 @@ const Suppliers = ({ onNavigate }) => {
 
     // Note: Real-time subscription disabled to prevent infinite refresh loops
     // TODO: Implement proper Supabase real-time subscriptions later
-  }, [loadSuppliers]);
+  }, []); // Empty dependency array - run only once on mount
 
   // Filter suppliers based on search
   useEffect(() => {
@@ -334,19 +243,17 @@ const Suppliers = ({ onNavigate }) => {
             name: formData.name,
             contact_person: formData.contactPerson,
             phone: formData.phone,
-            email: formData.email,
+            email: formData.email || null,
             address: {
               street: formData.address || '',
               city: formData.city || '',
               state: formData.state || '',
               pincode: formData.pincode || '',
-              country: formData.country || 'India'
+              country: 'India'
             },
-            gst_number: formData.gstNumber,
-            pan_number: formData.panNumber,
-            payment_terms: formData.paymentTerms || '30 days',
-            credit_limit: parseFloat(formData.creditLimit) || 0,
-            is_active: formData.isActive !== false
+            gst_number: formData.gstNumber || null,
+            is_active: true,
+            organization_id: null // Allow universal suppliers for now
           };
 
           console.log('✅ Transformed update data for database:', updateData);
@@ -383,19 +290,17 @@ const Suppliers = ({ onNavigate }) => {
           name: formData.name,
           contact_person: formData.contactPerson,
           phone: formData.phone,
-          email: formData.email,
+          email: formData.email || null,
           address: {
             street: formData.address || '',
             city: formData.city || '',
             state: formData.state || '',
             pincode: formData.pincode || '',
-            country: formData.country || 'India'
+            country: 'India'
           },
-          gst_number: formData.gstNumber,
-          pan_number: formData.panNumber,
-          payment_terms: formData.paymentTerms || '30 days',
-          credit_limit: parseFloat(formData.creditLimit) || 0,
-          is_active: true
+          gst_number: formData.gstNumber || null,
+          is_active: true,
+          organization_id: null // Allow universal suppliers for now
           // ✅ No local ID - let database generate proper UUID
         };
 

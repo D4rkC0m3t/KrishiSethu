@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import { Alert, AlertDescription } from './ui/alert';
 import { brandsService } from '../lib/supabaseDb';
 import {
   Plus,
@@ -13,10 +14,12 @@ import {
   Award,
   CheckCircle,
   XCircle,
-  Building
+  Building,
+  AlertCircle,
+  CheckCircle2
 } from 'lucide-react';
 
-// BrandForm component moved outside to prevent remounting on each render
+// BrandForm component with validation
 const BrandForm = React.memo(({
   formData,
   setFormData,
@@ -24,27 +27,94 @@ const BrandForm = React.memo(({
   isLoading,
   selectedBrand,
   setShowAddDialog,
-  setShowEditDialog
+  setShowEditDialog,
+  errors = {}
 }) => {
+  const [validationErrors, setValidationErrors] = useState({});
+
+  // Validate form fields
+  const validateField = (name, value) => {
+    const errors = {};
+    
+    switch (name) {
+      case 'name':
+        if (!value.trim()) {
+          errors.name = 'Brand name is required';
+        } else if (value.trim().length < 2) {
+          errors.name = 'Brand name must be at least 2 characters';
+        } else if (value.trim().length > 100) {
+          errors.name = 'Brand name must be less than 100 characters';
+        }
+        break;
+      case 'description':
+        if (value && value.length > 500) {
+          errors.description = 'Description must be less than 500 characters';
+        }
+        break;
+    }
+    
+    return errors;
+  };
+
+  const handleFieldChange = (name, value) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Clear validation error when user starts typing
+    if (validationErrors[name]) {
+      setValidationErrors(prev => ({ ...prev, [name]: '' }));
+    }
+  };
+
+  const handleFieldBlur = (name, value) => {
+    const fieldErrors = validateField(name, value);
+    setValidationErrors(prev => ({ ...prev, ...fieldErrors }));
+  };
+
   console.log('🔍 BrandForm rendering with formData:', formData);
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Display form-level errors */}
+      {errors.form && (
+        <Alert className="bg-red-50 border-red-200">
+          <AlertCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700">
+            {errors.form}
+          </AlertDescription>
+        </Alert>
+      )}
+      
       <div className="space-y-2">
         <label className="text-sm font-medium">Brand Name *</label>
         <Input
-          placeholder="Enter brand name"
+          placeholder="Enter brand name (2-100 characters)"
           value={formData.name || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+          onChange={(e) => handleFieldChange('name', e.target.value)}
+          onBlur={(e) => handleFieldBlur('name', e.target.value)}
+          className={validationErrors.name ? 'border-red-500 focus:border-red-500' : ''}
           required
         />
+        {validationErrors.name && (
+          <p className="text-sm text-red-600">{validationErrors.name}</p>
+        )}
       </div>
+      
       <div className="space-y-2">
         <label className="text-sm font-medium">Description</label>
         <Input
-          placeholder="Enter description (optional)"
+          placeholder="Enter description (optional, max 500 characters)"
           value={formData.description || ''}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+          onChange={(e) => handleFieldChange('description', e.target.value)}
+          onBlur={(e) => handleFieldBlur('description', e.target.value)}
+          className={validationErrors.description ? 'border-red-500 focus:border-red-500' : ''}
         />
+        <div className="flex justify-between">
+          {validationErrors.description && (
+            <p className="text-sm text-red-600">{validationErrors.description}</p>
+          )}
+          <p className="text-xs text-gray-500 ml-auto">
+            {(formData.description || '').length}/500
+          </p>
+        </div>
       </div>
 
       <div className="flex items-center space-x-2">
@@ -52,10 +122,11 @@ const BrandForm = React.memo(({
           type="checkbox"
           id="brandIsActive"
           checked={formData.isActive}
-          onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+          onChange={(e) => handleFieldChange('isActive', e.target.checked)}
         />
         <label htmlFor="brandIsActive" className="text-sm font-medium">Active</label>
       </div>
+      
       <DialogFooter>
         <Button type="button" variant="outline" onClick={() => {
           setShowAddDialog(false);
@@ -63,7 +134,10 @@ const BrandForm = React.memo(({
         }}>
           Cancel
         </Button>
-        <Button type="submit" disabled={isLoading}>
+        <Button 
+          type="submit" 
+          disabled={isLoading || Object.keys(validationErrors).some(key => validationErrors[key])}
+        >
           {isLoading ? 'Saving...' : selectedBrand ? 'Update Brand' : 'Save Brand'}
         </Button>
       </DialogFooter>
@@ -82,8 +156,11 @@ const BrandsManagement = ({ onNavigate }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    logoUrl: '',
     isActive: true
   });
+  const [errors, setErrors] = useState({});
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Load brands
   useEffect(() => {
@@ -93,19 +170,17 @@ const BrandsManagement = ({ onNavigate }) => {
   const loadBrands = useCallback(async () => {
     try {
       setIsLoading(true);
+      setErrors({}); // Clear any previous errors
       const data = await brandsService.getAll();
       setBrands(data || []);
       setFilteredBrands(data || []);
     } catch (error) {
       console.error('Error loading brands:', error);
-      // Don't show alert during form input
-      if (!showAddDialog && !showEditDialog) {
-        alert('Error loading brands');
-      }
+      setErrors({ load: 'Failed to load brands. Please refresh the page to try again.' });
     } finally {
       setIsLoading(false);
     }
-  }, [showAddDialog, showEditDialog]);
+  }, []);
 
   // Filter brands
   useEffect(() => {
@@ -116,31 +191,49 @@ const BrandsManagement = ({ onNavigate }) => {
     setFilteredBrands(filtered);
   }, [brands, searchTerm]);
 
+  // Clear messages after timeout
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => setSuccessMessage(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
+
+  useEffect(() => {
+    if (errors.form) {
+      const timer = setTimeout(() => setErrors(prev => ({ ...prev, form: '' })), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errors.form]);
+
   // Handle form submission
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     try {
       setIsLoading(true);
+      setErrors({});
+      setSuccessMessage('');
       
       if (!formData.name.trim()) {
-        alert('Brand name is required');
+        setErrors({ form: 'Brand name is required' });
         return;
       }
 
       if (selectedBrand) {
         // Update existing brand
         await brandsService.update(selectedBrand.id, formData);
-        alert('Brand updated successfully!');
+        setSuccessMessage('Brand updated successfully!');
       } else {
         // Add new brand
         await brandsService.add(formData);
-        alert('Brand added successfully!');
+        setSuccessMessage('Brand added successfully!');
       }
 
       // Reset form and reload data
       setFormData({
         name: '',
         description: '',
+        logoUrl: '',
         isActive: true
       });
       setShowAddDialog(false);
@@ -149,7 +242,7 @@ const BrandsManagement = ({ onNavigate }) => {
       loadBrands();
     } catch (error) {
       console.error('Error saving brand:', error);
-      alert('Error saving brand');
+      setErrors({ form: `Failed to ${selectedBrand ? 'update' : 'create'} brand. Please try again.` });
     } finally {
       setIsLoading(false);
     }
@@ -162,10 +255,11 @@ const BrandsManagement = ({ onNavigate }) => {
     setFormData({
       name: brand.name || '',
       description: brand.description || '',
-      // Handle both camelCase and snake_case field names
-      isActive: brand.isActive !== false && brand.is_active !== false
+      logoUrl: brand.logoUrl || brand.logo_url || '',
+      // Standardized: Always use isActive (mapped from database)
+      isActive: brand.isActive !== false
     });
-    console.log('📋 Brand form populated with isActive:', brand.isActive || brand.is_active);
+    console.log('📋 Brand form populated with data:', { name: brand.name, isActive: brand.isActive });
     setShowEditDialog(true);
   };
 
@@ -174,12 +268,13 @@ const BrandsManagement = ({ onNavigate }) => {
     if (window.confirm(`Are you sure you want to delete "${brand.name}"?`)) {
       try {
         setIsLoading(true);
+        setErrors({});
         await brandsService.delete(brand.id);
-        alert('Brand deleted successfully!');
+        setSuccessMessage(`Brand "${brand.name}" deleted successfully!`);
         loadBrands();
       } catch (error) {
         console.error('Error deleting brand:', error);
-        alert('Error deleting brand');
+        setErrors({ delete: `Failed to delete "${brand.name}". Please try again.` });
       } finally {
         setIsLoading(false);
       }
@@ -189,11 +284,13 @@ const BrandsManagement = ({ onNavigate }) => {
   // Toggle active status
   const toggleActiveStatus = async (brand) => {
     try {
+      setErrors({});
       await brandsService.update(brand.id, { isActive: !brand.isActive });
+      setSuccessMessage(`Brand "${brand.name}" ${brand.isActive ? 'deactivated' : 'activated'} successfully!`);
       loadBrands();
     } catch (error) {
       console.error('Error updating brand status:', error);
-      alert('Error updating brand status');
+      setErrors({ toggle: `Failed to ${brand.isActive ? 'deactivate' : 'activate'} "${brand.name}". Please try again.` });
     }
   };
 
@@ -201,6 +298,28 @@ const BrandsManagement = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
+      {/* Success Message */}
+      {successMessage && (
+        <Alert className="bg-green-50 border-green-200">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-700">
+            {successMessage}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error Messages */}
+      {Object.entries(errors).map(([key, message]) => (
+        message && (
+          <Alert key={key} className="bg-red-50 border-red-200">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-700">
+              {message}
+            </AlertDescription>
+          </Alert>
+        )
+      ))}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -239,6 +358,7 @@ const BrandsManagement = ({ onNavigate }) => {
               selectedBrand={selectedBrand}
               setShowAddDialog={setShowAddDialog}
               setShowEditDialog={setShowEditDialog}
+              errors={errors}
             />
           </DialogContent>
         </Dialog>
@@ -348,6 +468,7 @@ const BrandsManagement = ({ onNavigate }) => {
             selectedBrand={selectedBrand}
             setShowAddDialog={setShowAddDialog}
             setShowEditDialog={setShowEditDialog}
+            errors={errors}
           />
         </DialogContent>
       </Dialog>

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { clearAuthStorage, isLocalStorageAvailable } from '../hooks/useLocalStorage';
+import debugEnhancedInventoryService from '../lib/debugEnhancedInventoryService';
 
 const AuthContext = createContext();
 
@@ -768,6 +769,42 @@ export const AuthProvider = ({ children }) => {
     return userRole === 'admin' || isTrialActive();
   };
 
+  // Debug inventory testing functions
+  const testInventoryLoading = async () => {
+    console.log('🧪 Testing inventory loading with debug service...');
+    try {
+      const result = await debugEnhancedInventoryService.fetchInventory(userProfile);
+      console.log('✅ Debug inventory test completed:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Debug inventory test failed:', error);
+      throw error;
+    }
+  };
+
+  const testSupabaseConnection = async () => {
+    console.log('🧪 Testing Supabase connection...');
+    try {
+      const result = await debugEnhancedInventoryService.testConnection();
+      console.log('✅ Connection test completed:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Connection test failed:', error);
+      throw error;
+    }
+  };
+
+  const getInventoryDebugStats = () => {
+    const stats = debugEnhancedInventoryService.getDebugStats();
+    console.log('📊 Inventory debug stats:', stats);
+    return stats;
+  };
+
+  const clearInventoryCache = () => {
+    debugEnhancedInventoryService.clearCache();
+    console.log('🧹 Inventory cache cleared');
+  };
+
   const value = {
     currentUser,
     userProfile,
@@ -782,7 +819,12 @@ export const AuthProvider = ({ children }) => {
     hasFullAccess,
     USER_ROLES,
     loading,
-    dbStatus
+    dbStatus,
+    // Debug inventory functions
+    testInventoryLoading,
+    testSupabaseConnection,
+    getInventoryDebugStats,
+    clearInventoryCache
   };
 
   return (

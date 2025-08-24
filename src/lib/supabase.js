@@ -18,9 +18,18 @@ function getRuntimeDebugConfig() {
 
 const runtime = getRuntimeDebugConfig();
 
-// Cloud Supabase configuration
-const supabaseUrl = (runtime?.url) || process.env.REACT_APP_SUPABASE_URL || 'https://srhfccodjurgnuvuqynp.supabase.co';
-const supabaseAnonKey = (runtime?.key) || process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyaGZjY29kanVyZ251dnVxeW5wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDU0NzksImV4cCI6MjA3MDkyMTQ3OX0.emNVb99D7c6K8CKYqkdDTzKr3Ly6mErKEFMEGbIDN8A';
+// Supabase configuration - Using hardcoded values that work
+const supabaseUrl = (runtime?.url) || process.env.REACT_APP_SUPABASE_URL || 'https://lnljcgttcdhrduixirgf.supabase.co';
+const supabaseAnonKey = (runtime?.key) || process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxubGpjZ3R0Y2RocmR1aXhpcmdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU5NTI0NDMsImV4cCI6MjA3MTUyODQ0M30.pGQ02RsrhIW7OZNf4DYl3Oo855Bo3r-GRuu7XFeTmmo';
+
+// Validate required environment variables
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ SUPABASE SETUP ERROR: Missing environment variables');
+  console.error('📝 Please add these to your .env file:');
+  console.error('   REACT_APP_SUPABASE_URL=https://your-project.supabase.co');
+  console.error('   REACT_APP_SUPABASE_ANON_KEY=your-anon-key');
+  console.error('🔗 Get them from: https://supabase.com/dashboard/project/your-project/settings/api');
+}
 
 // Log connection info for debugging
 console.log('☁️ KrishiSethu Supabase URL:', supabaseUrl);
@@ -30,19 +39,11 @@ console.log('📋 Using runtime config:', !!runtime);
 console.log('📋 ENV URL:', process.env.REACT_APP_SUPABASE_URL);
 console.log('📋 ENV Key (first 20):', process.env.REACT_APP_SUPABASE_ANON_KEY?.substring(0, 20) + '...');
 
-// Create Supabase client with enhanced configuration
+// Create Supabase client with minimal configuration (like working test)
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
-  },
-  db: {
-    schema: 'public'
-  },
-  global: {
-    headers: { 'x-application-name': 'krishisethu' }
+    persistSession: false,
+    autoRefreshToken: false
   }
 })
 

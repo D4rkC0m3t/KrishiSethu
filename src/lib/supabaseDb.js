@@ -165,6 +165,8 @@ const fieldMappings = {
       creditLimit: 'credit_limit',
       outstandingAmount: 'outstanding_amount',
       isActive: 'is_active',
+      organizationId: 'organization_id',
+      createdBy: 'created_by',
       createdAt: 'created_at',
       updatedAt: 'updated_at'
     },
@@ -177,6 +179,8 @@ const fieldMappings = {
       credit_limit: 'creditLimit',
       outstanding_amount: 'outstandingAmount',
       is_active: 'isActive',
+      organization_id: 'organizationId',
+      created_by: 'createdBy',
       created_at: 'createdAt',
       updated_at: 'updatedAt'
     }

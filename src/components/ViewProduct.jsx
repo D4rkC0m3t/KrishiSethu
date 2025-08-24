@@ -53,7 +53,12 @@ const ViewProduct = ({ product, onNavigate }) => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={() => onNavigate('inventory')}>
+          <Button variant="outline" onClick={() => {
+            // Trigger inventory refresh when navigating back
+            console.log('🔄 ViewProduct: Navigating back to inventory - triggering refresh');
+            window.dispatchEvent(new CustomEvent('inventory-navigation-refresh'));
+            onNavigate('inventory');
+          }}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Inventory
           </Button>

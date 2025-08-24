@@ -25,11 +25,11 @@ import {
 
 const COLUMNS = [
   { key: 'name', label: 'Product Name*', width: 220, required: true },
-  { key: 'brand', label: 'Brand*', width: 160, required: true, type: 'brand' },
-  { key: 'category', label: 'Category*', width: 170, required: true, type: 'category' },
-  { key: 'type', label: 'Type*', width: 140, required: true, options: FERTILIZER_TYPES, dependsOn: 'category' },
+  { key: 'brandId', label: 'Brand*', width: 160, required: true, type: 'brand' },
+  { key: 'categoryId', label: 'Category*', width: 170, required: true, type: 'category' },
+  { key: 'type', label: 'Type*', width: 140, required: true, options: FERTILIZER_TYPES, dependsOn: 'categoryId' },
   { key: 'batchNo', label: 'Batch No*', width: 140, required: true },
-  { key: 'barcode', label: 'Barcode/QR', width: 150 },
+  { key: 'barcode', label:'Barcode/QR', width: 150 },
   { key: 'hsn', label: 'HSN', width: 110 },
   { key: 'gstRate', label: 'GST %', width: 100, options: GST_RATES.map(r => r.toString()) },
   { key: 'manufacturingDate', label: 'Mfg Date', width: 150, type: 'date' },
@@ -44,9 +44,9 @@ const COLUMNS = [
 
 const emptyRow = () => ({
   name: '',
-  brand: '',
+  brandId: '', // Use UUID
   type: '',
-  category: '',
+  categoryId: '', // Use UUID
   batchNo: '',
   barcode: '',
   hsn: '',
@@ -212,7 +212,45 @@ export default function BulkAddProductTable({ onNavigate }) {
         if (!copy[targetIndex]) copy[targetIndex] = emptyRow();
         for (let c = 0; c < data[r].length && (startCol + c) < COLUMNS.length; c++) {
           const colKey = COLUMNS[startCol + c].key;
-          copy[targetIndex] = { ...copy[targetIndex], [colKey]: data[r][c].trim() };
+          let value = data[r][c].trim();
+          
+          // Map names to UUIDs for brand and category fields
+          if (colKey === 'brandId' && value) {
+            // Look up brand by name to get UUID
+            const matchingBrand = brands.find(brand => 
+              brand.name.toLowerCase() === value.toLowerCase()
+            );
+            if (matchingBrand) {
+              value = matchingBrand.id;
+              console.log(`🔄 Mapped brand name "${data[r][c].trim()}" to UUID: ${value}`);
+            } else {
+              console.warn(`⚠️ Brand name "${value}" not found in database. Keeping as-is.`);
+            }
+          } else if (colKey === 'categoryId' && value) {
+            // Look up category by name to get UUID
+            const matchingCategory = categories.find(category => 
+              category.name.toLowerCase() === value.toLowerCase()
+            );
+            if (matchingCategory) {
+              value = matchingCategory.id;
+              console.log(`🔄 Mapped category name "${data[r][c].trim()}" to UUID: ${value}`);
+            } else {
+              console.warn(`⚠️ Category name "${value}" not found in database. Keeping as-is.`);
+            }
+          } else if (colKey === 'supplierId' && value) {
+            // Look up supplier by name to get UUID
+            const matchingSupplier = suppliers.find(supplier => 
+              supplier.name.toLowerCase() === value.toLowerCase()
+            );
+            if (matchingSupplier) {
+              value = matchingSupplier.id;
+              console.log(`🔄 Mapped supplier name "${data[r][c].trim()}" to UUID: ${value}`);
+            } else {
+              console.warn(`⚠️ Supplier name "${value}" not found in database. Keeping as-is.`);
+            }
+          }
+          
+          copy[targetIndex] = { ...copy[targetIndex], [colKey]: value };
         }
       }
       return copy;
@@ -255,12 +293,16 @@ export default function BulkAddProductTable({ onNavigate }) {
           continue;
         }
 
-        // Resolve names to IDs for foreign key references
-        const categoryId = categories.find(cat => cat.name === row.category)?.id || null;
-        const brandId = brands.find(brand => brand.name === row.brand)?.id || null;
+        // Use the UUIDs directly from the form
+        const categoryId = row.categoryId;
+        const brandId = row.brandId;
         
-        console.log('🔍 Resolving category:', row.category, '→', categoryId);
-        console.log('🔍 Resolving brand:', row.brand, '→', brandId);
+        console.log('🔍 Using categoryId:', categoryId);
+        console.log('🔍 Using brandId:', brandId);
+
+        // Get category name for enum mapping
+        const selectedCategory = categories.find(cat => cat.id === categoryId);
+        const categoryName = selectedCategory?.name || '';
 
         // Map category name to enum value - convert frontend category names to database enum values
         const categoryToEnumMapping = {
@@ -274,22 +316,21 @@ export default function BulkAddProductTable({ onNavigate }) {
         };
 
         // For types, we need to map the category to the enum value
-        const typeEnum = categoryToEnumMapping[row.category] || 'Chemical'; // Default to Chemical
+        const typeEnum = categoryToEnumMapping[categoryName] || 'Chemical'; // Default to Chemical
 
-        console.log('🔄 Resolving references:', {
-          categoryName: row.category,
+        console.log('🔄 Final data for save:', {
+          categoryName: categoryName,
           categoryId: categoryId,
-          brandName: row.brand,
           brandId: brandId,
           typeEnum: typeEnum
         });
 
         // Validate that we have valid IDs
         if (!categoryId) {
-          throw new Error(`Category "${row.category}" not found in database`);
+          throw new Error(`Category is required but not selected`);
         }
         if (!brandId) {
-          throw new Error(`Brand "${row.brand}" not found in database`);
+          throw new Error(`Brand is required but not selected`);
         }
 
         // Map frontend fields to database schema
@@ -398,6 +439,13 @@ export default function BulkAddProductTable({ onNavigate }) {
           <CardDescription>Use Tab/Enter to move between cells. You can paste multiple rows directly.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-4 text-sm">
+            <p className="text-amber-800">
+              <strong>💡 Tip:</strong> When pasting from Excel/CSV, you can use brand and category <strong>names</strong> 
+              (like "BioNutri" or "Chemical Fertilizer") - they'll automatically be converted to the correct database IDs.
+            </p>
+          </div>
+          
           <div className="flex items-center gap-2 pb-3">
             <Button size="sm" onClick={() => addRows(5)}><Plus className="h-4 w-4 mr-1"/>Add 5 rows</Button>
             <Button size="sm" variant="outline" onClick={() => addRows(10)}><Plus className="h-4 w-4 mr-1"/>Add 10</Button>
@@ -445,8 +493,8 @@ export default function BulkAddProductTable({ onNavigate }) {
                                     return types;
                                   })()
                                 : col.options
-                              ).map(opt => (
-                                <SelectItem key={opt} value={opt}>
+                              ).map((opt, optIndex) => (
+                                <SelectItem key={`${row.category}-${col.key}-${opt}-${optIndex}`} value={opt}>
                                   {col.key === 'gstRate' ? `${opt}%` : opt}
                                 </SelectItem>
                               ))}
@@ -462,26 +510,26 @@ export default function BulkAddProductTable({ onNavigate }) {
                             </SelectContent>
                           </Select>
                         ) : col.type === 'category' ? (
-                          <Select value={row.category || ''} onValueChange={(v) => handleCellChange(rIdx, 'category', v)}>
+                          <Select value={row.categoryId || ''} onValueChange={(v) => handleCellChange(rIdx, 'categoryId', v)}>
                             <SelectTrigger className="h-8">
                               <SelectValue placeholder={categoriesLoading ? "Loading..." : "Select Category"} />
                             </SelectTrigger>
                             <SelectContent>
                               {categories.map(category => (
-                                <SelectItem key={category.id} value={category.name}>
+                                <SelectItem key={category.id} value={category.id}>
                                   {category.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                         ) : col.type === 'brand' ? (
-                          <Select value={row.brand || ''} onValueChange={(v) => handleCellChange(rIdx, 'brand', v)}>
+                          <Select value={row.brandId || ''} onValueChange={(v) => handleCellChange(rIdx, 'brandId', v)}>
                             <SelectTrigger className="h-8">
                               <SelectValue placeholder={brandsLoading ? "Loading..." : "Select Brand"} />
                             </SelectTrigger>
                             <SelectContent>
                               {brands.map(brand => (
-                                <SelectItem key={brand.id} value={brand.name}>
+                                <SelectItem key={brand.id} value={brand.id}>
                                   {brand.name}
                                 </SelectItem>
                               ))}

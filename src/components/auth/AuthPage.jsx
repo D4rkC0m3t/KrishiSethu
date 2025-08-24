@@ -3,12 +3,14 @@ import { supabase } from '../../lib/supabase';
 import LoginForm from './LoginForm';
 import RegistrationForm from './RegistrationForm';
 import { TrialStatusBanner } from '../admin/AdminControlPanel';
+import OrganizationSetup from '../onboarding/OrganizationSetup';
 
 const AuthPage = ({ onAuthSuccess }) => {
-  const [currentView, setCurrentView] = useState('login'); // 'login' or 'register'
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'register', 'org-setup'
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [needsOrgSetup, setNeedsOrgSetup] = useState(false);
 
   useEffect(() => {
     // Check if user is already logged in
@@ -106,6 +108,13 @@ const AuthPage = ({ onAuthSuccess }) => {
         return;
       }
 
+      // Check if user needs to set up organization
+      if (!profile.organization_id && profile.role !== 'admin') {
+        setNeedsOrgSetup(true);
+        setCurrentView('org-setup');
+        return;
+      }
+
       // Valid user, proceed to app
       onAuthSuccess && onAuthSuccess({ user, profile });
     } catch (error) {
@@ -119,6 +128,13 @@ const AuthPage = ({ onAuthSuccess }) => {
     setUser(user);
     setProfile(profile);
 
+    // Check if user needs organization setup
+    if (!profile.organization_id && profile.role !== 'admin') {
+      setNeedsOrgSetup(true);
+      setCurrentView('org-setup');
+      return;
+    }
+
     // Proceed to app
     onAuthSuccess && onAuthSuccess({ user, profile, trialStatus });
   };
@@ -131,6 +147,25 @@ const AuthPage = ({ onAuthSuccess }) => {
   const handleUpgrade = () => {
     // Redirect to upgrade/payment page
     alert('Upgrade functionality will be implemented here. Contact admin for now.');
+  };
+
+  const handleOrganizationSetupComplete = async (organizationData) => {
+    try {
+      // Update the profile with the new organization_id
+      const updatedProfile = {
+        ...profile,
+        organization_id: organizationData.id
+      };
+      
+      setProfile(updatedProfile);
+      setNeedsOrgSetup(false);
+      setCurrentView('login');
+      
+      // Proceed to the main app
+      onAuthSuccess && onAuthSuccess({ user, profile: updatedProfile });
+    } catch (error) {
+      console.error('Error completing organization setup:', error);
+    }
   };
 
   if (loading) {
@@ -182,12 +217,17 @@ const AuthPage = ({ onAuthSuccess }) => {
             onSuccess={handleLoginSuccess}
             onSwitchToRegister={() => setCurrentView('register')}
           />
-        ) : (
+        ) : currentView === 'register' ? (
           <RegistrationForm
             onSuccess={handleRegistrationSuccess}
             onSwitchToLogin={() => setCurrentView('login')}
           />
-        )}
+        ) : currentView === 'org-setup' ? (
+          <OrganizationSetup
+            userId={user?.id}
+            onComplete={handleOrganizationSetupComplete}
+          />
+        ) : null}
 
         {/* Footer */}
         <div className="text-center mt-8 text-sm text-gray-500">

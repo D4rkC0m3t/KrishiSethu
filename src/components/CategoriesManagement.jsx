@@ -26,8 +26,16 @@ const CategoriesManagement = ({ onNavigate }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    parentId: null,
+    colorCode: '#10b981',
+    icon: 'tag',
+    sortOrder: 0,
     isActive: true
   });
+  const [parentCategories, setParentCategories] = useState([]);
+  const [categoryStats, setCategoryStats] = useState({});
+  const [showStats, setShowStats] = useState(false);
+  const [viewMode, setViewMode] = useState('table'); // 'table', 'tree', 'cards'
 
   // Load categories
   useEffect(() => {

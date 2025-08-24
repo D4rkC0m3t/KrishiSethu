@@ -53,19 +53,43 @@ export const safeParseInt = (value, defaultValue = 0) => {
 
 /**
  * Calculate percentage safely
- * @param {number} value - The value
- * @param {number} total - The total
+ * @param {number} value - The value (if total provided) or percentage value
+ * @param {number} total - The total (optional)
  * @param {number} decimals - Number of decimal places (default: 1)
  * @returns {string} Formatted percentage string
  */
-export const formatPercentage = (value, total, decimals = 1) => {
+export const formatPercentage = (value, total = null, decimals = 1) => {
   const val = safeParseNumber(value);
-  const tot = safeParseNumber(total);
   
+  if (total === null) {
+    // Direct percentage formatting
+    return `${val.toFixed(decimals)}%`;
+  }
+  
+  const tot = safeParseNumber(total);
   if (tot === 0) return '0%';
   
   const percentage = (val / tot) * 100;
   return `${percentage.toFixed(decimals)}%`;
+};
+
+/**
+ * Format date safely
+ * @param {Date|string} date - The date to format
+ * @param {object} options - Intl.DateTimeFormat options
+ * @returns {string} Formatted date string
+ */
+export const formatDate = (date, options = { year: 'numeric', month: 'short', day: 'numeric' }) => {
+  if (!date) return 'N/A';
+  
+  try {
+    const dateObj = date instanceof Date ? date : new Date(date);
+    if (isNaN(dateObj.getTime())) return 'Invalid Date';
+    
+    return dateObj.toLocaleDateString('en-US', options);
+  } catch (error) {
+    return 'Invalid Date';
+  }
 };
 
 /**

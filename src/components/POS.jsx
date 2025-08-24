@@ -412,7 +412,7 @@ const POS = ({ onNavigate }) => {
 
           // Show notification to add products
           const notification = document.createElement('div');
-          notification.className = 'fixed top-4 right-4 bg-blue-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.className = 'fixed top-4 right-4 bg-blue-500 dark:bg-blue-600 text-white p-3 rounded-lg shadow-lg z-50';
           notification.innerHTML = `
             <div class="flex items-center gap-2">
               <span>📦</span>
@@ -436,7 +436,7 @@ const POS = ({ onNavigate }) => {
 
         // Show error notification
         const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.className = 'fixed top-4 right-4 bg-red-500 dark:bg-red-600 text-white p-3 rounded-lg shadow-lg z-50';
         notification.innerHTML = `
           <div class="flex items-center gap-2">
             <span>❌</span>
@@ -526,7 +526,7 @@ const POS = ({ onNavigate }) => {
 
       // Show warning notification
       const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white p-3 rounded-lg shadow-lg z-50';
+      notification.className = 'fixed top-4 right-4 bg-yellow-500 dark:bg-yellow-600 text-white p-3 rounded-lg shadow-lg z-50';
       notification.innerHTML = `
         <div class="flex items-center gap-2">
           <span>⚠️</span>
@@ -762,7 +762,7 @@ const POS = ({ onNavigate }) => {
 
         // Show success notification
         const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.className = 'fixed top-4 right-4 bg-green-500 dark:bg-green-600 text-white p-3 rounded-lg shadow-lg z-50';
         notification.textContent = `✓ Added: ${result.product.name}`;
         document.body.appendChild(notification);
 
@@ -774,7 +774,7 @@ const POS = ({ onNavigate }) => {
       } else {
         // Show error notification
         const notification = document.createElement('div');
-        notification.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+        notification.className = 'fixed top-4 right-4 bg-red-500 dark:bg-red-600 text-white p-3 rounded-lg shadow-lg z-50';
         notification.textContent = `❌ Product not found: ${barcode}`;
         document.body.appendChild(notification);
 
@@ -787,7 +787,7 @@ const POS = ({ onNavigate }) => {
 
       // Show error notification
       const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-red-500 text-white p-3 rounded-lg shadow-lg z-50';
+      notification.className = 'fixed top-4 right-4 bg-red-500 dark:bg-red-600 text-white p-3 rounded-lg shadow-lg z-50';
       notification.textContent = '❌ Error processing barcode';
       document.body.appendChild(notification);
 
@@ -850,7 +850,7 @@ const POS = ({ onNavigate }) => {
 
   // Enhanced sale completion with offline support
   const completeSale = async () => {
-    console.log('completeSale function called');
+    console.log('🔄 completeSale function called');
 
     // Validation
     if (cart.length === 0) {
@@ -863,7 +863,7 @@ const POS = ({ onNavigate }) => {
       return;
     }
 
-    console.log('Starting payment processing...');
+    console.log('💰 Starting payment processing...');
     setIsProcessing(true);
 
     try {
@@ -927,13 +927,21 @@ const POS = ({ onNavigate }) => {
         throw new Error('Valid total amount is required');
       }
 
-      // Try to save to Supabase database first
+      // Try to save to Supabase database first with timeout
       let savedToDatabase = false;
       let savedSale = null;
       try {
         if (navigator.onLine) {
           console.log('💾 Attempting to save sale to Supabase database...');
-          savedSale = await salesService.create(saleData);
+          
+          // Add timeout wrapper to prevent hanging
+          const SUPABASE_TIMEOUT = 15000; // 15 seconds
+          const savePromise = salesService.create(saleData);
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Supabase operation timed out after 15 seconds')), SUPABASE_TIMEOUT);
+          });
+          
+          savedSale = await Promise.race([savePromise, timeoutPromise]);
           savedToDatabase = true;
           console.log('✅ Sale saved to Supabase successfully:', savedSale);
           console.log('💰 Saved sale amount details:', {
@@ -941,6 +949,8 @@ const POS = ({ onNavigate }) => {
             'savedSale.subtotal': savedSale.subtotal,
             'savedSale.tax_amount': savedSale.tax_amount
           });
+        } else {
+          console.log('🌐 Device is offline, will store sale offline');
         }
       } catch (databaseError) {
         console.error('❌ Failed to save to Supabase:', databaseError);
@@ -948,10 +958,33 @@ const POS = ({ onNavigate }) => {
           message: databaseError.message,
           code: databaseError.code,
           details: databaseError.details,
-          hint: databaseError.hint
+          hint: databaseError.hint,
+          name: databaseError.name,
+          stack: databaseError.stack?.slice(0, 500) // Limit stack trace length
         });
         console.error('❌ Sale data that failed:', saleData);
-        console.warn('Will store offline instead');
+        console.warn('⚠️ Will store offline instead');
+        
+        // Show specific error notification
+        if (databaseError.message?.includes('timeout')) {
+          const notification = document.createElement('div');
+          notification.className = 'fixed top-4 right-4 bg-orange-500 dark:bg-orange-600 text-white p-3 rounded-lg shadow-lg z-50';
+          notification.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span>⏱️</span>
+              <div>
+                <div class="font-medium">Database Timeout</div>
+                <div class="text-sm">Sale will be saved offline and synced later</div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(notification);
+          setTimeout(() => {
+            if (document.body.contains(notification)) {
+              document.body.removeChild(notification);
+            }
+          }, 5000);
+        }
       }
 
       // If Supabase failed or offline, store in IndexedDB
@@ -970,7 +1003,7 @@ const POS = ({ onNavigate }) => {
 
           // Show offline notification
           const notification = document.createElement('div');
-          notification.className = 'fixed top-4 right-4 bg-yellow-500 text-white p-3 rounded-lg shadow-lg z-50';
+          notification.className = 'fixed top-4 right-4 bg-yellow-500 dark:bg-yellow-600 text-white p-3 rounded-lg shadow-lg z-50';
           notification.textContent = '📱 Sale saved offline - will sync to Supabase when online';
           document.body.appendChild(notification);
 
@@ -985,8 +1018,10 @@ const POS = ({ onNavigate }) => {
         }
       }
 
-      // Update inventory quantities
+      // Update inventory quantities with timeout protection
       const updatedProductIds = [];
+      const INVENTORY_TIMEOUT = 10000; // 10 seconds per update
+      
       for (const item of cart) {
         try {
           const product = products.find(p => p.id === item.id);
@@ -1003,9 +1038,33 @@ const POS = ({ onNavigate }) => {
             });
 
             if (navigator.onLine) {
-              await productsService.update(product.id, { quantity: newQuantity });
-              console.log(`✅ Database updated for ${product.name}: ${currentStock} → ${newQuantity}`);
-              updatedProductIds.push(product.id);
+              try {
+                // Add timeout wrapper for inventory update
+                const updatePromise = productsService.update(product.id, { quantity: newQuantity });
+                const timeoutPromise = new Promise((_, reject) => {
+                  setTimeout(() => reject(new Error(`Inventory update timed out for ${product.name}`)), INVENTORY_TIMEOUT);
+                });
+                
+                await Promise.race([updatePromise, timeoutPromise]);
+                console.log(`✅ Database updated for ${product.name}: ${currentStock} → ${newQuantity}`);
+                updatedProductIds.push(product.id);
+              } catch (inventoryDatabaseError) {
+                console.warn(`⚠️ Failed to update inventory in database for ${product.name}:`, inventoryDatabaseError);
+                
+                // Store inventory update offline as fallback
+                await offlineStorage.addOfflineInventoryUpdate({
+                  id: `inv_update_${Date.now()}_${item.id}`,
+                  productId: item.id,
+                  type: 'sale',
+                  quantityChange: -item.quantity,
+                  newQuantity,
+                  saleId: savedSale?.id || saleData.id,
+                  timestamp: new Date(),
+                  error: inventoryDatabaseError.message
+                });
+                
+                console.log(`📱 Inventory update stored offline for ${product.name}`);
+              }
             } else {
               // Store inventory update offline
               await offlineStorage.addOfflineInventoryUpdate({
@@ -1017,6 +1076,8 @@ const POS = ({ onNavigate }) => {
                 saleId: savedSale?.id || saleData.id,
                 timestamp: new Date()
               });
+              
+              console.log(`📱 Inventory update stored offline for ${product.name} (device offline)`);
             }
 
             // Update local products state immediately to reflect new stock
@@ -1027,9 +1088,17 @@ const POS = ({ onNavigate }) => {
                   : p
               )
             );
+          } else {
+            console.warn(`⚠️ Product not found for inventory update: ${item.id}`);
           }
         } catch (inventoryError) {
-          console.warn('Failed to update inventory for product:', item.id, inventoryError);
+          console.error(`❌ Critical error updating inventory for product ${item.id}:`, {
+            error: inventoryError.message,
+            product: item.name,
+            quantity: item.quantity
+          });
+          
+          // Continue processing other items even if one fails
         }
       }
 
@@ -1058,7 +1127,7 @@ const POS = ({ onNavigate }) => {
 
       // Show success notification
       const notification = document.createElement('div');
-      notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg z-50';
+      notification.className = 'fixed top-4 right-4 bg-green-500 dark:bg-green-600 text-white p-3 rounded-lg shadow-lg z-50';
       notification.textContent = '✅ Sale completed successfully!';
       document.body.appendChild(notification);
 
@@ -1160,12 +1229,207 @@ const POS = ({ onNavigate }) => {
     setSelectedCustomer(null);
   };
 
-  // Print receipt function - Optimized Dual Copy Layout for A4 Portrait
+  // Print receipt function - JaiKisaan Style Identical Dual Copy Layout for A4 Portrait
   const printReceipt = () => {
     if (cart.length === 0) {
       alert('Cart is empty!');
       return;
     }
+
+    // Generate invoice content template that will be identical for both copies
+    const generateInvoiceContent = (copyType, qrCodeId) => {
+      return `
+        <!-- Copy Type -->
+        <div class="copy-type">${copyType}</div>
+        
+        <!-- Header Section - JaiKisaan Style -->
+        <div class="header-section">
+          <div class="company-logo">
+            ${shopDetails?.logo ? `
+              <img src="${shopDetails.logo}" alt="Logo" />
+            ` : `
+              <div style="font-size: 8px; font-weight: bold; text-align: center;">JAI<br/>KISAAN</div>
+            `}
+          </div>
+          
+          <div class="company-info">
+            <div class="company-name">${shopDetails?.name || 'JaiKisaan Fertilizers'}</div>
+            <div class="gst-invoice">GST Invoice</div>
+            <div class="company-details">
+              <div>${shopDetails?.address ? formatAddress(shopDetails.address) : 'Fertilizer Distribution Center'}</div>
+              <div>Phone: ${shopDetails?.phone || '+91-9876543210'}</div>
+            </div>
+          </div>
+          
+          <div class="right-logo">
+            <div id="${qrCodeId}" style="width: 48px; height: 38px; display: flex; align-items: center; justify-content: center;"></div>
+          </div>
+        </div>
+        
+        <!-- Company & Invoice Information Section -->
+        <div class="customer-invoice-section">
+          <!-- Left Side - Company Info -->
+          <div class="customer-details">
+            <div class="section-title"><strong>${shopDetails?.name || 'JaiKisaan'} Limited</strong></div>
+            <div style="margin-top: 2px;">
+              <div><strong>Dispatched From:</strong></div>
+              <div>${shopDetails?.address ? formatAddress(shopDetails.address) : 'Fertilizer Distribution Center, Hyderabad, Telangana, 500001'}</div>
+              <div>Telangana, India</div>
+              <div><strong>GSTIN:</strong> ${shopDetails?.gstNumber || '36AAACZ3924H1Z5'}</div>
+              <div><strong>MFDSID:</strong> ${shopDetails?.mfdSid || '1115736'}</div>
+              <div style="margin-top: 2px;">
+                <div style="border: 1px solid #000; padding: 1px 2px; display: inline-block;"><strong>State Name:</strong> Telangana</div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Right Side - Invoice & Customer Info -->
+          <div class="invoice-details">
+            <div><strong>Invoice No.:</strong> ${currentBillNumber}</div>
+            <div><strong>Receipt No.:</strong> ${currentBillNumber}</div>
+            <div><strong>Invoice Date:</strong> ${new Date().toLocaleDateString('en-GB')}</div>
+            <div><strong>License No.:</strong> ${shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
+            
+            <div style="margin-top: 4px;">
+              <div><strong>Billed Customer (Bill to)</strong></div>
+              <div><strong>Customer No.:</strong> ${selectedCustomer?.id || 'C' + Date.now().toString().slice(-8)}</div>
+              <div><strong>Customer Name:</strong> ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
+              <div><strong>Village:</strong> ${selectedCustomer?.city || customerForm.city || 'N/A'}</div>
+              <div><strong>Phone No.:</strong> ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
+              <div><strong>Sales Type:</strong> Cash Sales</div>
+              <div><strong>Customer GST No:</strong> ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Items Table -->
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th style="width: 4%;">S.No</th>
+              <th style="width: 25%;">Description of Goods</th>
+              <th style="width: 8%;">Item Code</th>
+              <th style="width: 8%;">HSN/SAC</th>
+              <th style="width: 6%;">Batch No.</th>
+              <th style="width: 6%;">Expiry</th>
+              <th style="width: 8%;">Qty & Unit</th>
+              <th style="width: 5%;">Pack</th>
+              <th style="width: 6%;">Rate</th>
+              <th style="width: 6%;">Amount</th>
+              <th style="width: 5%;">Discount</th>
+              <th style="width: 6%;">Taxable</th>
+              <th style="width: 3%;">CGST%</th>
+              <th style="width: 4%;">CGST</th>
+              <th style="width: 3%;">SGST%</th>
+              <th style="width: 4%;">SGST</th>
+              <th style="width: 3%;">IGST%</th>
+              <th style="width: 4%;">IGST</th>
+              <th style="width: 6%;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cart.map((item, index) => {
+              const itemTotal = item.price * item.quantity;
+              const gstRate = item.gstRate || 5;
+              const taxableAmount = itemTotal;
+              const gstAmount = (itemTotal * gstRate) / 100;
+              const cgstAmount = gstAmount / 2;
+              const sgstAmount = gstAmount / 2;
+              const totalWithTax = itemTotal + gstAmount;
+              
+              return `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td class="product-name">${item.name}</td>
+                  <td>${item.barcode || 'N/A'}</td>
+                  <td>${item.hsn || '31051000'}</td>
+                  <td>${item.batchNo || 'N/A'}</td>
+                  <td>${item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('en-GB') : 'N/A'}</td>
+                  <td>${item.quantity} ${item.unit || 'KG'}</td>
+                  <td>${item.unit || 'KG'}</td>
+                  <td>₹${item.price.toFixed(2)}</td>
+                  <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
+                  <td>₹0.00</td>
+                  <td class="amount-col">₹${taxableAmount.toFixed(2)}</td>
+                  <td>${(gstRate/2).toFixed(1)}</td>
+                  <td>₹${cgstAmount.toFixed(2)}</td>
+                  <td>${(gstRate/2).toFixed(1)}</td>
+                  <td>₹${sgstAmount.toFixed(2)}</td>
+                  <td>0.0</td>
+                  <td>₹0.00</td>
+                  <td class="amount-col">₹${totalWithTax.toFixed(2)}</td>
+                </tr>
+              `;
+            }).join('')}
+            
+            <!-- Grand Total Row - Simplified without final total -->
+            <tr class="total-row">
+              <td colspan="9"><strong>Grand Total</strong></td>
+              <td class="amount-col"><strong>₹${subtotal.toFixed(2)}</strong></td>
+              <td><strong>₹${discountAmount.toFixed(2)}</strong></td>
+              <td class="amount-col"><strong>₹${(subtotal - discountAmount).toFixed(2)}</strong></td>
+              <td></td>
+              <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
+              <td></td>
+              <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
+              <td></td>
+              <td><strong>₹0.00</strong></td>
+              <td class="amount-col"></td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <!-- Footer Content -->
+        <div class="footer-content">
+          <!-- Total Amount in Words -->
+          <div class="total-amount-words">
+            <strong>Total Invoice Value (in words):</strong> ${numberToWordsIndian(Math.round(total))} Only
+          </div>
+          
+          <!-- Total Amount Display -->
+          <div class="total-amount-display">
+            <div style="border: 2px solid #000; padding: 4px 8px; text-align: center; font-weight: bold; font-size: 14px; display: inline-block; min-width: 100px;">
+              ₹${total.toFixed(2)}
+            </div>
+            <div style="font-size: 7px; text-align: center; margin-top: 2px; font-weight: bold;">Total Amount (incl. tax)</div>
+          </div>
+          
+          <!-- Footer Section -->
+          <div class="footer-section">
+            <div class="terms-section">
+              <strong>Terms & Conditions:</strong><br>
+              • Goods once sold will not be taken back<br>
+              • This invoice is not payable under reverse charge<br>
+              • Payment due immediately unless credit terms agreed
+            </div>
+            <div class="payment-section">
+              <strong>Payment Details:</strong><br>
+              <strong>Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}<br>
+              <strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br>
+              <strong>Change Given:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
+            </div>
+          </div>
+          
+          <!-- Signatures Section -->
+          <div class="signature-section">
+            <div class="company-signature">
+              <strong>For ${shopDetails?.name || 'JaiKisaan Fertilizers'}</strong>
+              <div class="signature-line">Authorized Signatory</div>
+            </div>
+            <div class="customer-signature">
+              <strong>Customer Signature</strong><br>
+              <strong>For Acknowledgement</strong>
+              <div class="signature-line">Customer</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Footer Note -->
+        <div style="text-align: center; font-size: 6px; margin-top: 2px; padding-top: 2px; border-top: 1px solid #ccc; position: absolute; bottom: 2px; left: 3mm; right: 3mm;">
+          Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge mechanism
+        </div>
+      `;
+    };
 
     const printWindow = window.open('', '_blank', 'width=794,height=1123');
     if (printWindow) {
@@ -1182,12 +1446,12 @@ const POS = ({ onNavigate }) => {
               }
               
               body {
-                font-family: Arial, sans-serif;
+                font-family: 'Arial', sans-serif;
                 font-size: 10px;
-                line-height: 1.2;
+                line-height: 1.3;
                 color: #000;
                 background: white;
-                padding: 8mm;
+                padding: 5mm;
               }
               
               .dual-invoice-container {
@@ -1197,8 +1461,8 @@ const POS = ({ onNavigate }) => {
                 background: white;
                 display: grid;
                 grid-template-rows: 1fr 1fr;
-                gap: 3mm;
-                padding: 5mm;
+                gap: 4mm;
+                padding: 3mm;
                 box-sizing: border-box;
                 page-break-inside: avoid;
               }
@@ -1207,14 +1471,25 @@ const POS = ({ onNavigate }) => {
                 border: 2px solid #000;
                 padding: 3mm;
                 background: white;
-                width: 200mm;
-                height: 140mm;
+                width: 204mm;
+                height: 142mm;
                 box-sizing: border-box;
                 display: grid;
                 grid-template-rows: auto auto 1fr auto;
                 gap: 2mm;
                 overflow: hidden;
                 position: relative;
+              }
+              
+              .copy-type {
+                font-size: 13px;
+                font-weight: bold;
+                text-align: center;
+                margin-bottom: 3px;
+                text-decoration: underline;
+                padding: 2px 0;
+                background-color: #f8f9fa;
+                border: 1px solid #000;
               }
               
               .header-section {
@@ -1227,242 +1502,220 @@ const POS = ({ onNavigate }) => {
               }
               
               .company-logo {
-                width: 50px;
-                height: 40px;
-                border: 1px solid #000;
+                width: 55px;
+                height: 45px;
+                border: 2px solid #000;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
-                font-size: 8px;
+                font-size: 9px;
+                font-weight: bold;
+                background-color: #f8f9fa;
               }
               
               .company-logo img {
-                max-width: 48px;
-                max-height: 38px;
+                max-width: 50px;
+                max-height: 40px;
                 object-fit: contain;
               }
               
               .company-info {
                 flex: 1;
                 text-align: center;
-                padding: 0 8px;
+                padding: 0 10px;
               }
               
               .company-name {
-                font-size: 18px;
+                font-size: 20px;
                 font-weight: bold;
-                margin-bottom: 2px;
+                margin-bottom: 3px;
+                color: #2c3e50;
               }
               
               .gst-invoice {
-                font-size: 14px;
+                font-size: 16px;
                 font-weight: bold;
-                margin-bottom: 3px;
+                margin-bottom: 4px;
+                text-decoration: underline;
+                color: #e74c3c;
               }
               
               .company-details {
                 font-size: 9px;
-                line-height: 1.3;
+                line-height: 1.4;
+                color: #34495e;
               }
               
               .right-logo {
-                width: 50px;
-                height: 40px;
-                border: 1px solid #000;
+                width: 55px;
+                height: 45px;
+                border: 2px solid #000;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 flex-shrink: 0;
                 font-size: 8px;
-              }
-              
-              .copy-type {
-                font-size: 12px;
-                font-weight: bold;
-                text-align: center;
-                margin-bottom: 4px;
-                text-decoration: underline;
-                padding: 2px 0;
+                background-color: #f8f9fa;
               }
               
               .customer-invoice-section {
                 display: flex;
                 justify-content: space-between;
-                gap: 3mm;
+                gap: 4mm;
                 font-size: 8px;
                 grid-row: 2;
               }
               
               .customer-details, .invoice-details {
                 flex: 1;
-                border: 1px solid #000;
+                border: 2px solid #000;
                 padding: 4px;
+                background-color: #fdfdfd;
               }
               
               .section-title {
                 font-weight: bold;
                 font-size: 10px;
-                margin-bottom: 2px;
-              }
-              
-              .customer-name {
-                font-size: 11px;
-                font-weight: bold;
-                margin: 2px 0;
+                margin-bottom: 3px;
+                color: #2c3e50;
               }
               
               .items-table {
                 width: 100%;
                 border-collapse: collapse;
-                border: 1px solid #000;
+                border: 2px solid #000;
                 font-size: 6px;
                 table-layout: fixed;
                 grid-row: 3;
                 align-self: start;
+                background-color: white;
               }
               
               .items-table th,
               .items-table td {
                 border: 1px solid #000;
-                padding: 1px;
+                padding: 2px 1px;
                 text-align: center;
                 vertical-align: middle;
-                line-height: 1.0;
+                line-height: 1.1;
                 word-wrap: break-word;
                 overflow: hidden;
-                font-size: 5px;
+                font-size: 6px;
               }
               
               .items-table th {
-                background-color: #f5f5f5;
+                background-color: #e8f4f8;
                 font-weight: bold;
-                font-size: 5px;
-                padding: 2px 1px;
+                font-size: 6px;
+                padding: 3px 1px;
                 text-align: center;
+                color: #2c3e50;
               }
               
               .product-name {
                 text-align: left !important;
                 font-weight: bold;
+                padding-left: 3px !important;
               }
               
               .amount-col {
                 text-align: right !important;
                 font-weight: bold;
+                padding-right: 3px !important;
               }
               
               .total-row {
-                background-color: #f9f9f9;
+                background-color: #f1c40f;
                 font-weight: bold;
-                font-size: 9px;
-              }
-              
-              
-              .total-amount-section {
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-end;
-                margin: 4px 0;
-                gap: 8px;
-              }
-              
-              .amount-words {
-                font-size: 9px;
-                font-style: italic;
-                flex: 1;
-                padding: 2px;
-              }
-              
-              .total-amount-display {
-                text-align: right;
-                flex-shrink: 0;
-              }
-              
-              .total-amount-display .grand-total-display {
-                font-size: 16px;
-                font-weight: bold;
-                margin: 0 0 2px 0;
-                padding: 3px 6px;
-                border: 1px solid #000;
-                background-color: #f0f0f0;
-                text-align: center;
-                min-width: 100px;
-              }
-              
-              .total-amount-label {
-                font-size: 8px;
-                text-align: center;
-                font-weight: bold;
-                margin-top: 2px;
+                font-size: 7px;
+                color: #2c3e50;
               }
               
               .footer-content {
                 grid-row: 4;
                 display: grid;
                 grid-template-rows: auto auto auto auto;
-                gap: 1mm;
-                font-size: 6px;
+                gap: 2mm;
+                font-size: 7px;
               }
               
               .total-amount-words {
                 font-weight: bold;
                 text-align: center;
                 grid-row: 1;
+                padding: 2px;
+                background-color: #ecf0f1;
+                border: 1px solid #bdc3c7;
               }
               
               .total-amount-display {
                 text-align: center;
                 grid-row: 2;
+                margin: 2px 0;
               }
               
               .footer-section {
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
-                font-size: 6px;
+                font-size: 7px;
                 gap: 5mm;
                 grid-row: 3;
               }
               
               .terms-section {
                 flex: 1;
+                border: 1px solid #bdc3c7;
+                padding: 3px;
+                background-color: #f8f9fa;
               }
               
               .payment-section {
                 flex: 1;
-                text-align: right;
+                text-align: left;
+                border: 1px solid #bdc3c7;
+                padding: 3px;
+                background-color: #f8f9fa;
               }
               
               .signature-section {
                 display: flex;
                 justify-content: space-between;
-                font-size: 6px;
+                font-size: 7px;
                 gap: 5mm;
                 grid-row: 4;
               }
               
               .company-signature {
                 flex: 1;
+                text-align: center;
+                border: 1px solid #bdc3c7;
+                padding: 3px;
+                background-color: #f8f9fa;
               }
               
               .customer-signature {
                 flex: 1;
-                text-align: right;
+                text-align: center;
+                border: 1px solid #bdc3c7;
+                padding: 3px;
+                background-color: #f8f9fa;
               }
               
               .signature-line {
                 border-top: 1px solid #000;
-                margin-top: 8px;
-                padding-top: 1px;
-                height: 8px;
+                margin-top: 10px;
+                padding-top: 2px;
+                height: 12px;
                 font-size: 6px;
+                font-weight: normal;
               }
               
               @media print {
                 @page {
                   size: A4 portrait;
-                  margin: 8mm;
+                  margin: 5mm;
                 }
                 
                 body {
@@ -1478,18 +1731,18 @@ const POS = ({ onNavigate }) => {
                   height: 297mm !important;
                   display: grid !important;
                   grid-template-rows: 1fr 1fr !important;
-                  gap: 3mm !important;
-                  padding: 5mm !important;
+                  gap: 4mm !important;
+                  padding: 3mm !important;
                   margin: 0 auto !important;
                   page-break-inside: avoid !important;
                 }
                 
                 .invoice-copy {
                   border: 2px solid #000 !important;
-                  width: 200mm !important;
-                  height: 140mm !important;
-                  max-height: 140mm !important;
-                  min-height: 140mm !important;
+                  width: 204mm !important;
+                  height: 142mm !important;
+                  max-height: 142mm !important;
+                  min-height: 142mm !important;
                   padding: 3mm !important;
                   box-sizing: border-box !important;
                   display: grid !important;
@@ -1509,397 +1762,39 @@ const POS = ({ onNavigate }) => {
                 
                 .items-table th {
                   font-size: 6px !important;
+                  background-color: #e8f4f8 !important;
                 }
                 
                 .total-row {
                   font-size: 8px !important;
-                }
-                
-                .total-amount-display .grand-total-display {
-                  font-size: 14px !important;
+                  background-color: #f1c40f !important;
                 }
                 
                 .company-name {
-                  font-size: 16px !important;
+                  font-size: 18px !important;
                 }
                 
                 .gst-invoice {
-                  font-size: 12px !important;
+                  font-size: 14px !important;
                 }
                 
                 .copy-type {
-                  font-size: 11px !important;
+                  font-size: 12px !important;
+                  background-color: #f8f9fa !important;
                 }
               }
             </style>
           </head>
           <body>
             <div class="dual-invoice-container">
-                <!-- CUSTOMER COPY -->
+              <!-- CUSTOMER COPY -->
               <div class="invoice-copy">
-                <!-- Copy Type -->
-                <div class="copy-type">Customer Copy</div>
-                
-                <!-- Header Section - JaiKisan Style -->
-                <div class="header-section">
-                  <div class="company-logo">
-                    ${shopDetails?.logo ? `
-                      <img src="${shopDetails.logo}" alt="Logo" />
-                    ` : `
-                      <div style="font-size: 8px; font-weight: bold; text-align: center;">JAI<br/>KISAN</div>
-                    `}
-                  </div>
-                  
-                  <div class="company-info">
-                    <div class="company-name">${shopDetails?.name || 'KrishiSethu'}</div>
-                    <div class="gst-invoice">GST Invoice</div>
-                  </div>
-                  
-                  <div class="right-logo">
-                    <div id="qrcode-customer" style="width: 48px; height: 38px; display: flex; align-items: center; justify-content: center;"></div>
-                  </div>
-                </div>
-                
-                <!-- Clean Company & Invoice Information Section -->
-                <div class="customer-invoice-section">
-                  <!-- Left Side - Company Info -->
-                  <div class="customer-details">
-                    <div class="font-semibold">${shopDetails?.name || 'Test company'} Limited</div>
-                    <div class="mt-1">
-                      <div><strong>DispatchedFrom</strong></div>
-                      <div>${shopDetails?.address ? formatAddress(shopDetails.address) : 'Fertilizer Distribution Center, Hyderabad, Telangana, 500001'}</div>
-                      <div>Telangana, India</div>
-                      <div><strong>GSTIN:</strong> ${shopDetails?.gstNumber || '36AAACZ3924H1Z5'}</div>
-                      <div><strong>MFDSID:</strong> ${shopDetails?.mfdSid || '1115736'}</div>
-                    </div>
-                    <div class="mt-1">
-                      <div class="inline-block border border-black px-1"><strong>StateName:</strong> Telangana</div>
-                    </div>
-                  </div>
-                  
-                  <!-- Right Side - Invoice & Customer Info -->
-                  <div class="invoice-details">
-                    <div><strong>InvoiceNo.:</strong> ${currentBillNumber}</div>
-                    <div><strong>ReceiptNo.:</strong> ${currentBillNumber}</div>
-                    <div><strong>InvoiceDate:</strong> ${new Date().toLocaleDateString('en-GB')}</div>
-                    <div><strong>LicenseNo.:</strong> ${shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
-                    
-                    <div class="mt-2">
-                      <div><strong>BilledCustomer(Billto)</strong></div>
-                      <div><strong>CustomerNo.:</strong> ${selectedCustomer?.id || 'S35100000371'}</div>
-                      <div><strong>CustomerName:</strong> ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
-                      <div><strong>Village:</strong> ${selectedCustomer?.city || customerForm.city || 'N/A'}</div>
-                      <div><strong>PhoneNo.:</strong> ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
-                      <div><strong>SalesType:</strong> Cash Sales</div>
-                      <div><strong>CustomerGSTNo:</strong> ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Items Table -->
-                <table class="items-table">
-                  <thead>
-                    <tr>
-                      <th style="width: 5%;">S.No</th>
-                      <th style="width: 30%;">Description of Goods</th>
-                      <th style="width: 8%;">Item Code</th>
-                      <th style="width: 8%;">HSN/SAC</th>
-                      <th style="width: 8%;">Batch No.</th>
-                      <th style="width: 8%;">Expiry</th>
-                      <th style="width: 10%;">Qty & Unit</th>
-                      <th style="width: 6%;">Pack</th>
-                      <th style="width: 8%;">Rate</th>
-                      <th style="width: 10%;">Amount</th>
-                      <th style="width: 8%;">Discount</th>
-                      <th style="width: 10%;">Taxable</th>
-                      <th style="width: 4%;">CGST%</th>
-                      <th style="width: 8%;">CGST</th>
-                      <th style="width: 4%;">SGST%</th>
-                      <th style="width: 8%;">SGST</th>
-                      <th style="width: 4%;">IGST%</th>
-                      <th style="width: 8%;">IGST</th>
-                      <th style="width: 10%;">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${cart.map((item, index) => {
-                      const itemTotal = item.price * item.quantity;
-                      const gstRate = item.gstRate || 5;
-                      const taxableAmount = itemTotal;
-                      const gstAmount = (itemTotal * gstRate) / 100;
-                      const cgstAmount = gstAmount / 2;
-                      const sgstAmount = gstAmount / 2;
-                      const totalWithTax = itemTotal + gstAmount;
-                      
-                      return `
-                        <tr>
-                          <td>${index + 1}</td>
-                          <td class="product-name">${item.name}</td>
-                          <td>${item.barcode || 'N/A'}</td>
-                          <td>${item.hsn || '31051000'}</td>
-                          <td>N/A</td>
-                          <td>N/A</td>
-                          <td>${item.quantity} ${item.unit || 'bags'}</td>
-                          <td>${item.unit || 'BAG'}</td>
-                          <td>₹${item.price.toFixed(2)}</td>
-                          <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
-                          <td>₹0.00</td>
-                          <td class="amount-col">₹${taxableAmount.toFixed(2)}</td>
-                          <td>${(gstRate/2).toFixed(1)}</td>
-                          <td>₹${cgstAmount.toFixed(2)}</td>
-                          <td>${(gstRate/2).toFixed(1)}</td>
-                          <td>₹${sgstAmount.toFixed(2)}</td>
-                          <td>0.0</td>
-                          <td>₹0.00</td>
-                          <td class="amount-col">₹${totalWithTax.toFixed(2)}</td>
-                        </tr>
-                      `;
-                    }).join('')}
-                    
-                    <!-- Grand Total Row -->
-                    <tr class="total-row">
-                      <td colspan="9"><strong>Grand Total</strong></td>
-                      <td class="amount-col"><strong>₹${subtotal.toFixed(2)}</strong></td>
-                      <td><strong>₹${discountAmount.toFixed(2)}</strong></td>
-                      <td class="amount-col"><strong>₹${(subtotal - discountAmount).toFixed(2)}</strong></td>
-                      <td></td>
-                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
-                      <td></td>
-                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
-                      <td></td>
-                      <td><strong>₹0.00</strong></td>
-                      <td class="amount-col"><strong>₹${total.toFixed(2)}</strong></td>
-                    </tr>
-                  </tbody>
-                </table>
-                
-                <!-- Footer Content -->
-                <div class="footer-content">
-                  <!-- Total Amount in Words -->
-                  <div class="total-amount-words">
-                    <strong>Total Invoice Value (in words):</strong> ${numberToWordsIndian(Math.round(total))} Only
-                  </div>
-                  
-                  <!-- Total Amount Display -->
-                  <div class="total-amount-display">
-                    <div style="border: 2px solid #000; padding: 3px 6px; text-align: center; font-weight: bold; font-size: 12px; display: inline-block; min-width: 80px;">
-                      ₹${total.toFixed(2)}
-                    </div>
-                    <div style="font-size: 6px; text-align: center; margin-top: 1px;">Total Amount (incl. tax)</div>
-                  </div>
-                  
-                  <!-- Footer Section -->
-                  <div class="footer-section">
-                    <div class="terms-section">
-                      <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br>
-                      This invoice is not payable under reverse charge
-                    </div>
-                    <div class="payment-section">
-                      <strong>Payment Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}<br>
-                      <strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br>
-                      <strong>Change:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
-                    </div>
-                  </div>
-                  
-                  <!-- Signatures Section -->
-                  <div class="signature-section">
-                    <div class="company-signature">
-                      <strong>For ${shopDetails?.name || 'Test company'}</strong>
-                      <div class="signature-line">Authorized Signatory</div>
-                    </div>
-                    <div class="customer-signature">
-                      <strong>Customer Signature</strong><br>
-                      <strong>For Acknowledgement</strong>
-                      <div class="signature-line">Customer</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Footer Note -->
-                <div style="text-align: center; font-size: 5px; margin-top: 1px; padding-top: 1px; border-top: 1px solid #ccc; position: absolute; bottom: 0; left: 0; right: 0;">
-                  Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge
-                </div>
+                ${generateInvoiceContent('CUSTOMER COPY', 'qrcode-customer')}
               </div>
               
-              <!-- OFFICE/AUDIT COPY -->
+              <!-- OFFICE COPY (IDENTICAL TO CUSTOMER COPY) -->
               <div class="invoice-copy">
-                <!-- Copy Type -->
-                <div class="copy-type">Office Copy</div>
-                
-                <!-- Header Section - JaiKisan Style -->
-                <div class="header-section">
-                  <div class="company-logo">
-                    ${shopDetails?.logo ? `
-                      <img src="${shopDetails.logo}" alt="Logo" />
-                    ` : (
-                      '<div class="text-xs font-bold text-center">JAI<br/>KISAN</div>'
-                    )}
-                  </div>
-                  
-                  <div class="company-info">
-                    <div class="company-name">${shopDetails?.name || 'KrishiSethu'}</div>
-                    <div class="gst-invoice">GST Invoice</div>
-                  </div>
-                  
-                  <div class="right-logo">
-                    <div id="qrcode-office" style="width: 48px; height: 38px; display: flex; align-items: center; justify-content: center;"></div>
-                  </div>
-                </div>
-                
-                <!-- Clean Company & Invoice Information Section -->
-                <div class="customer-invoice-section">
-                  <!-- Left Side - Company Info -->
-                  <div class="customer-details">
-                    <div class="font-semibold">${shopDetails?.name || 'Test company'} Limited</div>
-                    <div class="mt-1">
-                      <div><strong>DispatchedFrom</strong></div>
-                      <div>${shopDetails?.address ? formatAddress(shopDetails.address) : 'Fertilizer Distribution Center, Hyderabad, Telangana, 500001'}</div>
-                      <div>Telangana, India</div>
-                      <div><strong>GSTIN:</strong> ${shopDetails?.gstNumber || '36AAACZ3924H1Z5'}</div>
-                      <div><strong>MFDSID:</strong> ${shopDetails?.mfdSid || '1115736'}</div>
-                    </div>
-                    <div class="mt-1">
-                      <div class="inline-block border border-black px-1"><strong>StateName:</strong> Telangana</div>
-                    </div>
-                  </div>
-                  
-                  <!-- Right Side - Invoice & Customer Info -->
-                  <div class="invoice-details">
-                    <div><strong>InvoiceNo.:</strong> ${currentBillNumber}</div>
-                    <div><strong>ReceiptNo.:</strong> ${currentBillNumber}</div>
-                    <div><strong>InvoiceDate:</strong> ${new Date().toLocaleDateString('en-GB')}</div>
-                    <div><strong>LicenseNo.:</strong> ${shopDetails?.licenseNumber || 'NGKL/20/ADA/FR/2019/23125'}</div>
-                    
-                    <div class="mt-2">
-                      <div><strong>BilledCustomer(Billto)</strong></div>
-                      <div><strong>CustomerNo.:</strong> ${selectedCustomer?.id || 'S35100000371'}</div>
-                      <div><strong>CustomerName:</strong> ${selectedCustomer?.name || customerForm.name || 'Walk-in Customer'}</div>
-                      <div><strong>Village:</strong> ${selectedCustomer?.city || customerForm.city || 'N/A'}</div>
-                      <div><strong>PhoneNo.:</strong> ${selectedCustomer?.phone || customerForm.phone || 'N/A'}</div>
-                      <div><strong>SalesType:</strong> Cash Sales</div>
-                      <div><strong>CustomerGSTNo:</strong> ${selectedCustomer?.gstNumber || customerForm.gstNumber || 'N/A'}</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <!-- Items Table -->
-                <table class="items-table">
-                  <thead>
-                    <tr>
-                      <th style="width: 4%;">S.No</th>
-                      <th style="width: 25%;">Description of Goods</th>
-                      <th style="width: 6%;">Item Code</th>
-                      <th style="width: 6%;">HSN/SAC</th>
-                      <th style="width: 5%;">Batch No.</th>
-                      <th style="width: 5%;">Expiry</th>
-                      <th style="width: 8%;">Qty & Unit</th>
-                      <th style="width: 4%;">Pack</th>
-                      <th style="width: 6%;">Rate</th>
-                      <th style="width: 6%;">Amount</th>
-                      <th style="width: 5%;">Discount</th>
-                      <th style="width: 6%;">Taxable</th>
-                      <th style="width: 3%;">CGST%</th>
-                      <th style="width: 5%;">CGST</th>
-                      <th style="width: 3%;">SGST%</th>
-                      <th style="width: 5%;">SGST</th>
-                      <th style="width: 3%;">IGST%</th>
-                      <th style="width: 5%;">IGST</th>
-                      <th style="width: 6%;">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${cart.map((item, index) => {
-                      const itemTotal = item.price * item.quantity;
-                      const gstRate = item.gstRate || 5;
-                      const taxableAmount = itemTotal;
-                      const gstAmount = (itemTotal * gstRate) / 100;
-                      const cgstAmount = gstAmount / 2;
-                      const sgstAmount = gstAmount / 2;
-                      const totalWithTax = itemTotal + gstAmount;
-                      
-                      return `
-                        <tr>
-                          <td>${index + 1}</td>
-                          <td class="product-name">${item.name}</td>
-                          <td>${item.barcode || 'N/A'}</td>
-                          <td>${item.hsn || '31051000'}</td>
-                          <td>N/A</td>
-                          <td>N/A</td>
-                          <td>${item.quantity} ${item.unit || 'BAG'}</td>
-                          <td>BAG</td>
-                          <td>₹${item.price.toFixed(2)}</td>
-                          <td class="amount-col">₹${itemTotal.toFixed(2)}</td>
-                          <td>₹0.00</td>
-                          <td class="amount-col">₹${taxableAmount.toFixed(2)}</td>
-                          <td>${(gstRate/2).toFixed(1)}</td>
-                          <td>₹${cgstAmount.toFixed(2)}</td>
-                          <td>${(gstRate/2).toFixed(1)}</td>
-                          <td>₹${sgstAmount.toFixed(2)}</td>
-                          <td>0.0</td>
-                          <td>₹0.00</td>
-                          <td class="amount-col">₹${totalWithTax.toFixed(2)}</td>
-                        </tr>
-                      `;
-                    }).join('')}
-                    
-                    <!-- Grand Total Row -->
-                    <tr class="total-row">
-                      <td colspan="9"><strong>Grand Total</strong></td>
-                      <td class="amount-col"><strong>₹${subtotal.toFixed(2)}</strong></td>
-                      <td><strong>₹${discountAmount.toFixed(2)}</strong></td>
-                      <td class="amount-col"><strong>₹${(subtotal - discountAmount).toFixed(2)}</strong></td>
-                      <td></td>
-                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
-                      <td></td>
-                      <td><strong>₹${(taxAmount/2).toFixed(2)}</strong></td>
-                      <td></td>
-                      <td><strong>₹0.00</strong></td>
-                      <td class="amount-col"><strong>₹${total.toFixed(2)}</strong></td>
-                    </tr>
-                  </tbody>
-                </table>
-                
-                <!-- Total Amount and Words Section -->
-                <div class="total-amount-section">
-                  <div class="amount-words">
-                    <strong>Total Invoice Value (in words):</strong> ${numberToWordsIndian(Math.round(total))} Only
-                  </div>
-                  <div class="total-amount-display">
-                    <div class="grand-total-display">₹${total.toFixed(2)}</div>
-                    <div class="total-amount-label">Total Amount (incl. tax)</div>
-                  </div>
-                </div>
-                
-                <!-- Footer Section -->
-                <div class="footer-section">
-                  <div class="terms-section">
-                    <strong>Terms & Conditions:</strong> Goods once sold will not be taken back<br>
-                    This invoice is not payable under reverse charge
-                  </div>
-                  <div class="payment-section">
-                    <strong>Payment Method:</strong> ${paymentData.method?.toUpperCase() || 'CASH'}<br>
-                    <strong>Amount Received:</strong> ₹${paymentData.amountReceived?.toFixed(2) || total.toFixed(2)}<br>
-                    <strong>Change:</strong> ₹${Math.max(0, (paymentData.amountReceived || total) - total).toFixed(2)}
-                  </div>
-                </div>
-                
-                <!-- Signatures -->
-                <div class="signature-section">
-                  <div class="company-signature">
-                    <strong>For ${shopDetails?.name || 'KrishiSethu Fertilizers'}</strong>
-                    <div class="signature-line">Authorized Signatory</div>
-                  </div>
-                  <div class="customer-signature">
-                    <strong>Customer Signature</strong><br>
-                    <strong>For Acknowledgement</strong>
-                    <div class="signature-line">Customer</div>
-                  </div>
-                </div>
-                
-                <!-- Footer Note -->
-                <div style="text-align: center; font-size: 5px; margin-top: 1px; padding-top: 1px; border-top: 1px solid #ccc;">
-                  Note: Unless otherwise stated, tax on this invoice is not payable under reverse charge
-                </div>
+                ${generateInvoiceContent('OFFICE COPY', 'qrcode-office')}
               </div>
             </div>
           </body>
@@ -2073,7 +1968,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
           await navigator.clipboard.writeText(invoiceText);
           // Show success notification
           const notification = document.createElement('div');
-          notification.className = 'fixed top-4 right-4 bg-green-500 text-white p-3 rounded-lg shadow-lg z-50';
+          notification.className = 'fixed top-4 right-4 bg-green-500 dark:bg-green-600 text-white p-3 rounded-lg shadow-lg z-50';
           notification.textContent = '✅ Invoice details copied to clipboard!';
           document.body.appendChild(notification);
           setTimeout(() => {
@@ -2207,7 +2102,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
               variant="outline"
               size="sm"
               onClick={() => setShowImageUploadDialog(true)}
-              className="text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+              className="text-xs bg-green-50 dark:bg-green-950 hover:bg-green-100 dark:hover:bg-green-900 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700"
             >
               <Upload className="h-3 w-3 mr-1" />
               UPLOAD IMAGES
@@ -2559,7 +2454,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
 
             {/* Debug Info - Show category filtering status */}
             {selectedCategory !== 'All Items' && (
-              <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
+              <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950 rounded text-xs text-blue-700 dark:text-blue-300">
                 <strong>Filtering by:</strong> {selectedCategory} •
                 <strong> Found:</strong> {filteredProducts.length} products •
                 <strong> Total:</strong> {products.length} products
@@ -2873,7 +2768,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                       </div>
                     </div>
                     {discount > 0 && (
-                      <div className="text-sm text-gray-600 bg-green-50 p-2 rounded">
+                      <div className="text-sm text-gray-600 dark:text-gray-300 bg-green-50 dark:bg-green-950 p-2 rounded">
                         <div className="flex justify-between">
                           <span>Discount Applied:</span>
                           <span className="font-medium">
@@ -2968,7 +2863,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                       </div>
                     </div>
                     {customGSTRate !== null && (
-                      <div className="text-sm text-blue-600 bg-blue-50 p-2 rounded">
+                      <div className="text-sm text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 p-2 rounded">
                         <div className="flex justify-between">
                           <span>Custom GST Applied:</span>
                           <span className="font-medium">{customGSTRate}%</span>
@@ -3053,7 +2948,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                           </div>
 
                           {/* Amount Details */}
-                          <div className="bg-gray-50 p-3 rounded-lg">
+                          <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                             <div className="flex justify-between items-center text-lg font-semibold">
                               <span>Total Amount:</span>
                               <span>₹{total.toFixed(2)}</span>
@@ -3077,7 +2972,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
 
                           {/* Change Calculation */}
                           {paymentData.amountReceived > 0 && (
-                            <div className="bg-green-50 p-3 rounded-lg">
+                            <div className="bg-green-50 dark:bg-green-950 p-3 rounded-lg">
                               <div className="flex justify-between items-center">
                                 <span className="font-medium">Change to Return:</span>
                                 <span className="text-lg font-semibold text-green-600">
@@ -3135,8 +3030,8 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
 
               {/* CUSTOMER COPY */}
               <div className="border-2 border-black mb-2 p-2" style={{ minHeight: '35vh' }}>
-                {/* Copy Type */}
-                <div className="text-center font-bold text-xs mb-1 underline">Customer Copy</div>
+                {/* Copy Type - Moved to Top Center */}
+                <div className="text-center font-bold text-sm mb-2" style={{ borderBottom: '1px solid #ccc', paddingBottom: '4px' }}>Customer Copy</div>
                 
                 {/* Header Section - JaiKisan Style */}
                 <div className="border-b-2 border-black pb-2 mb-2">
@@ -3146,15 +3041,15 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                       {shopDetails?.logo ? (
                         <img src={shopDetails.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
                       ) : (
-                        <div className="text-xs font-bold text-center">JAI<br/>KISAN</div>
+                        <div className="text-xs font-bold text-center">LOGO</div>
                       )}
                     </div>
                     <div className="text-center flex-1 mx-4">
-                      <div className="text-base font-bold">{shopDetails?.name || 'KrishiSethu'}</div>
+                      <div className="text-base font-bold">{shopDetails?.name || 'Test company'}</div>
                       <div className="text-sm font-bold">GST Invoice</div>
                     </div>
                     <div className="w-20 h-12 border border-black flex items-center justify-center">
-                      <div className="text-xs font-bold text-blue-600">adventz</div>
+                      <div className="text-xs font-bold text-center">OFFICE</div>
                     </div>
                   </div>
                   
@@ -3280,8 +3175,8 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
 
               {/* OFFICE/AUDIT COPY */}
               <div className="border-2 border-black mb-2 p-2" style={{ minHeight: '35vh' }}>
-                {/* Copy Type */}
-                <div className="text-center font-bold text-xs mb-1 underline">Office Copy</div>
+                {/* Copy Type - Moved to Top Center */}
+                <div className="text-center font-bold text-sm mb-2" style={{ borderBottom: '1px solid #ccc', paddingBottom: '4px' }}>Office Copy</div>
                 
                 {/* Header Section - JaiKisan Style */}
                 <div className="border-b-2 border-black pb-2 mb-2">
@@ -3291,15 +3186,15 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                       {shopDetails?.logo ? (
                         <img src={shopDetails.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
                       ) : (
-                        <div className="text-xs font-bold text-center">JAI<br/>KISAN</div>
+                        <div className="text-xs font-bold text-center">LOGO</div>
                       )}
                     </div>
                     <div className="text-center flex-1 mx-4">
-                      <div className="text-base font-bold">{shopDetails?.name || 'KrishiSethu'}</div>
+                      <div className="text-base font-bold">{shopDetails?.name || 'Test company'}</div>
                       <div className="text-sm font-bold">GST Invoice</div>
                     </div>
                     <div className="w-20 h-12 border border-black flex items-center justify-center">
-                      <div className="text-xs font-bold text-blue-600">adventz</div>
+                      <div className="text-xs font-bold text-center">OFFICE</div>
                     </div>
                   </div>
                   
@@ -3486,7 +3381,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                     <Button
                       variant="outline"
                       onClick={() => shareInvoice('whatsapp')}
-                      className="h-20 flex flex-col items-center gap-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                      className="h-20 flex flex-col items-center gap-2 bg-green-50 dark:bg-green-950 hover:bg-green-100 dark:hover:bg-green-900 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700"
                     >
                       <MessageCircle className="h-6 w-6" />
                       <span className="text-sm font-medium">WhatsApp</span>
@@ -3499,7 +3394,7 @@ GSTIN: ${shopDetails?.gstNumber || 'N/A'}`;
                     <Button
                       variant="outline"
                       onClick={() => shareInvoice('email')}
-                      className="h-20 flex flex-col items-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                      className="h-20 flex flex-col items-center gap-2 bg-blue-50 dark:bg-blue-950 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700"
                     >
                       <Mail className="h-6 w-6" />
                       <span className="text-sm font-medium">Email</span>

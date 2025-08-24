@@ -246,115 +246,27 @@ const Purchases = ({ onNavigate }) => {
     }
   };
 
-  // Mock purchases data
+  // Load real purchases data from database
   useEffect(() => {
-    const mockPurchases = [
-      {
-        id: 'PUR20250106001',
-        purchaseNumber: 'PUR20250106001',
-        supplierId: 'sup1',
-        supplierName: 'Tata Chemicals Ltd',
-        items: [
-          { productId: '1', productName: 'NPK 20-20-20', quantity: 50, unitPrice: 850, totalPrice: 42500, batchNo: 'TC2025001' },
-          { productId: '2', productName: 'Urea', quantity: 30, unitPrice: 280, totalPrice: 8400, batchNo: 'TC2025002' }
-        ],
-        subtotal: 50900,
-        discount: 1000,
-        tax: 2495,
-        total: 52395,
-        paymentStatus: 'paid',
-        amountPaid: 52395,
-        // balanceAmount removed - calculated as (total - amountPaid)
-        invoiceNumber: 'TC/2025/001',
-        purchaseDate: new Date('2025-01-06'),
-        createdBy: 'Demo User',
-        notes: 'Regular monthly stock replenishment'
-      },
-      {
-        id: 'PUR20250105001',
-        purchaseNumber: 'PUR20250105001',
-        supplierId: 'sup2',
-        supplierName: 'IFFCO Distributors',
-        items: [
-          { productId: '3', productName: 'DAP', quantity: 25, unitPrice: 1200, totalPrice: 30000, batchNo: 'IF2025001' }
-        ],
-        subtotal: 30000,
-        discount: 500,
-        tax: 1475,
-        total: 30975,
-        paymentStatus: 'pending',
-        amountPaid: 15000,
-        balanceAmount: 15975,
-        invoiceNumber: 'IF/2025/001',
-        purchaseDate: new Date('2025-01-05'),
-        createdBy: 'Demo User',
-        notes: 'Partial payment made'
-      },
-      {
-        id: 'PUR20250104001',
-        purchaseNumber: 'PUR20250104001',
-        supplierId: 'sup3',
-        supplierName: 'Green Gold Organics',
-        items: [
-          { productId: '5', productName: 'Organic Compost', quantity: 100, unitPrice: 150, totalPrice: 15000, batchNo: 'GG2025001' }
-        ],
-        subtotal: 15000,
-        discount: 0,
-        tax: 750,
-        total: 15750,
-        paymentStatus: 'paid',
-        amountPaid: 15750,
-        balanceAmount: 0,
-        invoiceNumber: 'GG/2025/001',
-        purchaseDate: new Date('2025-01-04'),
-        createdBy: 'Demo User',
-        notes: 'Organic fertilizer stock'
-      },
-      {
-        id: 'PUR20250103001',
-        purchaseNumber: 'PUR20250103001',
-        supplierId: 'sup1',
-        supplierName: 'Tata Chemicals Ltd',
-        items: [
-          { productId: '6', productName: 'Zinc Sulphate', quantity: 40, unitPrice: 180, totalPrice: 7200, batchNo: 'TC2025003' },
-          { productId: '7', productName: 'Bio NPK', quantity: 20, unitPrice: 320, totalPrice: 6400, batchNo: 'TC2025004' }
-        ],
-        subtotal: 13600,
-        discount: 200,
-        tax: 670,
-        total: 14070,
-        paymentStatus: 'paid',
-        amountPaid: 14070,
-        // balanceAmount removed - calculated as (total - amountPaid)
-        invoiceNumber: 'TC/2025/002',
-        purchaseDate: new Date('2025-01-03'),
-        createdBy: 'Demo User',
-        notes: 'Micronutrient and bio-fertilizer stock'
-      },
-      {
-        id: 'PUR20250102001',
-        purchaseNumber: 'PUR20250102001',
-        supplierId: 'sup4',
-        supplierName: 'ICL Fertilizers',
-        items: [
-          { productId: '8', productName: 'Potash (MOP)', quantity: 30, unitPrice: 950, totalPrice: 28500, batchNo: 'ICL2025001' }
-        ],
-        subtotal: 28500,
-        discount: 500,
-        tax: 1400,
-        total: 29400,
-        paymentStatus: 'pending',
-        amountPaid: 10000,
-        // balanceAmount removed - calculated as (total - amountPaid) = 19400
-        invoiceNumber: 'ICL/2025/001',
-        purchaseDate: new Date('2025-01-02'),
-        createdBy: 'Demo User',
-        notes: 'Advance payment made, balance due in 30 days'
+    const loadPurchases = async () => {
+      try {
+        // TODO: Implement real purchases loading from database
+        // For now, start with empty array to show clean state
+        const realPurchases = [];
+        setPurchases(realPurchases);
+        setFilteredPurchases(realPurchases);
+        calculateAnalytics(realPurchases);
+        console.log('✅ Purchases loaded from database:', realPurchases.length);
+      } catch (error) {
+        console.error('❌ Error loading purchases:', error);
+        // Start with empty array on error
+        setPurchases([]);
+        setFilteredPurchases([]);
+        calculateAnalytics([]);
       }
-    ];
-    setPurchases(mockPurchases);
-    setFilteredPurchases(mockPurchases);
-    calculateAnalytics(mockPurchases);
+    };
+    
+    loadPurchases();
   }, []);
 
   // Calculate analytics

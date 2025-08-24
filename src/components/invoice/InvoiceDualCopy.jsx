@@ -205,6 +205,11 @@ const InvoiceDualCopy = ({
           </div>
         )}
 
+        {/* Copy Name at Top Center */}
+        <div className="text-center mb-1">
+          <h3 className="text-sm font-bold">{copyType}</h3>
+        </div>
+
         {/* Header - Ultra Compact */}
         <div className="text-center mb-1 pb-1 border-b border-black">
           <div className="flex items-center justify-between mb-1">
@@ -226,16 +231,15 @@ const InvoiceDualCopy = ({
               </p>
             </div>
             <div className="w-12 h-8 border border-black flex items-center justify-center text-xs">
-              BRAND
+              {copyType === "Office Copy" ? "OFFICE" : "BRAND"}
             </div>
           </div>
         </div>
 
-        {/* Copy Type and Invoice Info */}
+        {/* Invoice Info - Copy Type removed since it's at top */}
         <div className="grid grid-cols-2 gap-1 mb-1">
           <div>
-            <h3 className="text-xs font-bold">{copyType}</h3>
-            <p className="text-xs leading-none">Invoice No.: {invoice.invoiceNumber}</p>
+            <p className="text-xs leading-none font-semibold">Invoice No.: {invoice.invoiceNumber}</p>
             <p className="text-xs leading-none">Invoice Date: {formatDate(invoice.invoiceDate)}</p>
             <p className="text-xs leading-none">License No.: NCL/20/ADA/FR/2019/23125</p>
           </div>
@@ -331,43 +335,60 @@ const InvoiceDualCopy = ({
           </table>
         </div>
 
-        {/* Grand Total Display - Compact */}
-        <div className="text-center text-sm font-bold mb-1">
-          ₹{totals.finalTotal?.toFixed(2) || '0.00'}
-        </div>
-        
-        <div className="text-center text-xs mb-1">
-          <strong>Total Invoice Value (in words):</strong> {numberToWords(totals.finalTotal || 0)}
-        </div>
-
-        {/* Terms and Payment Info - Ultra Compact */}
-        <div className="grid grid-cols-2 gap-1 mb-1">
-          <div className="text-xs leading-none">
-            <p><strong>Terms & Conditions:</strong> {invoice.terms}</p>
-            <p>This invoice is not payable under reverse charge</p>
-          </div>
-          <div className="text-xs text-right leading-none">
-            <p><strong>Payment Method:</strong> {invoice.paymentMethod}</p>
-            <p><strong>Amount Received:</strong> ₹{totals.finalTotal?.toFixed(2) || '0.00'}</p>
-            <p><strong>Change:</strong> ₹0.00</p>
-          </div>
-        </div>
-
-        {/* Signature Section - Ultra Compact */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <div className="text-left">
-              <p className="font-bold leading-none">For {company.name}</p>
-              <div className="h-4 mb-1"></div>
-              <div className="border-t border-black pt-1">
-                <p className="leading-none">Authorized Signatory</p>
-              </div>
+        {/* Fixed Footer Section with Consistent Positioning */}
+        <div className="fixed-footer-section" style={{ position: 'relative', bottom: '0', width: '100%' }}>
+          {/* Grand Total Display - Fixed Position */}
+          <div className="border border-black p-1 mb-1 bg-gray-50">
+            <div className="flex justify-between items-center">
+              <div className="text-xs font-bold">Total Invoice Value:</div>
+              <div className="text-sm font-bold">₹{totals.finalTotal?.toFixed(2) || '0.00'}</div>
             </div>
           </div>
-          <div className="text-right">
-            <p className="font-bold leading-none">Customer Signature</p>
-            <p className="font-bold leading-none">For Acknowledgement</p>
-            <div className="h-4 mb-1"></div>
+          
+          <div className="text-center text-xs mb-1 px-1">
+            <strong>Total Invoice Value (in words):</strong> {numberToWords(totals.finalTotal || 0)}
+          </div>
+
+          {/* Terms and Payment Info - Fixed Layout */}
+          <div className="grid grid-cols-2 gap-1 mb-1">
+            <div className="text-xs leading-tight border border-gray-300 p-1">
+              <p><strong>Terms & Conditions:</strong></p>
+              <p className="text-xs">{invoice.terms}</p>
+              <p className="text-xs">This invoice is not payable under reverse charge</p>
+            </div>
+            <div className="text-xs text-right leading-tight border border-gray-300 p-1">
+              <p><strong>Payment Method:</strong> {invoice.paymentMethod}</p>
+              <p><strong>Amount Received:</strong> ₹{totals.finalTotal?.toFixed(2) || '0.00'}</p>
+              <p><strong>Change:</strong> ₹0.00</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Signature Section - Fixed Horizontal Alignment */}
+        <div className="signature-section border-t border-black pt-1 mt-2">
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            {/* Left Side - Company Signature */}
+            <div className="text-left">
+              <div className="flex flex-col" style={{ minHeight: '50px' }}>
+                <p className="font-bold leading-tight mb-1">For {company.name}</p>
+                <div className="flex-1" style={{ minHeight: '30px' }}></div>
+                <div className="border-t border-black pt-1 mt-1">
+                  <p className="leading-tight text-xs">Authorized Signatory</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right Side - Customer Signature */}
+            <div className="text-right">
+              <div className="flex flex-col" style={{ minHeight: '50px' }}>
+                <p className="font-bold leading-tight mb-1">Customer Signature</p>
+                <p className="font-semibold leading-tight text-xs mb-1">For Acknowledgement</p>
+                <div className="flex-1" style={{ minHeight: '30px' }}></div>
+                <div className="border-t border-black pt-1 mt-1" style={{ width: '100%' }}>
+                  <p className="leading-tight text-xs opacity-0">Signature Line</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         

@@ -59,6 +59,11 @@ const Inventory = ({ onNavigate }) => {
   const [sortOrder, setSortOrder] = useState('asc');
   const [viewMode, setViewMode] = useState('grid');
   const [showFilters, setShowFilters] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  const [bulkOperation, setBulkOperation] = useState('');
+  const [lastRefresh, setLastRefresh] = useState(Date.now());
 
   // Advanced inventory features
   const [filterExpiry, setFilterExpiry] = useState('all');
@@ -88,6 +93,30 @@ const Inventory = ({ onNavigate }) => {
 
   useEffect(() => {
     loadProducts();
+  }, []);
+
+  // Refresh data when component becomes visible (when navigating back from other views)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('🔄 [INVENTORY] Page became visible - refreshing data');
+        loadProducts();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  // Listen for navigation-triggered refresh events from Dashboard
+  useEffect(() => {
+    const handleNavigationRefresh = () => {
+      console.log('🔄 [INVENTORY] Navigation refresh event received - reloading products');
+      loadProducts();
+    };
+
+    window.addEventListener('inventory-navigation-refresh', handleNavigationRefresh);
+    return () => window.removeEventListener('inventory-navigation-refresh', handleNavigationRefresh);
   }, []);
 
   useEffect(() => {
@@ -329,117 +358,86 @@ const Inventory = ({ onNavigate }) => {
   };
 
   const loadProducts = async () => {
-    let isComponentMounted = true;
-    
     try {
-      if (isComponentMounted) setLoading(true);
-      console.log('🔄 [INVENTORY] Loading products from database...');
+      setLoading(true);
+      console.log('🔄 [INVENTORY] Loading products using productsService...');
       
-      // Use a single, simple query approach with generous timeout
-      console.log('🔄 [INVENTORY] Executing simple products query...');
+      // Use the proper productsService that handles field mappings and normalization
+      const productsData = await productsService.getAll();
       
-      const { data: products, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('name', { ascending: true })
-        .limit(500); // Reasonable limit for performance
+      console.log(`✅ [INVENTORY] Products loaded via service: ${(productsData || []).length} products`);
+      console.log('📊 [INVENTORY] Sample product data:', productsData?.[0]);
       
-      if (error) {
-        console.error('❌ [INVENTORY] Database query failed:', error);
-        throw new Error(`Database query failed: ${error.message}`);
-      }
+      // The service already handles field mapping, but we need to ensure UI compatibility
+      const uiCompatibleProducts = (productsData || []).map(product => ({
+        // Core product info (already mapped by service)
+        id: product.id,
+        name: product.name || 'Unnamed Product',
+        type: product.type || 'No Type',
+        
+        // Brand and Category info
+        brand: product.brand || product.brandName || 'No Brand',
+        category: product.category || product.categoryName || 'No Category',
+        
+        // Pricing (mapped from snake_case by service)
+        purchasePrice: product.purchasePrice || 0,
+        salePrice: product.salePrice || 0,
+        unitPrice: product.salePrice || 0, // Alias for backward compatibility
+        
+        // Stock info
+        quantity: product.quantity || 0,
+        minStockLevel: product.minStockLevel || 10,
+        reorderLevel: product.reorderLevel || product.minStockLevel || 10,
+        reorderPoint: product.reorderPoint || 10,
+        reorderQuantity: product.reorderQuantity || 50,
+        
+        // Batch and dates (mapped from snake_case by service)
+        batchNo: product.batchNo || 'N/A',
+        expiryDate: product.expiryDate || null,
+        manufacturingDate: product.manufacturingDate || null,
+        
+        // Additional info
+        hsn: product.hsn || '',
+        gstRate: product.gstRate || 0,
+        barcode: product.barcode || '',
+        description: product.description || '',
+        
+        // System fields
+        isActive: product.isActive !== false,
+        status: product.status || 'active',
+        createdAt: product.createdAt || new Date().toISOString(),
+        updatedAt: product.updatedAt || new Date().toISOString(),
+        
+        // Image and attachments
+        imageUrls: product.imageUrls || [],
+        attachments: product.attachments || []
+      }));
       
-      console.log(`✅ [INVENTORY] Query successful: ${(products || []).length} products loaded`);
-      
-      // Normalize products with consistent data structure
-      let normalizedProducts = [];
-      if (products && products.length > 0) {
-        console.log('🔄 [INVENTORY] Sample raw product:', products[0]);
-        normalizedProducts = normalizeProductsArray(products);
-        console.log(`🔄 [INVENTORY] Normalized ${normalizedProducts?.length || 0} products`);
-        console.log('🔄 [INVENTORY] Sample normalized product:', normalizedProducts[0]);
-      } else {
-        console.log('📦 [INVENTORY] No products found in database');
-        normalizedProducts = [];
-      }
-
-      // Validate normalized products
-      console.log(`🔄 Validating ${normalizedProducts?.length || 0} normalized products...`);
-      const validProducts = (normalizedProducts || []).filter(product => {
-        const isValid = validateNormalizedProduct(product);
-        if (!isValid) {
-          console.warn('⚠️ Invalid normalized product:', product);
-        }
-        return isValid;
-      });
-
-      console.log(`🔄 Found ${validProducts.length} valid products after validation`);
-
-      if (isComponentMounted) {
-        if (validProducts.length > 0) {
-          console.log(`✅ ${validProducts.length} valid products loaded successfully`);
-          setProducts(validProducts);
-          
-          // Show success notification
-          showNotification({
-            type: 'success',
-            title: 'Inventory Loaded',
-            message: `Successfully loaded ${validProducts.length} products from database.`,
-            duration: 3000
-          });
-        } else {
-          // Handle empty inventory
-          console.log('📦 No valid products found in inventory database');
-          setProducts([]);
-          
-          showNotification({
-            type: 'info',
-            title: 'Empty Inventory',
-            message: 'Your inventory is empty. Click "Add Product" to start adding items.',
-            duration: 5000
-          });
-        }
-      }
+      console.log(`✅ [INVENTORY] Processed ${uiCompatibleProducts.length} products for UI`);
+      console.log('📊 [INVENTORY] Sample processed product:', uiCompatibleProducts?.[0]);
+      setProducts(uiCompatibleProducts);
       
     } catch (error) {
       console.error('❌ [INVENTORY] Error loading products:', error);
-      console.error('❌ [INVENTORY] Error stack:', error.stack);
+      console.error('❌ [INVENTORY] Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details
+      });
       
-      if (isComponentMounted) {
-        // Set empty array on error to prevent UI crashes
-        setProducts([]);
-        
-        // Show contextual error notification
-        let errorMessage = 'Failed to load inventory from database.';
-        let solution = 'Please check your internet connection and try again.';
-        
-        if (error.message.includes('RLS') || error.message.includes('policy')) {
-          errorMessage = 'Database access denied.';
-          solution = 'Please contact your administrator to fix database permissions.';
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorMessage = 'Network connection failed.';
-          solution = 'Please check your internet connection.';
-        } else if (error.message.includes('auth')) {
-          errorMessage = 'Authentication failed.';
-          solution = 'Please log out and log back in.';
-        } else if (error.message.includes('JWT') || error.message.includes('token')) {
-          errorMessage = 'Session expired.';
-          solution = 'Please refresh the page or log in again.';
-        }
-        
-        showNotification({
-          type: 'error',
-          title: errorMessage,
-          message: `${solution} Error: ${error.message}`,
-          duration: 15000
-        });
-      }
+      // Set empty array on error
+      setProducts([]);
+      
+      // Show user-friendly error notification
+      showNotification({
+        type: 'error',
+        title: 'Failed to Load Products',
+        message: 'Unable to load products from database. Please check your connection and try again.'
+      });
+      
     } finally {
-      // Always ensure loading is set to false if component is still mounted
-      if (isComponentMounted) {
-        console.log('🔄 [INVENTORY] Setting loading to false');
-        setLoading(false);
-      }
+      setLoading(false);
+      console.log('✅ [INVENTORY] Loading complete');
     }
   };
 
@@ -725,8 +723,8 @@ const Inventory = ({ onNavigate }) => {
 
             {/* Bulk Actions */}
             {selectedProducts.length > 0 && (
-              <div className="flex items-center gap-4 p-3 bg-blue-50 rounded-lg">
-                <span className="text-sm font-medium text-blue-700">
+              <div className="flex items-center gap-4 p-3 bg-blue-50 dark:bg-blue-900 rounded-lg">
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-200">
                   {selectedProducts.length} items selected
                 </span>
                 <div className="flex gap-2">
@@ -810,7 +808,7 @@ const Inventory = ({ onNavigate }) => {
                   const isSelected = selectedProducts.includes(product.id);
 
                   return (
-                    <tr key={product.id} className={`border-b hover:bg-gray-50 ${isSelected ? 'bg-blue-50' : ''}`}>
+                    <tr key={product.id} className={`border-b hover:bg-gray-50 dark:hover:bg-gray-800 ${isSelected ? 'bg-blue-50 dark:bg-blue-900' : ''}`}>
                       <td className="py-3 px-4">
                         <input
                           type="checkbox"
@@ -953,7 +951,7 @@ const Inventory = ({ onNavigate }) => {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" title="Delete">
+                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300" title="Delete">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>

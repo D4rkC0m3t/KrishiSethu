@@ -5,9 +5,9 @@ const { createClient } = require('@supabase/supabase-js');
 const fs = require('fs');
 const path = require('path');
 
-// Supabase configuration
-const supabaseUrl = 'https://srhfccodjurgnuvuqynp.supabase.co';
-const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyaGZjY29kanVyZ251dnVxeW5wIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTM0NTQ3OSwiZXhwIjoyMDcwOTIxNDc5fQ.VQNaJFFBEhZsL6CZlSdDAfJ_82kWqGSVBGgZubCCLrI';
+// Supabase configuration - KrishiSethu Project
+const supabaseUrl = 'https://lnljcgttcdhrduixirgf.supabase.co';
+const serviceRoleKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxubGpjZ3R0Y2RocmR1aXhpcmdmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTk1MjQ0MywiZXhwIjoyMDcxNTI4NDQzfQ.SERVICE_ROLE_KEY_PLACEHOLDER';
 
 // Create Supabase client with service role key (bypasses RLS)
 const supabase = createClient(supabaseUrl, serviceRoleKey, {

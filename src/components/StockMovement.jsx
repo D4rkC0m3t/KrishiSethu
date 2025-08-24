@@ -26,11 +26,13 @@ const StockMovement = ({ onNavigate }) => {
 
   // Load real data from database
   useEffect(() => {
+    console.log('🔄 Stock Movement component mounted, loading data...');
     loadData();
-  }, []);
+  }, []); // Empty dependency array - run only once on mount
 
   const loadData = async () => {
     try {
+      console.log('🔄 Starting to load stock movement data...');
       setLoading(true);
       setError(null);
 
@@ -114,30 +116,19 @@ const StockMovement = ({ onNavigate }) => {
   };
 
   const submitAdjustment = async () => {
-    alert('Function called! Check console for details.');
-    console.log('🚀 Starting stock adjustment process...');
-    console.log('📋 Form data:', adjustmentData);
-    console.log('📦 Selected product:', selectedProduct);
-    console.log('👤 Current user:', currentUser);
-    console.log('🔧 Products service:', productsService);
-    console.log('📊 Stock operations:', stockOperations);
-
     // Validation
     if (!selectedProduct) {
       console.error('❌ No product selected');
-      alert('No product selected');
       return;
     }
 
     if (!adjustmentData.quantity || adjustmentData.quantity === '') {
       console.error('❌ No quantity entered');
-      alert('Please enter a quantity');
       return;
     }
 
     if (!adjustmentData.reason || adjustmentData.reason === '') {
       console.error('❌ No reason selected');
-      alert('Please select a reason');
       return;
     }
 
@@ -356,20 +347,6 @@ const StockMovement = ({ onNavigate }) => {
       </>
       )}
 
-      {/* DEBUG: Test button outside dialog */}
-      <div className="mb-4 p-4 bg-red-100 border border-red-300 rounded">
-        <p className="text-red-700 mb-2">DEBUG MODE: Test the function directly</p>
-        <Button
-          onClick={() => {
-            alert('Test button clicked!');
-            console.log('Test button - calling submitAdjustment directly');
-            submitAdjustment();
-          }}
-          className="bg-red-600 hover:bg-red-700 text-white"
-        >
-          TEST: Call submitAdjustment
-        </Button>
-      </div>
 
       {/* Stock Adjustment Dialog */}
       <Dialog open={showAdjustmentDialog} onOpenChange={setShowAdjustmentDialog}>
@@ -462,18 +439,7 @@ const StockMovement = ({ onNavigate }) => {
               Cancel
             </Button>
             <Button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log('🔘 Apply Adjustment button clicked!');
-                alert('Button clicked! About to call submitAdjustment...');
-                try {
-                  submitAdjustment();
-                } catch (error) {
-                  console.error('Error calling submitAdjustment:', error);
-                  alert('Error calling function: ' + error.message);
-                }
-              }}
+              onClick={submitAdjustment}
               disabled={adjustmentLoading}
               className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
               type="button"

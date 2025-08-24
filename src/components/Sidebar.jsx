@@ -38,7 +38,7 @@ export default function Sidebar({
   const [isCollapsed, setIsCollapsed] = useState(false);
   
   // Auto-expand inventory section when on inventory-related pages
-  const inventoryPages = ['inventory', 'stock-movement', 'stock-movements', 'categories', 'brands', 'add-product'];
+  const inventoryPages = ['inventory', 'stock-movement', 'stock-movements', 'stock-adjustment', 'categories', 'brands', 'add-product'];
   const [inventoryOpen, setInventoryOpen] = useState(inventoryPages.includes(currentPage));
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [salesOpen, setSalesOpen] = useState(false);
@@ -153,7 +153,7 @@ export default function Sidebar({
             <SidebarItem
               icon={<Package size={18} />}
               label="Inventory"
-              active={currentPage === 'inventory' || currentPage === 'stock-movement' || currentPage === 'stock-movements' || currentPage === 'categories' || currentPage === 'brands' || currentPage === 'add-product'}
+              active={currentPage === 'inventory' || currentPage === 'stock-movement' || currentPage === 'stock-movements' || currentPage === 'stock-adjustment' || currentPage === 'categories' || currentPage === 'brands' || currentPage === 'add-product'}
               onClick={() => {
                 if (isCollapsed) {
                   onNavigate('inventory');
@@ -185,6 +185,12 @@ export default function Sidebar({
                   label="Stock History"
                   active={currentPage === 'stock-movements'}
                   onClick={() => onNavigate('stock-movements')}
+                  theme={theme}
+                />
+                <SidebarSubItem
+                  label="Stock Adjustment"
+                  active={currentPage === 'stock-adjustment'}
+                  onClick={() => onNavigate('stock-adjustment')}
                   theme={theme}
                 />
                 <SidebarSubItem
@@ -259,7 +265,7 @@ export default function Sidebar({
             <SidebarItem
               icon={<ShoppingCart size={18} />}
               label="Sales"
-              active={currentPage === 'pos' || currentPage === 'sales' || currentPage === 'customers'}
+              active={currentPage === 'pos' || currentPage === 'sales' || currentPage === 'customers' || currentPage === 'sales-customer-analytics'}
               onClick={() => {
                 if (isCollapsed) {
                   onNavigate('sales'); // Navigate to Sales History when collapsed
@@ -291,6 +297,13 @@ export default function Sidebar({
                   label="Customers"
                   active={currentPage === 'customers'}
                   onClick={() => onNavigate('customers')}
+                  theme={theme}
+                  isMiddle={true}
+                />
+                <SidebarSubItem
+                  label="Sales Analytics"
+                  active={currentPage === 'sales-customer-analytics'}
+                  onClick={() => onNavigate('sales-customer-analytics')}
                   theme={theme}
                   isLast={true}
                 />
@@ -503,7 +516,7 @@ export default function Sidebar({
         <div className="flex items-center gap-2">
           <Avatar className="h-8 w-8 flex-shrink-0">
             <AvatarImage src="/user.jpg" />
-            <AvatarFallback className="bg-green-500 text-white text-sm font-medium">
+            <AvatarFallback className="bg-green-500 dark:bg-green-600 text-white text-sm font-medium">
               {userProfile?.name ? userProfile.name.charAt(0).toUpperCase() :
                currentUser?.email ? currentUser.email.charAt(0).toUpperCase() : 'U'}
             </AvatarFallback>
@@ -590,7 +603,7 @@ function SidebarItem({
         >
           {icon && <span className="flex-shrink-0">{icon}</span>}
           {badge && (
-            <Badge className="absolute -top-1 -right-1 text-xs bg-blue-500 text-white px-1 py-0 rounded-full min-w-[16px] h-4 flex items-center justify-center text-[10px]">
+            <Badge className="absolute -top-1 -right-1 text-xs bg-blue-500 dark:bg-blue-600 text-white px-1 py-0 rounded-full min-w-[16px] h-4 flex items-center justify-center text-[10px]">
               {badge}
             </Badge>
           )}
@@ -622,7 +635,7 @@ function SidebarItem({
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         {badge && (
-          <Badge className="text-xs bg-blue-500 text-white px-1.5 py-0.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center">
+          <Badge className="text-xs bg-blue-500 dark:bg-blue-600 text-white px-1.5 py-0.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center">
             {badge}
           </Badge>
         )}

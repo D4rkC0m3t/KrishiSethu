@@ -9,6 +9,13 @@ import ConfigurationError from './components/ConfigurationError';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminMasterDashboard from './components/admin/AdminMasterDashboard';
 import UserDashboard from './components/admin/UserDashboard';
+import MultiTenantTest from './components/MultiTenantTest';
+import DetailedDiagnostic from './components/DetailedDiagnostic';
+import RawFetchTest from './components/RawFetchTest';
+import SimpleSupabaseTest from './components/SimpleSupabaseTest';
+import FreshClientTest from './components/FreshClientTest';
+import DeepDiagnostic from './components/DeepDiagnostic';
+import MasterTest from './components/MasterTest';
 import KSLogo from './components/KSLogo';
 import './App.css';
 import './styles/print.css';
@@ -110,6 +117,48 @@ function AppContent() {
         <Route
           path="/login"
           element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" />}
+        />
+
+        {/* Multi-tenant Test Route */}
+        <Route
+          path="/test"
+          element={<MultiTenantTest />}
+        />
+
+        {/* Detailed Diagnostic Route */}
+        <Route
+          path="/diagnostic"
+          element={<DetailedDiagnostic />}
+        />
+
+        {/* Raw Fetch Test Route */}
+        <Route
+          path="/fetch-test"
+          element={<RawFetchTest />}
+        />
+
+        {/* Simple Supabase Test Route */}
+        <Route
+          path="/supabase-test"
+          element={<SimpleSupabaseTest />}
+        />
+
+        {/* Fresh Client Test Route */}
+        <Route
+          path="/fresh-test"
+          element={<FreshClientTest />}
+        />
+
+        {/* Deep Diagnostic Route */}
+        <Route
+          path="/deep-test"
+          element={<DeepDiagnostic />}
+        />
+
+        {/* Master Test Suite Route */}
+        <Route
+          path="/master-test"
+          element={<MasterTest />}
         />
 
         {/* Admin Routes */}

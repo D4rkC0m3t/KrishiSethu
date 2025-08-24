@@ -124,44 +124,17 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
   };
 
   useEffect(() => {
-    console.log('🔄 AddProduct component mounted/updated');
+    console.log('🔄 AddProduct component mounted - loading initial data');
     console.log('📦 productToEdit received:', productToEdit);
     console.log('📦 productToEdit type:', typeof productToEdit);
     console.log('📦 productToEdit keys:', productToEdit ? Object.keys(productToEdit) : 'null');
 
-    const initializeComponent = async () => {
-      setSuppliersLoading(true);
-      setBrandsLoading(true);
-      setCategoriesLoading(true);
-      await Promise.all([loadSuppliers(), loadBrands(), loadCategories()]);
-      setSuppliersLoading(false);
-      setBrandsLoading(false);
-      setCategoriesLoading(false);
-    };
-
-    initializeComponent();
-
-    // Add visibility change listener to refresh data when user returns to page
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log('🔄 Page became visible, refreshing suppliers...');
-        loadSuppliers();
-      }
-    };
-
-    const handleFocus = () => {
-      console.log('🔄 Window focused, refreshing suppliers...');
-      loadSuppliers();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, []);
+    // Load data only once on mount
+    // Each function manages its own loading state internally
+    loadSuppliers();
+    loadBrands();
+    loadCategories();
+  }, []); // Empty dependency array - run only once on mount
 
   // Separate useEffect for handling productToEdit
   useEffect(() => {
@@ -327,49 +300,50 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
   const loadCategories = async () => {
     try {
       setCategoriesLoading(true);
-      console.log('🔄 Loading categories - prioritizing config categories...');
+      console.log('🔄 Loading categories - prioritizing real database categories...');
 
-      // First, try to load from database
+      // First, try to load from database with real UUIDs
       const dbData = await getDatabaseCategories();
+      console.log('📊 Database categories loaded:', dbData);
 
-      // Check if database has the correct config categories
-      const configCategoryNames = CATEGORIES; // ['Chemical Fertilizer', 'Organic Fertilizer', etc.]
-      const dbCategoryNames = dbData?.map(cat => cat.name) || [];
-
-      // Check if database categories match config categories
-      const hasConfigCategories = configCategoryNames.every(configName =>
-        dbCategoryNames.some(dbName => dbName.toLowerCase() === configName.toLowerCase())
-      );
-
-      if (dbData && dbData.length > 0 && hasConfigCategories) {
-        console.log('✅ Database has correct config categories:', dbData);
+      if (dbData && dbData.length > 0) {
+        // Use real database categories with real UUIDs
+        console.log('✅ Using real database categories with UUIDs:', dbData);
         setCategories(dbData);
       } else {
-        console.log('📦 Database categories don\'t match config. Using config categories:', configCategoryNames);
-        // Use config categories as the source of truth
+        console.log('📦 No database categories found. You need to set up categories in your database.');
+        console.log('⚠️ Creating temporary fake categories for development only...');
+        
+        // Only use fake categories if database is completely empty (for development)
         const configCategories = CATEGORIES.map((name, index) => ({
-          id: `cat_${index + 1}`,
+          id: `temp_cat_${index + 1}`, // Make it clear these are temporary
           name: name,
           description: `${name} products`,
           is_active: true,
-          sort_order: index + 1
+          sort_order: index + 1,
+          isFakeId: true // Flag to identify fake categories
         }));
         setCategories(configCategories);
-
-        console.log('✅ Using config categories:', configCategories);
+        
+        console.warn('⚠️ Using temporary fake categories. Products created with these will fail to save!');
+        console.warn('💡 Please add real categories to your database to fix this issue.');
       }
     } catch (error) {
       console.error('❌ Error loading categories:', error);
-      console.log('📦 Using config categories as fallback');
-      // Always fallback to config categories
+      console.log('📦 Using temporary fake categories as fallback');
+      
+      // Fallback to fake categories with clear warnings
       const configCategories = CATEGORIES.map((name, index) => ({
-        id: `cat_${index + 1}`,
+        id: `temp_cat_${index + 1}`, // Make it clear these are temporary
         name: name,
         description: `${name} products`,
         is_active: true,
-        sort_order: index + 1
+        sort_order: index + 1,
+        isFakeId: true // Flag to identify fake categories
       }));
       setCategories(configCategories);
+      
+      console.warn('⚠️ Using temporary fake categories due to error. Products created with these will fail to save!');
     } finally {
       setCategoriesLoading(false);
     }
@@ -789,16 +763,53 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
     }
   };
 
+  // UUID validation helper
+  const isValidUUID = (uuid) => {
+    const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+    return uuidRegex.test(uuid);
+  };
+
   const validateForm = () => {
     const newErrors = {};
 
     // Debug form data
-    console.log('Validating form data:', formData);
+    console.log('🔍 Validating form data:', formData);
 
+    // Required field validations
     if (!formData.name.trim()) newErrors.name = 'Product name is required';
     if (!formData.type) newErrors.type = 'Product type is required';
-    if (!formData.categoryId.trim()) newErrors.categoryId = 'Category is required';
-    if (!formData.brandId) newErrors.brandId = 'Brand is required';
+    
+    // UUID validations with specific error messages
+    if (!formData.categoryId.trim()) {
+      newErrors.categoryId = 'Category is required';
+    } else if (!isValidUUID(formData.categoryId) && !formData.categoryId.startsWith('temp_')) {
+      newErrors.categoryId = 'Invalid category selected. Please select a valid category from the dropdown.';
+      console.error('❌ Invalid category UUID:', formData.categoryId);
+    }
+    
+    if (!formData.brandId) {
+      newErrors.brandId = 'Brand is required';
+    } else if (!isValidUUID(formData.brandId)) {
+      newErrors.brandId = 'Invalid brand selected. Please select a valid brand from the dropdown.';
+      console.error('❌ Invalid brand UUID:', formData.brandId);
+    }
+    
+    if (!formData.supplierId || formData.supplierId.trim() === '') {
+      newErrors.supplierId = 'Supplier is required';
+      console.log('Supplier validation failed. Current supplierId:', formData.supplierId, 'Available suppliers:', suppliers.length);
+    } else if (!isValidUUID(formData.supplierId)) {
+      newErrors.supplierId = 'Invalid supplier selected. Please select a valid supplier from the dropdown.';
+      console.error('❌ Invalid supplier UUID:', formData.supplierId);
+    } else {
+      // Check if the selected supplier ID exists in the suppliers list
+      const supplierExists = suppliers.find(s => s.id === formData.supplierId);
+      if (!supplierExists) {
+        newErrors.supplierId = 'Selected supplier no longer exists. Please refresh and select again.';
+        console.log('Invalid supplier ID:', formData.supplierId, 'Available IDs:', suppliers.map(s => s.id));
+      }
+    }
+
+    // Other required fields
     if (!formData.batchNo.trim()) newErrors.batchNo = 'Batch number is required';
     if (!formData.expiryDate) newErrors.expiryDate = 'Expiry date is required';
     if (!formData.purchasePrice || formData.purchasePrice <= 0) {
@@ -814,17 +825,6 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
       newErrors.minStockLevel = 'Valid minimum stock level is required';
     }
     if (!formData.unit) newErrors.unit = 'Unit is required';
-    if (!formData.supplierId || formData.supplierId.trim() === '') {
-      newErrors.supplierId = 'Supplier is required';
-      console.log('Supplier validation failed. Current supplierId:', formData.supplierId, 'Available suppliers:', suppliers.length);
-    } else {
-      // Check if the selected supplier ID exists in the suppliers list
-      const supplierExists = suppliers.find(s => s.id === formData.supplierId);
-      if (!supplierExists) {
-        newErrors.supplierId = 'Selected supplier is invalid';
-        console.log('Invalid supplier ID:', formData.supplierId, 'Available IDs:', suppliers.map(s => s.id));
-      }
-    }
 
     // Optional but recommended fields
     if (formData.hsn && !/^\d{4,8}$/.test(formData.hsn)) {
@@ -840,7 +840,21 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
       newErrors.salePrice = 'Sale price should be greater than purchase price';
     }
 
-    console.log('Validation errors:', newErrors);
+    // Validate date consistency
+    if (formData.manufacturingDate && formData.expiryDate) {
+      const mfgDate = new Date(formData.manufacturingDate);
+      const expDate = new Date(formData.expiryDate);
+      if (mfgDate >= expDate) {
+        newErrors.expiryDate = 'Expiry date must be after manufacturing date';
+      }
+    }
+
+    // Check for fake/temporary IDs that will cause database errors
+    if (formData.categoryId.startsWith('temp_')) {
+      newErrors.categoryId = 'Temporary categories cannot be used. Please add real categories to your database first.';
+    }
+
+    console.log('🔍 Validation errors:', newErrors);
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -918,8 +932,9 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
       const productData = {
         name: formData.name.trim(),
         type: formData.type,
-        category_id: formData.categoryId, // Send categoryId to match database schema
-        brand_id: formData.brandId, // Changed from 'brand' to 'brandId' to match database schema
+        categoryId: formData.categoryId,  // This will be mapped to category_id by field mappings
+        brandId: formData.brandId,        // This will be mapped to brand_id by field mappings
+        // Remove brand and category string fields to prevent UUID conflicts
         batchNo: formData.batchNo.trim(),
         expiryDate: expiryDate,
         purchasePrice: purchasePrice,
@@ -1061,9 +1076,9 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
       {/* Save Status Feedback */}
       {saveStatus && (
         <div className={`p-4 rounded-lg border ${
-          saveStatus === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
-          saveStatus === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
-          'bg-blue-50 border-blue-200 text-blue-800'
+          saveStatus === 'success' ? 'bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200' :
+          saveStatus === 'error' ? 'bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-700 text-red-800 dark:text-red-200' :
+          'bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200'
         }`}>
           <div className="flex items-center">
             {saveStatus === 'saving' && (
@@ -1098,7 +1113,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
 
           {/* Permission Warning */}
           {!productToEdit && userProfile?.role === 'staff' && (
-            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-md text-sm mb-6">
+            <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded-md text-sm mb-6">
               <div className="flex items-center">
                 <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -1132,7 +1147,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   const validation = validateProductName(formData.name);
                   if (validation.suggestions.length > 0) {
                     return (
-                      <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                      <div className="text-xs text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 p-2 rounded">
                         💡 <strong>Suggestions:</strong>
                         <ul className="mt-1 ml-4 list-disc">
                           {validation.suggestions.map((suggestion, idx) => (
@@ -1215,6 +1230,9 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                         return (
                           <SelectItem key={category.id} value={category.id}>
                             {category.name}
+                            {category.isFakeId && (
+                              <span className="ml-2 text-xs text-amber-600">⚠️ Temp</span>
+                            )}
                           </SelectItem>
                         );
                       })
@@ -1226,6 +1244,18 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   </SelectContent>
                 </Select>
                 {errors.categoryId && <span className="text-red-500 text-sm">{errors.categoryId}</span>}
+                {(() => {
+                  const selectedCategory = categories.find(cat => cat.id === formData.categoryId);
+                  if (selectedCategory?.isFakeId) {
+                    return (
+                      <div className="text-xs bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded">
+                        ⚠️ <strong>Warning:</strong> Using temporary category. Products created with this category will fail to save!
+                        <br />💡 <strong>Fix:</strong> Add real categories to your database first.
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div className="space-y-2">
@@ -1242,8 +1272,8 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                     {(() => {
                       const availableTypes = getAvailableTypes();
                       console.log('Available types for dropdown:', availableTypes);
-                      return availableTypes.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      return availableTypes.map((type, index) => (
+                        <SelectItem key={`${formData.categoryId}-${type}-${index}`} value={type}>{type}</SelectItem>
                       ));
                     })()}
                   </SelectContent>
@@ -1365,7 +1395,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                     💰 {formatPriceWithUnit(formData.purchasePrice, formData.unit)}
                   </p>
                 )}
-                <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                <p className="text-xs text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 p-2 rounded">
                   ⚡ <strong>Important:</strong> Enter the price per individual item (bottle, packet, bag), not per box or case.
                 </p>
               </div>
@@ -1476,7 +1506,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                     const recommended = getRecommendedUnit(selectedCategory.name, formData.name);
                     if (recommended !== formData.unit && recommended === 'pcs') {
                       return (
-                        <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded">
+                        <div className="text-xs text-amber-600 dark:text-amber-300 bg-amber-50 dark:bg-amber-950 p-2 rounded">
                           💡 <strong>Suggestion:</strong> Consider using "pcs" for easier inventory tracking of countable items.
                         </div>
                       );
@@ -1484,7 +1514,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   }
                   return null;
                 })()}
-                <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded space-y-1">
+                <div className="text-xs text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 p-2 rounded space-y-1">
                   <div><strong>💡 UOM Best Practice:</strong></div>
                   <div>• Use <strong>"pcs"</strong> for bottles, packets, bags, tools</div>
                   <div>• Track individual sellable items, not boxes/cases</div>
@@ -1634,7 +1664,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                   multiple
                   onChange={handleChange}
                   disabled={uploading}
-                  className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:file:bg-gray-100 disabled:file:text-gray-400"
+                  className="cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 dark:file:bg-blue-950 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900 disabled:file:bg-gray-100 dark:disabled:file:bg-gray-700 disabled:file:text-gray-400 dark:disabled:file:text-gray-500"
                 />
                 {uploading && (
                   <div className="absolute inset-0 bg-white/50 dark:bg-gray-900/50 flex items-center justify-center rounded-md">
@@ -1728,7 +1758,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                         variant="outline"
                         size="sm"
                         onClick={removeAllFiles}
-                        className="text-red-600 hover:text-red-700 border-red-300 hover:bg-red-50"
+                        className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950"
                         disabled={uploading}
                         title="Delete all uploaded files"
                       >
@@ -1750,7 +1780,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                                   className="w-12 h-12 object-cover rounded-md border border-gray-300 shadow-sm"
                                 />
                                 <div className={`absolute -top-1 -right-1 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center shadow-sm ${
-                                  file.metadata?.isExisting ? 'bg-blue-500' : 'bg-green-500'
+                                  file.metadata?.isExisting ? 'bg-blue-500 dark:bg-blue-600' : 'bg-green-500 dark:bg-green-600'
                                 }`}>
                                   {file.metadata?.isExisting ? '📁' : '✓'}
                                 </div>
@@ -1799,7 +1829,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                               variant="outline"
                               size="sm"
                               onClick={() => window.open(file.url, '_blank')}
-                              className="text-blue-600 hover:text-blue-700 border-blue-300 hover:bg-blue-50"
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 border-blue-300 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950"
                               title="View file"
                             >
                               👁️ View
@@ -1811,7 +1841,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                             variant="outline"
                             size="sm"
                             onClick={() => removeFile(index)}
-                            className="text-red-600 hover:text-red-700 border-red-300 hover:bg-red-50"
+                            className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950"
                             disabled={uploading}
                             title="Delete file"
                           >
@@ -1828,11 +1858,11 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                     </div>
                     <div className="flex items-center space-x-4">
                       <span className="flex items-center space-x-1">
-                        <span className="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                        <span className="inline-block w-3 h-3 bg-green-500 dark:bg-green-600 rounded-full"></span>
                         <span>✓ New uploads</span>
                       </span>
                       <span className="flex items-center space-x-1">
-                        <span className="inline-block w-3 h-3 bg-blue-500 rounded-full"></span>
+                        <span className="inline-block w-3 h-3 bg-blue-500 dark:bg-blue-600 rounded-full"></span>
                         <span>📁 Existing files</span>
                       </span>
                     </div>
@@ -1844,7 +1874,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
               )}
 
               {uploading && (
-                <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-700 rounded-lg">
                   <div className="flex items-center space-x-2 text-blue-600">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                     <span className="text-sm">Uploading files...</span>
@@ -1858,7 +1888,7 @@ const AddProduct = ({ onNavigate, productToEdit = null }) => {
                       setUploadProgress({});
                       console.log('🛑 Upload cancelled by user');
                     }}
-                    className="text-red-600 border-red-300 hover:bg-red-50"
+                    className="text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950"
                   >
                     Cancel
                   </Button>

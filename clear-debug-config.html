@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear KrishiSethu Debug Config</title>
+</head>
+<body>
+    <h1>Clear Debug Configuration</h1>
+    <button onclick="clearConfig()">Clear localStorage Debug Config</button>
+    <div id="result"></div>
+
+    <script>
+        function clearConfig() {
+            const keys = ['ks_debug_sb_url', 'ks_debug_sb_anon_key'];
+            let cleared = [];
+            
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    localStorage.removeItem(key);
+                    cleared.push(key + ': ' + value);
+                }
+            });
+            
+            const result = document.getElementById('result');
+            if (cleared.length > 0) {
+                result.innerHTML = '<h3>Cleared the following debug configs:</h3><pre>' + cleared.join('\n') + '</pre>';
+                result.style.color = 'green';
+                
+                setTimeout(() => {
+                    alert('Debug config cleared! Please refresh your KrishiSethu app.');
+                }, 500);
+            } else {
+                result.innerHTML = '<p>No debug config found in localStorage.</p>';
+                result.style.color = 'orange';
+            }
+        }
+        
+        // Show current config on load
+        window.onload = function() {
+            const url = localStorage.getItem('ks_debug_sb_url');
+            const key = localStorage.getItem('ks_debug_sb_anon_key');
+            
+            if (url || key) {
+                document.getElementById('result').innerHTML = 
+                    '<h3>Current Debug Config:</h3>' +
+                    '<p>URL: ' + (url || 'Not set') + '</p>' +
+                    '<p>Key: ' + (key ? key.substring(0, 20) + '...' : 'Not set') + '</p>';
+            } else {
+                document.getElementById('result').innerHTML = '<p>No debug config currently set.</p>';
+            }
+        }
+    </script>
+</body>
+</html>

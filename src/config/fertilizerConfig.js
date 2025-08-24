@@ -12,7 +12,8 @@ export const FERTILIZER_CATEGORIES = {
     'Calcium Ammonium Nitrate (CAN)',
     'Potassium Sulphate (SOP)',
     'MAP (Mono Ammonium Phosphate)',
-    'Calcium Nitrate'
+    'Calcium Nitrate',
+    'Custom/Other'
   ],
   'Organic Fertilizer': [
     'Vermicompost',
@@ -24,7 +25,8 @@ export const FERTILIZER_CATEGORIES = {
     'Seaweed Extract Fertilizer',
     'Green Manure (Sunhemp, Dhaincha)',
     'Fish Meal Fertilizer',
-    'Pressmud Compost'
+    'Pressmud Compost',
+    'Custom/Other'
   ],
   'Bio Fertilizer': [
     'Rhizobium',
@@ -35,7 +37,8 @@ export const FERTILIZER_CATEGORIES = {
     'Potash Mobilizing Bacteria (KMB)',
     'Zinc Solubilizing Bacteria (ZSB)',
     'Blue-Green Algae (BGA)',
-    'Acetobacter'
+    'Acetobacter',
+    'Custom/Other'
   ],
   'Seeds': [
     'Wheat Seeds',
@@ -47,7 +50,8 @@ export const FERTILIZER_CATEGORIES = {
     'Groundnut Seeds',
     'Soybean Seeds',
     'Sunflower Seeds',
-    'Pulses Seeds (Gram, Lentil, Pea)'
+    'Pulses Seeds (Gram, Lentil, Pea)',
+    'Custom/Other'
   ],
   'NPK Fertilizers': [
     'NPK 20:20:0',
@@ -58,7 +62,8 @@ export const FERTILIZER_CATEGORIES = {
     'NPK 14:35:14',
     'NPK 13:40:13',
     'NPK 16:20:0',
-    'NPK 28:28:0'
+    'NPK 28:28:0',
+    'Custom/Other'
   ],
   'Pesticides': [
     'Insecticide',
@@ -70,7 +75,8 @@ export const FERTILIZER_CATEGORIES = {
     'Rodenticide',
     'Plant Growth Regulator',
     'Bio-Pesticide',
-    'Organic Pesticide'
+    'Organic Pesticide',
+    'Custom/Other'
   ],
   'Tools': [
     'Hand Tools',
@@ -82,7 +88,8 @@ export const FERTILIZER_CATEGORIES = {
     'Garden Tools',
     'Farm Machinery Parts',
     'Fertilizer Spreaders',
-    'Soil Testing Kits'
+    'Soil Testing Kits',
+    'Custom/Other'
   ]
 };
 
